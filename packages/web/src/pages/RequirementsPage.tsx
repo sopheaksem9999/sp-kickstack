@@ -298,24 +298,40 @@ export function RequirementsPage() {
           id: 'urgent',
           title: 'URGENT',
           color: 'bg-rose-500',
+          bgLight: 'bg-rose-50/60 dark:bg-rose-950/20 border-rose-200/70 dark:border-rose-900/30',
+          headerBg: 'bg-rose-100/70 dark:bg-rose-950/50 border-rose-200/80 dark:border-rose-900/40',
+          headerText: 'text-rose-900 dark:text-rose-200',
+          badgeBg: 'bg-rose-200/90 dark:bg-rose-900/60 text-rose-800 dark:text-rose-300',
           match: (r: any) => r.priority === 'urgent',
         },
         {
           id: 'high',
           title: 'HIGH PRIORITY',
           color: 'bg-amber-500',
+          bgLight: 'bg-amber-50/60 dark:bg-amber-950/20 border-amber-200/70 dark:border-amber-900/30',
+          headerBg: 'bg-amber-100/70 dark:bg-amber-950/50 border-amber-200/80 dark:border-amber-900/40',
+          headerText: 'text-amber-900 dark:text-amber-200',
+          badgeBg: 'bg-amber-200/90 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300',
           match: (r: any) => r.priority === 'high',
         },
         {
           id: 'normal',
           title: 'NORMAL PRIORITY',
           color: 'bg-blue-500',
+          bgLight: 'bg-blue-50/60 dark:bg-blue-950/20 border-blue-200/70 dark:border-blue-900/30',
+          headerBg: 'bg-blue-100/70 dark:bg-blue-950/50 border-blue-200/80 dark:border-blue-900/40',
+          headerText: 'text-blue-900 dark:text-blue-200',
+          badgeBg: 'bg-blue-200/90 dark:bg-blue-900/60 text-blue-800 dark:text-blue-300',
           match: (r: any) => r.priority === 'normal',
         },
         {
           id: 'low',
           title: 'LOW PRIORITY',
           color: 'bg-slate-400',
+          bgLight: 'bg-slate-50/80 dark:bg-[#16171e]/70 border-slate-200 dark:border-[#262732]',
+          headerBg: 'bg-slate-100/90 dark:bg-[#1a1b26] border-slate-200 dark:border-[#262732]',
+          headerText: 'text-slate-700 dark:text-slate-300',
+          badgeBg: 'bg-slate-200/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300',
           match: (r: any) => r.priority === 'low',
         },
       ];
@@ -328,46 +344,74 @@ export function RequirementsPage() {
         id: proj,
         title: proj.toUpperCase(),
         color: 'bg-purple-500',
+        bgLight: 'bg-purple-50/50 dark:bg-purple-950/20 border-purple-200/60 dark:border-purple-900/30',
+        headerBg: 'bg-purple-100/70 dark:bg-purple-950/40 border-purple-200/70 dark:border-purple-900/40',
+        headerText: 'text-purple-900 dark:text-purple-200',
+        badgeBg: 'bg-purple-200/90 dark:bg-purple-900/60 text-purple-800 dark:text-purple-300',
         match: (r: any) => r.affected_projects.includes(proj),
       }));
     }
 
-    // Default: group by status
+    // Default: group by status (Board States with light background colors)
     return [
       {
         id: 'draft',
         title: 'TO DO / DRAFT',
-        color: 'bg-slate-500',
+        color: 'bg-slate-400',
+        bgLight: 'bg-slate-50/90 dark:bg-[#16171e]/80 border-slate-200 dark:border-[#262732]',
+        headerBg: 'bg-slate-100 dark:bg-[#1c1d27] border-slate-200 dark:border-[#262732]',
+        headerText: 'text-slate-700 dark:text-slate-300',
+        badgeBg: 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300',
         match: (r: any) => r.status === 'draft',
       },
       {
         id: 'ready',
         title: 'READY FOR DISPATCH',
         color: 'bg-sky-500',
+        bgLight: 'bg-sky-50/60 dark:bg-sky-950/25 border-sky-200/70 dark:border-sky-900/40',
+        headerBg: 'bg-sky-100/80 dark:bg-sky-950/50 border-sky-200/80 dark:border-sky-900/50',
+        headerText: 'text-sky-900 dark:text-sky-200',
+        badgeBg: 'bg-sky-200/90 dark:bg-sky-900/70 text-sky-800 dark:text-sky-300',
         match: (r: any) => r.status === 'ready',
       },
       {
         id: 'in_progress',
         title: 'IN PROGRESS',
         color: 'bg-[#7b68ee]',
+        bgLight: 'bg-purple-50/60 dark:bg-purple-950/25 border-purple-200/70 dark:border-purple-900/40',
+        headerBg: 'bg-purple-100/80 dark:bg-purple-950/50 border-purple-200/80 dark:border-purple-900/50',
+        headerText: 'text-purple-900 dark:text-purple-200',
+        badgeBg: 'bg-purple-200/90 dark:bg-purple-900/70 text-purple-800 dark:text-purple-300',
         match: (r: any) => r.status === 'in_progress',
       },
       {
         id: 'in_review',
         title: 'IN REVIEW',
         color: 'bg-blue-500',
+        bgLight: 'bg-blue-50/60 dark:bg-blue-950/25 border-blue-200/70 dark:border-blue-900/40',
+        headerBg: 'bg-blue-100/80 dark:bg-blue-950/50 border-blue-200/80 dark:border-blue-900/50',
+        headerText: 'text-blue-900 dark:text-blue-200',
+        badgeBg: 'bg-blue-200/90 dark:bg-blue-900/70 text-blue-800 dark:text-blue-300',
         match: (r: any) => r.status === 'in_review',
       },
       {
         id: 'qa',
         title: 'QA / TESTING',
-        color: 'bg-amber-400',
+        color: 'bg-amber-500',
+        bgLight: 'bg-amber-50/60 dark:bg-amber-950/25 border-amber-200/70 dark:border-amber-900/40',
+        headerBg: 'bg-amber-100/80 dark:bg-amber-950/50 border-amber-200/80 dark:border-amber-900/50',
+        headerText: 'text-amber-900 dark:text-amber-200',
+        badgeBg: 'bg-amber-200/90 dark:bg-amber-900/70 text-amber-800 dark:text-amber-300',
         match: (r: any) => r.status === 'qa',
       },
       {
         id: 'done',
         title: 'COMPLETE',
         color: 'bg-emerald-500',
+        bgLight: 'bg-emerald-50/60 dark:bg-emerald-950/25 border-emerald-200/70 dark:border-emerald-900/40',
+        headerBg: 'bg-emerald-100/80 dark:bg-emerald-950/50 border-emerald-200/80 dark:border-emerald-900/50',
+        headerText: 'text-emerald-900 dark:text-emerald-200',
+        badgeBg: 'bg-emerald-200/90 dark:bg-emerald-900/70 text-emerald-800 dark:text-emerald-300',
         match: (r: any) => r.status === 'done',
       },
     ];
@@ -1319,23 +1363,23 @@ export function RequirementsPage() {
             return (
               <div
                 key={group.id}
-                className="bg-white dark:bg-[#181922] border border-slate-200 dark:border-[#262732] rounded-xl flex flex-col max-h-[80vh] shadow-sm overflow-hidden"
+                className={`${group.bgLight} border rounded-2xl flex flex-col max-h-[82vh] shadow-xs overflow-hidden transition-all`}
               >
                 {/* Column Header */}
-                <div className="p-3 border-b border-slate-200 dark:border-[#262732] bg-slate-50/70 dark:bg-[#1c1d27] flex items-center justify-between">
+                <div className={`p-3 border-b ${group.headerBg} flex items-center justify-between`}>
                   <div className="flex items-center gap-2">
-                    <span className={`w-2.5 h-2.5 rounded-full ${group.color}`} />
-                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    <span className={`w-2.5 h-2.5 rounded-full ${group.color} ring-2 ring-white/60 dark:ring-black/30`} />
+                    <span className={`text-xs font-black tracking-wider uppercase ${group.headerText}`}>
                       {group.title}
                     </span>
                   </div>
-                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                  <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${group.badgeBg}`}>
                     {groupReqs.length}
                   </span>
                 </div>
 
                 {/* Cards Container */}
-                <div className="p-2 space-y-2 overflow-y-auto flex-1">
+                <div className="p-2.5 space-y-2.5 overflow-y-auto flex-1">
                   {groupReqs.map((req) => {
                     const prio = priorityConfig[req.priority] || priorityConfig.normal;
                     const reqSprint = req.sprint_id ? sprints.find((s) => s.id === req.sprint_id) : null;
@@ -1344,13 +1388,13 @@ export function RequirementsPage() {
                       <div
                         key={req.id}
                         onClick={() => setSelectedRequirementId(req.id)}
-                        className="block p-3 rounded-lg bg-slate-50 dark:bg-[#1f202b] hover:bg-purple-50/50 dark:hover:bg-[#252736] border border-slate-200 dark:border-[#2e303d] shadow-sm transition-all group cursor-pointer"
+                        className="block p-3.5 rounded-xl bg-white dark:bg-[#1a1b26] hover:bg-slate-50/90 dark:hover:bg-[#222332] border border-slate-200/80 dark:border-[#2d2f3e] shadow-2xs hover:shadow-md transition-all group cursor-pointer"
                       >
                         <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 mb-1">
                           <span className="text-[#7b68ee] font-bold group-hover:underline">{req.id}</span>
                           <span className="flex items-center gap-1 text-[10px]">
                             <Flag className={`w-3 h-3 ${prio.color}`} />
-                            <span className="capitalize">{prio.label}</span>
+                            <span className="capitalize text-slate-600 dark:text-slate-300 font-medium">{prio.label}</span>
                           </span>
                         </div>
 
@@ -1358,18 +1402,18 @@ export function RequirementsPage() {
                           {req.title}
                         </div>
 
-                        <div className="flex items-center justify-between pt-1 border-t border-slate-200 dark:border-[#2b2c3a]">
+                        <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-[#262737]">
                           <div className="flex flex-wrap items-center gap-1">
                             {req.affected_projects.map((proj) => (
                               <span
                                 key={proj}
-                                className="px-1.5 py-0.2 rounded font-mono text-[9px] bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300"
+                                className="px-1.5 py-0.5 rounded font-mono text-[9px] font-medium bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/40"
                               >
                                 {proj}
                               </span>
                             ))}
                           </div>
-                          <span className="text-[9px] font-bold font-mono text-indigo-500 dark:text-indigo-400">
+                          <span className="text-[10px] font-bold font-mono text-indigo-600 dark:text-indigo-400">
                             {reqSprint ? reqSprint.name : 'Backlog'}
                           </span>
                         </div>
@@ -1379,11 +1423,11 @@ export function RequirementsPage() {
                 </div>
 
                 {/* Column Footer Quick Add */}
-                <div className="p-2 border-t border-slate-100 dark:border-[#22232e]">
+                <div className="p-2 border-t border-slate-200/60 dark:border-[#262732]/60 bg-white/40 dark:bg-black/10">
                   <button
                     type="button"
                     onClick={openSheet}
-                    className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#20212a] font-medium transition-colors"
+                    className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-white/80 dark:hover:bg-[#20212a] font-semibold transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Add Task</span>

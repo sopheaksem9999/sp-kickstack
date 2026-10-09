@@ -11,6 +11,7 @@ import { MAX_DISPATCH_ATTEMPTS, shouldNotifyFailure } from '../lib/retryPolicy.j
 import { BranchService, branchInstructions, taskBranchName } from './branchService.js';
 import { isRateLimit } from '../adapters/rateLimit.js';
 import { pauseForRateLimit } from './rateLimitPause.js';
+import { prepareRetry } from './taskRetry.js';
 
 export type AdapterFactory = (projectName: string) => EngineAdapter;
 
@@ -289,6 +290,17 @@ ${wrapUntrusted('requirement', requirementMd)}
     );
 
     return { cancelled, failed };
+  }
+
+  /** A person retries a stopped goal: new engine task on the same branch, attempts reset. */
+  public async retryGoal(taskId: number): Promise<BridgeTask> {
+    const task = await prepareRetry(this.db, taskId, 'goal', this.getAdapter);
+    await this.dispatchGoal(taskId);
+    const goals = this.db
+      .prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND role = 'goal' AND status <> 'cancelled'")
+      .all(task.req_id) as BridgeTask[];
+    this.applyFanOutStatus(task.req_id, goals);
+    return this.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(taskId) as BridgeTask;
   }
 
   /**

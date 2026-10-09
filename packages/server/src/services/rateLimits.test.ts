@@ -190,3 +190,99 @@ describe('Rate-limited engines', () => {
     expect(h.task(resp.ticketId).engine_task_id).toBeTruthy();
   });
 });
+
+describe('Retry task', () => {
+  let h: H;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => h.db.close());
+
+  async function failedInEngine(project: 'backend' | 'mobile' = 'backend') {
+    const req = h.createRequirement([project]);
+    const [goal] = await h.fanOutService.execute(req.id);
+    h.engines[project].setTaskStatus(goal.engine_task_id!, 'failed', 'error');
+    await h.watcher.scanOnce();
+    expect(h.task(goal.id).status).toBe('failed');
+    return { req, goal };
+  }
+
+  it('re-dispatches a goal that failed inside its engine and cancels the old engine task', async () => {
+    const { goal } = await failedInEngine();
+    const oldEngineId = goal.engine_task_id!;
+
+    await h.fanOutService.retryGoal(goal.id);
+
+    const row = h.task(goal.id);
+    expect(row.status).toBe('queued');
+    expect(row.engine_task_id).toBeTruthy();
+    expect(row.engine_task_id).not.toBe(oldEngineId);
+    expect(row.attempts).toBe(1);
+    expect(h.engines.backend.getTaskData(oldEngineId)!.status).toBe('cancelled');
+    expect(h.engines.backend.getTaskData(row.engine_task_id)!.notes[0]).toMatch(/previous attempt/i);
+    expect(h.events('task_retried')).toBe(1);
+  });
+
+  it('lets a person retry a goal whose dispatch used up every automatic attempt', async () => {
+    const req = h.createRequirement(['backend']);
+    h.limited.backend = null;
+    const original = (h as any).engines.backend.fetch;
+    (h as any).engines.backend.fetch = async () => { throw new Error('connection refused'); };
+    const [goal] = await h.fanOutService.execute(req.id);
+    h.db.prepare('UPDATE bridge_tasks SET attempts = 5 WHERE id = ?').run(goal.id);
+    (h as any).engines.backend.fetch = original;
+
+    await h.fanOutService.retryGoal(goal.id);
+
+    expect(h.task(goal.id).status).toBe('queued');
+    expect(h.requirementService.getRequirement(req.id)!.status).toBe('in_progress');
+  });
+
+  it('re-dispatches a ticket that failed inside its engine', async () => {
+    const req = h.createRequirement();
+    const resp = await h.ticketService.createTicket(
+      { to: 'backend', type: 'api_request', title: 'GET /x', body: 'Provide it please', blocking: false, req_id: req.id }, 'manual'
+    );
+    const oldEngineId = h.task(resp.ticketId).engine_task_id;
+    h.engines.backend.setTaskStatus(oldEngineId, 'failed', 'error');
+    await h.watcher.scanOnce();
+
+    await h.ticketService.retryTicket(resp.ticketId);
+
+    expect(h.task(resp.ticketId).engine_task_id).not.toBe(oldEngineId);
+    expect(h.task(resp.ticketId).status).toBe('queued');
+  });
+
+  it('refuses to retry finished work or work of a cancelled requirement', async () => {
+    const { req, goal } = await failedInEngine();
+    h.db.prepare("UPDATE bridge_tasks SET status = 'done' WHERE id = ?").run(goal.id);
+    await expect(h.fanOutService.retryGoal(goal.id)).rejects.toMatchObject({ status: 409 });
+
+    h.db.prepare("UPDATE bridge_tasks SET status = 'failed' WHERE id = ?").run(goal.id);
+    h.requirementService.updateStatus(req.id, 'cancelled');
+    await expect(h.fanOutService.retryGoal(goal.id)).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+describe('Retry task API', () => {
+  it('POST /api/tasks/:id/retry retries a failed goal, 404 for unknown tasks', async () => {
+    const h = makeHarness();
+    const { createApp } = await import('../api/app.js');
+    const { testRequest } = await import('../api/testHelper.js');
+    const { WorkspaceService } = await import('./workspaceService.js');
+    const { SseBroadcaster } = await import('../sse/broadcaster.js');
+    const { Notifier } = await import('../notify/notifier.js');
+    const app = createApp({
+      db: h.db, workspaceService: new WorkspaceService(h.db), projectService: new ProjectService(h.db),
+      requirementService: h.requirementService, fanOutService: h.fanOutService, linkService: h.linkService,
+      ticketService: h.ticketService, broadcaster: new SseBroadcaster(), notifier: new Notifier(),
+    });
+    const [goal] = await h.fanOutService.execute(h.createRequirement(['backend']).id);
+    h.engines.backend.setTaskStatus(goal.engine_task_id!, 'failed', 'error');
+    await h.watcher.scanOnce();
+
+    const ok = await testRequest(app, 'POST', `/api/tasks/${goal.id}/retry`);
+    expect(ok.status).toBe(200);
+    expect(ok.body.status).toBe('queued');
+    expect((await testRequest(app, 'POST', '/api/tasks/9999/retry')).status).toBe(404);
+    h.db.close();
+  });
+});

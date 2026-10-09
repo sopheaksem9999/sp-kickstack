@@ -591,6 +591,26 @@ export function createApp(deps: AppDependencies): Express {
     }
   });
 
+  // Retry a stopped goal/ticket on its existing branch (old engine task cancelled).
+  app.post('/api/tasks/:id/retry', async (req, res, next) => {
+    try {
+      const taskId = Number(req.params.id);
+      const task = deps.db.prepare('SELECT role FROM bridge_tasks WHERE id = ?').get(taskId) as { role: string } | undefined;
+      if (!task) return res.status(404).json({ error: 'Task not found' });
+      const retried =
+        task.role === 'goal'
+          ? await deps.fanOutService.retryGoal(taskId)
+          : task.role === 'ticket'
+          ? await deps.ticketService.retryTicket(taskId)
+          : null;
+      if (!retried) return res.status(409).json({ error: `A ${task.role} task cannot be retried` });
+      deps.broadcaster.broadcast({ type: 'task_retried', payload: { taskId, status: retried.status } });
+      res.json(retried);
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // Task Live Execution Logs
   app.get('/api/tasks/:id/logs', (req, res) => {
     const taskId = Number(req.params.id);

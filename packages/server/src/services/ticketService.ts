@@ -15,6 +15,7 @@ import { MAX_DISPATCH_ATTEMPTS, shouldNotifyFailure } from '../lib/retryPolicy.j
 import { BranchService, branchInstructions, taskBranchName } from './branchService.js';
 import { isRateLimit } from '../adapters/rateLimit.js';
 import { pauseForRateLimit } from './rateLimitPause.js';
+import { prepareRetry } from './taskRetry.js';
 
 function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -185,6 +186,13 @@ ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input
       blocking: Boolean(input.blocking),
       status: current.status,
     };
+  }
+
+  /** A person retries a stopped ticket: new engine task on the same branch, attempts reset. */
+  public async retryTicket(ticketId: number): Promise<BridgeTask> {
+    await prepareRetry(this.db, ticketId, 'ticket', this.getAdapter);
+    await this.dispatchTicket(ticketId);
+    return this.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(ticketId) as BridgeTask;
   }
 
   /**

@@ -71,6 +71,13 @@ export function CreateRequirementSheet() {
     }
   }, [activeWorkspaceId, isOpen]);
 
+  // Auto-select all projects in workspace by default
+  useEffect(() => {
+    if (projects.length > 0 && selectedProjects.length === 0) {
+      setSelectedProjects(projects.map((p) => p.name));
+    }
+  }, [workspaceId, projects]);
+
   // Handle ESC key to close
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -387,8 +394,8 @@ export function CreateRequirementSheet() {
                       <span className="text-slate-300 dark:text-slate-600">·</span>
                     </>
                   )}
-                  <span className="text-purple-600 dark:text-purple-400 font-bold">
-                    {selectedProjects.length} selected
+                  <span className={`font-bold ${selectedProjects.length === 0 ? 'text-rose-500 animate-pulse' : 'text-purple-600 dark:text-purple-400'}`}>
+                    {selectedProjects.length} selected {selectedProjects.length === 0 && '(at least 1 required)'}
                   </span>
                 </div>
               </div>

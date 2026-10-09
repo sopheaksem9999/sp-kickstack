@@ -19,6 +19,7 @@ import { createApp } from './api/app.js';
 import { TaskReactor } from './services/taskReactor.js';
 import { BranchService } from './services/branchService.js';
 import { MergeGateService } from './services/mergeGate.js';
+import { EngineThrottle } from './lib/engineThrottle.js';
 import { RetrySweeper } from './services/retrySweeper.js';
 import { startScheduler } from './services/scheduler.js';
 
@@ -38,11 +39,23 @@ const projectService = new ProjectService(db);
 const requirementService = new RequirementService(db, WORKSPACE_DIR);
 const sprintService = new SprintService(db);
 
-const getAdapter = (projectName: string) => {
+// Per-engine rate-limit handling: circuit breaker + start limit around every adapter call.
+const engineThrottle = new EngineThrottle({
+  onTrip: (project, until) => {
+    const payload = { project, until: new Date(until).toISOString() };
+    db.prepare("INSERT INTO events (type, payload, read, at) VALUES ('engine_rate_limited', ?, 0, ?)").run(
+      JSON.stringify(payload),
+      new Date().toISOString()
+    );
+    broadcaster.broadcast({ type: 'engine_rate_limited', payload });
+  },
+});
+
+const getAdapter = engineThrottle.wrap((projectName: string) => {
   const proj = projectService.getProject(projectName);
   if (!proj) throw new Error(`Project ${projectName} not found`);
   return createAdapter(proj);
-};
+});
 
 const branchService = new BranchService(db, projectService);
 const linkService = new LinkService(db, projectService, getAdapter);

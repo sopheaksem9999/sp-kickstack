@@ -669,13 +669,8 @@ export function createApp(deps: AppDependencies): Express {
       const resp = await deps.ticketService.createTicket(validated, sourceProject, sourceTaskId);
       deps.broadcaster.broadcast({ type: 'ticket_created', payload: resp });
       res.status(201).json(resp);
-    } catch (err: any) {
-      if (err.message.includes('not registered') || err.message.includes('exceeds')) {
-        return res.status(400).json({ error: err.message });
-      }
-      if (err.message.includes('limit')) {
-        return res.status(429).json({ error: err.message });
-      }
+    } catch (err) {
+      // TicketService errors carry their HTTP status (400 invalid, 429 limits, 502 engine).
       next(err);
     }
   };

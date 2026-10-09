@@ -17,6 +17,7 @@ import { StoneforgeAdapter } from './adapters/stoneforgeAdapter.js';
 import { SseBroadcaster } from './sse/broadcaster.js';
 import { TaskReactor } from './services/taskReactor.js';
 import { EngineWatcher } from './watcher/engineWatcher.js';
+import { OutboxScanner } from './watcher/outboxScanner.js';
 import { Notifier } from './notify/notifier.js';
 import { createApp, AppDependencies } from './api/app.js';
 import { testRequest } from './api/testHelper.js';
@@ -828,5 +829,114 @@ describe('N: status changes follow the lifecycle', () => {
 
     const graph = await testRequest(h.app, 'GET', `/api/requirements/${req.id}/graph`);
     expect(graph.body.tasks.map((t: any) => t.id)).toEqual([task.id]);
+  });
+});
+
+describe('G: tickets are idempotent and the outbox never duplicates them', () => {
+  let h: Harness;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => h.db.close());
+
+  const ticketCount = () => (h.db.prepare("SELECT COUNT(*) c FROM bridge_tasks WHERE role = 'ticket'").get() as any).c;
+  const outboxDir = () => path.join(h.repoMobile, '.devflow', 'outbox');
+  const scanner = () => new OutboxScanner(h.projectService, h.ticketService);
+
+  async function mobileGoal() {
+    const req = h.createRequirement();
+    const tasks = await h.fanOutService.execute(req.id);
+    return { req, goal: tasks.find((t) => t.project === 'mobile')! };
+  }
+
+  function dropTicket(name: string, payload: Record<string, unknown>) {
+    fs.mkdirSync(outboxDir(), { recursive: true });
+    fs.writeFileSync(path.join(outboxDir(), name), typeof payload === 'string' ? payload : JSON.stringify(payload));
+  }
+
+  it('retries a failed hold on re-scan without creating a second ticket', async () => {
+    const { goal } = await mobileGoal();
+    const originalHold = h.adapters.mobile.holdTask.bind(h.adapters.mobile);
+    h.adapters.mobile.holdTask = async () => { throw new Error('hold endpoint 500'); };
+    dropTicket('t1.json', {
+      to: 'backend', type: 'api_request', title: 'GET /loc', body: 'Provide location endpoint',
+      blocking: true, project: 'mobile', engineTaskId: goal.engine_task_id,
+    });
+
+    for (let i = 0; i < 3; i++) await scanner().scanOnce();
+    expect(ticketCount()).toBe(1);
+    expect(fs.existsSync(path.join(outboxDir(), 't1.json'))).toBe(true);
+    expect(taskRow(h, goal.id).status).toBe('queued');
+    expect(h.linkService.getLinksForTask(goal.id)).toHaveLength(1);
+
+    h.adapters.mobile.holdTask = originalHold;
+    expect(await scanner().scanOnce()).toBe(1);
+    expect(ticketCount()).toBe(1);
+    expect(taskRow(h, goal.id).status).toBe('held');
+    expect(fs.existsSync(path.join(outboxDir(), 'processed', 't1.json'))).toBe(true);
+  });
+
+  it('returns the existing ticket when an agent resubmits it (normalized title)', async () => {
+    const { goal } = await mobileGoal();
+    const body = (title: string) => ({
+      to: 'backend', type: 'api_request', title, body: 'Provide location endpoint',
+      project: 'mobile', engineTaskId: goal.engine_task_id,
+    });
+
+    const first = await testRequest(h.app, 'POST', '/api/agent/tickets', { body: body('GET /loc') });
+    const second = await testRequest(h.app, 'POST', '/api/agent/tickets', { body: body('  get   /LOC ') });
+
+    expect(first.status).toBe(201);
+    expect(second.body.ticketId).toBe(first.body.ticketId);
+    expect(ticketCount()).toBe(1);
+  });
+
+  it('retries the engine call when the same ticket is resubmitted after an engine failure', async () => {
+    const { goal } = await mobileGoal();
+    const input = { to: 'backend', type: 'api_request' as const, title: 'GET /loc', body: 'Provide location endpoint', blocking: false };
+    const originalCreate = h.adapters.backend.createTask.bind(h.adapters.backend);
+    h.adapters.backend.createTask = async () => { throw new Error('backend engine down'); };
+
+    await expect(h.ticketService.createTicket(input, 'mobile', goal.engine_task_id!)).rejects.toThrow(/backend engine down/);
+    const failed = h.db.prepare("SELECT * FROM bridge_tasks WHERE role = 'ticket'").get() as any;
+    expect(failed.status).toBe('failed');
+    expect(failed.engine_task_id).toBeNull();
+
+    h.adapters.backend.createTask = originalCreate;
+    const retried = await h.ticketService.createTicket(input, 'mobile', goal.engine_task_id!);
+    expect(retried.ticketId).toBe(failed.id);
+    expect(taskRow(h, failed.id).engine_task_id).toBeTruthy();
+    expect(ticketCount()).toBe(1);
+  });
+
+  it('moves an invalid outbox file to failed/ with the reason and a ticket_rejected event', async () => {
+    dropTicket('bad.json', { to: 'backend', title: 'x' });
+    expect(await scanner().scanOnce()).toBe(0);
+
+    expect(fs.existsSync(path.join(outboxDir(), 'bad.json'))).toBe(false);
+    expect(fs.existsSync(path.join(outboxDir(), 'failed', 'bad.json'))).toBe(true);
+    expect(fs.readFileSync(path.join(outboxDir(), 'failed', 'bad.json.error.txt'), 'utf-8')).toMatch(/body|title/);
+    expect((h.db.prepare("SELECT COUNT(*) c FROM events WHERE type = 'ticket_rejected'").get() as any).c).toBe(1);
+  });
+
+  it('moves a ticket for an unregistered project to failed/ instead of retrying forever', async () => {
+    const { req } = await mobileGoal();
+    dropTicket('nope.json', { to: 'nope', type: 'api_request', title: 'GET /x', body: 'Provide it please', req_id: req.id });
+    await scanner().scanOnce();
+    expect(fs.existsSync(path.join(outboxDir(), 'failed', 'nope.json'))).toBe(true);
+  });
+
+  it('does not run overlapping scans', async () => {
+    const { req } = await mobileGoal();
+    let calls = 0;
+    const originalCreate = h.adapters.backend.createTask.bind(h.adapters.backend);
+    h.adapters.backend.createTask = async (input) => {
+      calls++;
+      await new Promise((r) => setTimeout(r, 50));
+      return originalCreate(input);
+    };
+    dropTicket('slow.json', { to: 'backend', type: 'api_request', title: 'GET /slow', body: 'Provide it please', req_id: req.id });
+
+    const s = scanner();
+    await Promise.all([s.scanOnce(), s.scanOnce()]);
+    expect(calls).toBe(1);
   });
 });

@@ -13,6 +13,8 @@ import crypto from 'node:crypto';
 import { cancelOrphan } from './orphans.js';
 import { MAX_DISPATCH_ATTEMPTS, shouldNotifyFailure } from '../lib/retryPolicy.js';
 import { BranchService, branchInstructions, taskBranchName } from './branchService.js';
+import { isRateLimit } from '../adapters/rateLimit.js';
+import { pauseForRateLimit } from './rateLimitPause.js';
 
 function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -212,6 +214,11 @@ ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input
         await cancelOrphan(this.db, adapter, ticketId, engineTask.id);
       }
     } catch (err: any) {
+      if (isRateLimit(err)) {
+        // Accepted: the retry sweep creates it in the engine once the limit resets.
+        pauseForRateLimit(this.db, ticketId, err);
+        return;
+      }
       const message = err?.message || 'Unknown adapter error';
       const now = new Date().toISOString();
       this.db

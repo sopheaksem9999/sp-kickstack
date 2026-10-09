@@ -5,6 +5,7 @@ import { TicketService } from './ticketService.js';
 import { LinkService } from './linkService.js';
 import { MAX_DISPATCH_ATTEMPTS, shouldNotifyFailure } from '../lib/retryPolicy.js';
 import { forEachLimit } from '../lib/concurrency.js';
+import type { EngineThrottle } from '../lib/engineThrottle.js';
 
 /** Engine calls in flight per sweep stage: one hung engine cannot serialize the rest. */
 const DISPATCHES_IN_FLIGHT = 4;
@@ -18,9 +19,13 @@ export interface RetrySweeperOptions {
   maxDelayMs?: number;
   /** A 'pending' reservation older than this was abandoned (crash) and is re-dispatched. */
   stalePendingMs?: number;
+  /** Rate-limited engines are skipped entirely (no attempt is used up while they are tripped). */
+  throttle?: EngineThrottle;
 }
 
-type RetryRow = Pick<BridgeTask, 'id' | 'req_id' | 'status' | 'updated_at'> & { attempts: number };
+type RetryRow = Pick<BridgeTask, 'id' | 'req_id' | 'project' | 'status' | 'updated_at' | 'paused_until'> & {
+  attempts: number;
+};
 
 /**
  * Retries the engine side effects that failed transiently: goal and ticket creation,
@@ -39,7 +44,7 @@ export class RetrySweeper {
     private fanOutService: FanOutService,
     private ticketService: TicketService,
     private linkService: LinkService,
-    options: RetrySweeperOptions = {}
+    private options: RetrySweeperOptions = {}
   ) {
     this.now = options.now ?? Date.now;
     this.maxAttempts = options.maxAttempts ?? MAX_DISPATCH_ATTEMPTS;
@@ -84,20 +89,32 @@ export class RetrySweeper {
   private undispatched(role: 'goal' | 'ticket'): RetryRow[] {
     return this.db
       .prepare(`
-        SELECT t.id, t.req_id, t.status, t.updated_at, t.attempts FROM bridge_tasks t
+        SELECT t.id, t.req_id, t.project, t.status, t.updated_at, t.paused_until, t.attempts FROM bridge_tasks t
         JOIN requirements r ON r.id = t.req_id
         JOIN projects p ON p.name = t.project
-        WHERE t.role = ? AND t.engine_task_id IS NULL AND t.status IN ('failed', 'pending')
+        WHERE t.role = ? AND t.engine_task_id IS NULL AND t.status IN ('failed', 'pending', 'rate_limited')
           AND t.attempts < ? AND r.status NOT IN ('cancelled', 'done')
           AND p.enabled = 1 AND p.engine_status <> 'down'
         ORDER BY t.id
       `)
-      .all(role, this.maxAttempts) as RetryRow[];
+      .all(role, this.maxAttempts)
+      .filter((row: any) => !this.options.throttle?.isTripped(row.project)) as RetryRow[];
   }
 
   /** Claim a retry: a failed row past its backoff, or a pending row abandoned by a crash. */
   private claim(row: RetryRow): boolean {
     const now = new Date().toISOString();
+    if (row.status === 'rate_limited') {
+      if (row.paused_until && Date.parse(row.paused_until) > this.now()) return false;
+      return (
+        this.db
+          .prepare(`
+            UPDATE bridge_tasks SET status = 'pending', attempts = attempts + 1, last_error = NULL, paused_until = NULL, updated_at = ?
+            WHERE id = ? AND status = 'rate_limited' AND engine_task_id IS NULL
+          `)
+          .run(now, row.id).changes === 1
+      );
+    }
     if (row.status === 'failed' && this.dueAfter(row.updated_at, this.backoffMs(row.attempts))) {
       return (
         this.db
@@ -168,6 +185,18 @@ export class RetrySweeper {
     if (attempts === this.maxAttempts) onGiveUp();
   }
 
+  /** True when an engine still holding active work of this requirement is rate limited. */
+  private anyTripped(reqId: string): boolean {
+    if (!this.options.throttle) return false;
+    const projects = this.db
+      .prepare(`
+        SELECT DISTINCT project FROM bridge_tasks
+        WHERE req_id = ? AND engine_task_id IS NOT NULL AND status NOT IN ('done', 'cancelled', 'failed')
+      `)
+      .all(reqId) as Array<{ project: string }>;
+    return projects.some((p) => this.options.throttle!.isTripped(p.project));
+  }
+
   private recordEvent(type: string, reqId: string, taskId: number | null, payload: Record<string, unknown>) {
     this.db
       .prepare('INSERT INTO events (req_id, task_id, type, payload, read, at) VALUES (?, ?, ?, ?, 0, ?)')
@@ -179,16 +208,17 @@ export class RetrySweeper {
     // nothing left waiting).
     const sources = this.db
       .prepare(`
-        SELECT DISTINCT l.task_id, t.req_id, t.updated_at FROM links l
+        SELECT DISTINCT l.task_id, t.req_id, t.project, t.updated_at FROM links l
         JOIN bridge_tasks t ON t.id = l.task_id
         JOIN requirements r ON r.id = t.req_id
         WHERE l.state IN ('error', 'ready') AND r.status NOT IN ('cancelled', 'done')
           AND NOT EXISTS (SELECT 1 FROM links w WHERE w.task_id = l.task_id AND w.state = 'waiting')
       `)
-      .all() as Array<{ task_id: number; req_id: string; updated_at: string }>;
+      .all() as Array<{ task_id: number; req_id: string; project: string; updated_at: string }>;
 
     let released = 0;
     for (const source of sources) {
+      if (this.options.throttle?.isTripped(source.project)) continue; // waits for the reset, no attempt used
       const key = `release:${source.task_id}`;
       if (!this.isRetryDue(key, source.updated_at)) continue;
       this.db.prepare("UPDATE links SET state = 'ready' WHERE task_id = ? AND state = 'error'").run(source.task_id);
@@ -220,6 +250,7 @@ export class RetrySweeper {
 
     let retried = 0;
     for (const row of pending) {
+      if (this.anyTripped(row.req_id)) continue; // waits for the reset, no attempt used
       const key = `cancel:${row.req_id}`;
       if (!this.isRetryDue(key, row.updated_at)) continue;
       const { failed } = await this.fanOutService.cancel(row.req_id);

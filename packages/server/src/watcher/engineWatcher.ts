@@ -6,6 +6,7 @@ import { BridgeTask, NormStatus } from '@sp-kickstack/shared';
 import { TaskReactor } from '../services/taskReactor.js';
 import { LinkService } from '../services/linkService.js';
 import { forEachLimit } from '../lib/concurrency.js';
+import { isRateLimit } from '../adapters/rateLimit.js';
 
 export type EventCallback = (event: {
   type: string;
@@ -97,7 +98,14 @@ export class EngineWatcher {
       return 0;
     }
 
-    const health = await adapter.health();
+    let health: { ok: boolean; error?: string };
+    try {
+      health = await adapter.health();
+    } catch (err) {
+      // Rate limited: the engine is up; the throttle holds calls until the reset.
+      if (isRateLimit(err)) return 0;
+      throw err;
+    }
     if (!health.ok) {
       const delayMs = Math.min((backoff?.delayMs ?? this.pollIntervalMs / 2) * 2, MAX_DOWN_BACKOFF_MS);
       this.downBackoff.set(projectName, { until: Date.now() + delayMs, delayMs });
@@ -121,6 +129,7 @@ export class EngineWatcher {
       try {
         if (await this.syncTask(adapter, task)) changes++;
       } catch (err: any) {
+        if (isRateLimit(err)) return; // expected while the engine is rate limited
         console.warn(`[watcher] ${projectName} task #${task.id} (${task.engine_task_id}): ${err?.message || err}`);
       }
     });
@@ -135,7 +144,9 @@ export class EngineWatcher {
     const rawChanged = engineTask.rawStatus !== task.engine_status_raw;
     const statusChanged = engineTask.status !== task.status;
     const prChanged = (engineTask.prUrl || null) !== (task.pr_url || null);
-    if (!statusChanged && !rawChanged && !prChanged) return false;
+    const pausedUntil = engineTask.status === 'rate_limited' ? engineTask.resumeAt ?? null : null;
+    const pauseChanged = pausedUntil !== (task.paused_until ?? null);
+    if (!statusChanged && !rawChanged && !prChanged && !pauseChanged) return false;
 
     const oldStatus = task.status;
     // Guarded on the status we read before awaiting the engine: if someone else
@@ -143,10 +154,18 @@ export class EngineWatcher {
     const updated = this.db
       .prepare(`
         UPDATE bridge_tasks
-        SET status = ?, engine_status_raw = ?, pr_url = COALESCE(?, pr_url), updated_at = ?
+        SET status = ?, engine_status_raw = ?, pr_url = COALESCE(?, pr_url), paused_until = ?, updated_at = ?
         WHERE id = ? AND status = ?
       `)
-      .run(engineTask.status, engineTask.rawStatus, engineTask.prUrl || null, new Date().toISOString(), task.id, oldStatus);
+      .run(
+        engineTask.status,
+        engineTask.rawStatus,
+        engineTask.prUrl || null,
+        pausedUntil,
+        new Date().toISOString(),
+        task.id,
+        oldStatus
+      );
     if (updated.changes !== 1) return false;
 
     if (statusChanged) {
@@ -155,7 +174,7 @@ export class EngineWatcher {
         oldStatus,
         engineTask.status,
         'watcher',
-        { rawStatus: engineTask.rawStatus, prUrl: engineTask.prUrl || null }
+        { rawStatus: engineTask.rawStatus, prUrl: engineTask.prUrl || null, resumeAt: pausedUntil }
       );
     } else {
       // Raw status / PR link only: refresh clients without a notification row.

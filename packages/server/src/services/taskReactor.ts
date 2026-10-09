@@ -51,7 +51,7 @@ export class TaskReactor {
     oldStatus: NormStatus,
     newStatus: NormStatus,
     source: StatusChangeSource,
-    extra: { rawStatus?: string | null; prUrl?: string | null } = {}
+    extra: { rawStatus?: string | null; prUrl?: string | null; resumeAt?: string | null } = {}
   ): Promise<{ releasedLinks: Link[] }> {
     this.recordEvent('task_status_changed', task.req_id, task.id, {
       taskId: task.id,
@@ -76,6 +76,12 @@ export class TaskReactor {
           linkIds: releasedLinks.map((l) => l.id),
         });
       }
+    } else if (newStatus === 'rate_limited') {
+      this.recordEvent('task_rate_limited', task.req_id, task.id, {
+        taskId: task.id,
+        project: task.project,
+        until: extra.resumeAt ?? null,
+      });
     } else if (newStatus === 'failed' || newStatus === 'cancelled') {
       if (newStatus === 'failed') {
         this.recordEvent('task_failed', task.req_id, task.id, { taskId: task.id, project: task.project });

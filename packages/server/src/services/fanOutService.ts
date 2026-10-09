@@ -9,6 +9,8 @@ import { RequirementStatus, normalizeMergePolicy } from '@sp-kickstack/shared';
 import { cancelOrphan } from './orphans.js';
 import { MAX_DISPATCH_ATTEMPTS, shouldNotifyFailure } from '../lib/retryPolicy.js';
 import { BranchService, branchInstructions, taskBranchName } from './branchService.js';
+import { isRateLimit } from '../adapters/rateLimit.js';
+import { pauseForRateLimit } from './rateLimitPause.js';
 
 export type AdapterFactory = (projectName: string) => EngineAdapter;
 
@@ -210,6 +212,11 @@ ${wrapUntrusted('requirement', requirementMd)}
         }
         return;
       } catch (err: any) {
+        if (isRateLimit(err)) {
+          // Not a failure: wait for the reset instead of retrying now.
+          pauseForRateLimit(this.db, taskId, err);
+          return;
+        }
         lastError = err?.message || lastError;
         if (attempt < 3) {
           await new Promise((r) => setTimeout(r, attempt * 100));

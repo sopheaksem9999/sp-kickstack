@@ -89,7 +89,7 @@ const watcher = new EngineWatcher(
 );
 
 const outboxScanner = new OutboxScanner(projectService, ticketService);
-const retrySweeper = new RetrySweeper(db, fanOutService, ticketService, linkService);
+const retrySweeper = new RetrySweeper(db, fanOutService, ticketService, linkService, { throttle: engineThrottle });
 const TICK_MS = Number(process.env.WATCH_INTERVAL_MS) || 5000;
 
 // Seed from projects.yaml if present

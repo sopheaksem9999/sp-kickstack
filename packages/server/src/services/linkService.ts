@@ -67,12 +67,23 @@ export class LinkService {
       ? wrapUntrusted('summary', ticketTask.title)
       : 'Ticket resolved.';
 
-    const contractBlock = contractPath
-      ? `Contract file: ${contractPath} (now on ${baseBranch}). Regenerate clients/types if applicable, then finish remaining plan steps.`
-      : 'Finish remaining implementation steps and run tests.';
+    // Branch mode: the dependency is complete on its own branch but not merged until QA.
+    const unmergedBranch = ticketTask.branch && !ticketTask.merged_at ? ticketTask.branch : null;
+    const location = unmergedBranch
+      ? `Its work is on branch \`${unmergedBranch}\` (not merged yet; the bridge merges both branches into ${baseBranch} at QA).`
+      : null;
 
+    const contractBlock = contractPath
+      ? location
+        ? `${location} Read the contract there: \`git show ${unmergedBranch}:${contractPath}\`. Regenerate clients/types if applicable, then finish remaining plan steps.`
+        : `Contract file: ${contractPath} (now on ${baseBranch}). Regenerate clients/types if applicable, then finish remaining plan steps.`
+      : location
+        ? `${location} Finish remaining implementation steps and run tests.`
+        : 'Finish remaining implementation steps and run tests.';
+
+    const state = location ? `ready for review on ${unmergedBranch}` : `done (${ticketTask.pr_url || 'merged'})`;
     return `## Update: dependency complete
-Ticket #${ticketTask.id} to ${targetProjectName} is done (${ticketTask.pr_url || 'merged'}).
+Ticket #${ticketTask.id} to ${targetProjectName} is ${state}.
 Summary from ${targetProjectName}:
 ${summaryBlock}
 ${contractBlock}

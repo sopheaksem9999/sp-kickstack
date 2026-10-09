@@ -143,3 +143,50 @@ describe('Branch per task', () => {
     expect(headOf(h.backendRepo.repo, h.task(retried.id).branch)).toBe(branchSha);
   });
 });
+
+describe('Branch-mode dependencies', () => {
+  let h: GitHarness;
+  beforeEach(() => { h = makeGitHarness(); });
+  afterEach(() => h.db.close());
+
+  async function blockOn(projects: [string, string]) {
+    const [provider, consumer] = projects;
+    const goals = await h.fanOutService.execute(h.createRequirement([provider, consumer]).id);
+    const source = goals.find((g) => g.project === consumer)!;
+    const t = await h.ticketService.createTicket(
+      { to: provider, type: 'api_request', title: 'GET /loc', body: 'Provide location endpoint', blocking: true },
+      consumer,
+      source.engine_task_id!
+    );
+    return { source, ticket: h.task(t.ticketId) };
+  }
+
+  it('releases the held source when the blocking ticket reaches in_review, naming its branch', async () => {
+    const { source, ticket } = await blockOn(['backend', 'mobile']);
+    expect(h.task(source.id).status).toBe('held');
+    h.backendEngine.setTaskStatus(ticket.engine_task_id, 'in_review', 'needs_review');
+
+    await h.watcher.scanOnce();
+
+    const [link] = h.linkService.getLinksForTask(source.id);
+    expect(link.state).toBe('released');
+    expect(link.context_md).toContain(ticket.branch);
+    expect(link.context_md).toMatch(/not merged yet/);
+    expect(h.mobileEngine.getTaskData(source.engine_task_id!)!.status).toBe('queued');
+  });
+
+  it('still waits for done when the projects do not use branches', async () => {
+    for (const name of ['pa', 'pb']) {
+      const dir = path.join(h.ws, name);
+      fs.mkdirSync(dir);
+      h.projectService.registerProject({ name, repo_path: dir, engine_type: 'stoneforge', engine_url: 'http://127.0.0.1:3457', base_branch: 'develop' });
+    }
+    const { source, ticket } = await blockOn(['pa', 'pb']);
+    expect(ticket.branch).toBeNull();
+    h.backendEngine.setTaskStatus(ticket.engine_task_id, 'in_review', 'needs_review');
+
+    await h.watcher.scanOnce();
+
+    expect(h.linkService.getLinksForTask(source.id)[0].state).toBe('waiting');
+  });
+});

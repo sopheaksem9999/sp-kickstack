@@ -38,7 +38,7 @@ export class StoneforgeAdapter implements EngineAdapter {
     if (s === 'ready' || s === 'queued' || s === 'pending') return 'queued';
     if (s === 'in_progress' || s === 'running' || s === 'active') return 'running';
     if (s === 'deferred' || s === 'held' || s === 'waiting') return 'held';
-    if (s === 'needs_review' || s === 'review' || s === 'steward_review') return 'in_review';
+    if (s === 'needs_review' || s === 'review' || s === 'steward_review' || s === 'in_review' || s === 'qa') return 'in_review';
     if (s === 'done' || s === 'merged' || s === 'completed' || s === 'closed_done') return 'done';
     if (s === 'failed' || s === 'error' || s === 'abandoned') return 'failed';
     if (s === 'cancelled' || s === 'canceled' || s === 'closed_cancelled') return 'cancelled';

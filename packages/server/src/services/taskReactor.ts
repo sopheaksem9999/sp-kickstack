@@ -53,7 +53,10 @@ export class TaskReactor {
     });
 
     let releasedLinks: Link[] = [];
-    if (newStatus === 'done' && this.linkService) {
+    // In branch mode the dependency's work is complete (on its branch) once it is in review;
+    // waiting for 'done' would deadlock, because branches are only merged at QA.
+    const resolvesDependents = newStatus === 'done' || (newStatus === 'in_review' && Boolean(task.branch));
+    if (resolvesDependents && this.linkService) {
       releasedLinks = await this.linkService.evaluateDependencyResolved(task.id);
       if (releasedLinks.length > 0) {
         this.recordEvent('link_released', task.req_id, task.id, {

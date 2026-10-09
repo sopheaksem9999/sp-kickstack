@@ -84,3 +84,12 @@ describe('Manual Adapter', () => {
     expect(fetched?.status).toBe('queued');
   });
 });
+
+describe('StoneforgeAdapter status normalization', () => {
+  it('recognizes the normalized review names as well as engine review statuses', () => {
+    const adapter = new StoneforgeAdapter('http://127.0.0.1:1', '/r');
+    expect(adapter.normalizeStatus('in_review')).toBe('in_review');
+    expect(adapter.normalizeStatus('needs_review')).toBe('in_review');
+    expect(adapter.normalizeStatus('qa')).toBe('in_review');
+  });
+});

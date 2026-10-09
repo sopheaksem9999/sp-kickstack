@@ -6,8 +6,12 @@ import {
   NormStatus,
   AttachmentItem,
 } from '@sp-kickstack/shared';
+import { conflict } from '../lib/httpError.js';
 import fs from 'node:fs';
 import path from 'node:path';
+
+const OPERATOR_OWNED_STATUSES: RequirementStatus[] = ['draft', 'ready', 'qa', 'done', 'cancelled'];
+const TERMINAL_TASK_STATUSES: NormStatus[] = ['done', 'cancelled', 'failed'];
 
 export class RequirementService {
   constructor(
@@ -228,7 +232,30 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
     `).run(status, id);
   }
 
+  /**
+   * Operator-driven status change (Kanban drag, status select). A requirement with no
+   * dispatched tasks moves freely; once dispatched, the board follows the engines: only
+   * qa, and done when no task is still active, can be set by hand.
+   */
   public updateRequirementStatus(id: string, status: RequirementStatus): Requirement | null {
+    const req = this.getRequirement(id);
+    if (!req) return null;
+    if (req.status === status) return req;
+
+    const tasks = this.db
+      .prepare("SELECT status FROM bridge_tasks WHERE req_id = ? AND role IN ('goal', 'ticket')")
+      .all(id) as { status: NormStatus }[];
+
+    if (tasks.length > 0) {
+      const active = tasks.filter((t) => !TERMINAL_TASK_STATUSES.includes(t.status));
+      if (status === 'done' && active.length > 0) {
+        throw conflict(`${active.length} task(s) are still active; finish or cancel them before marking ${id} done`);
+      }
+      if (status !== 'qa' && status !== 'done') {
+        throw conflict(`"${status}" is set automatically from task progress once ${id} is dispatched`);
+      }
+    }
+
     this.updateStatus(id, status);
     return this.getRequirement(id);
   }
@@ -265,26 +292,26 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
     const req = this.getRequirement(reqId);
     if (!req) throw new Error(`Requirement ${reqId} not found`);
 
-    if (req.status === 'draft' || req.status === 'cancelled' || req.status === 'qa') {
+    // Set by people (or by fan-out for ready -> in_progress); never recomputed away.
+    if (OPERATOR_OWNED_STATUSES.includes(req.status)) {
       return req.status;
     }
 
     const tasks = this.db
-      .prepare("SELECT status, role FROM bridge_tasks WHERE req_id = ? AND role IN ('goal', 'ticket')")
+      .prepare("SELECT status, role FROM bridge_tasks WHERE req_id = ? AND role IN ('goal', 'ticket') AND status <> 'cancelled'")
       .all(reqId) as { status: NormStatus; role: string }[];
 
     if (tasks.length === 0) {
       return req.status;
     }
 
-    const allDone = tasks.every((t) => t.status === 'done' || t.status === 'cancelled');
-    if (allDone) {
+    if (tasks.every((t) => t.status === 'done')) {
       this.updateStatus(reqId, 'done');
       return 'done';
     }
 
-    const nonTerminal = tasks.filter((t) => t.status !== 'done' && t.status !== 'cancelled');
-    const allInReview = nonTerminal.length > 0 && nonTerminal.every((t) => t.status === 'in_review' || t.status === 'qa');
+    const nonTerminal = tasks.filter((t) => t.status !== 'done');
+    const allInReview = nonTerminal.every((t) => t.status === 'in_review' || t.status === 'qa');
     if (allInReview) {
       this.updateStatus(reqId, 'in_review');
       return 'in_review';

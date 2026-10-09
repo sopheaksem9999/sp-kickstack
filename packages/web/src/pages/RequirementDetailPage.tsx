@@ -302,7 +302,7 @@ export function RequirementDetailPage() {
 
         <div className="flex items-center gap-2.5">
           {/* Fan-Out Dispatch */}
-          {req.status === 'draft' && (
+          {(req.status === 'draft' || req.status === 'ready') && (
             <button
               onClick={() => fanOutMutation.mutate()}
               disabled={fanOutMutation.isPending}

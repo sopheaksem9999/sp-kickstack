@@ -45,6 +45,7 @@ import { IdeService } from '../services/ideService.js';
 import { GitReviewService } from '../services/gitReviewService.js';
 import { requestGuard, resolveAllowedHosts, resolveWebOrigins } from './requestGuard.js';
 import { TaskReactor } from '../services/taskReactor.js';
+import { DEDUPE_NOTE } from '../db/migrations.js';
 
 export interface AppDependencies {
   db: AppDatabase;
@@ -324,8 +325,8 @@ export function createApp(deps: AppDependencies): Express {
 
   app.get('/api/requirements/:id/graph', (req, res) => {
     const tasks = deps.db
-      .prepare('SELECT * FROM bridge_tasks WHERE req_id = ?')
-      .all(req.params.id);
+      .prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND (last_error IS NULL OR last_error <> ?)")
+      .all(req.params.id, DEDUPE_NOTE);
     const links = deps.db
       .prepare(`
         SELECT l.* FROM links l

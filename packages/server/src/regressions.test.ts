@@ -679,3 +679,154 @@ describe('H: tickets are attributed to the right requirement', () => {
     expect(taskRow(h, res.body.ticketId).req_id).toBe(second.id);
   });
 });
+
+describe('C/D/E: fan-out reserves before calling engines and reports honest status', () => {
+  let h: Harness;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => h.db.close());
+
+  const goals = (reqId: string) =>
+    h.db.prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND role = 'goal' ORDER BY id").all(reqId) as any[];
+  const failCreate = (project: 'backend' | 'mobile') => {
+    const original = h.adapters[project].createGoal.bind(h.adapters[project]);
+    h.adapters[project].createGoal = async () => { throw new Error(`${project} engine down`); };
+    return () => { h.adapters[project].createGoal = original; };
+  };
+
+  it('C: concurrent fan-outs create one goal per project, in the engines too', async () => {
+    const req = h.createRequirement();
+    let engineCalls = 0;
+    for (const a of Object.values(h.adapters)) {
+      const original = a.createGoal.bind(a);
+      a.createGoal = async (input) => { engineCalls++; return original(input); };
+    }
+
+    await Promise.all([h.fanOutService.execute(req.id), h.fanOutService.execute(req.id)]);
+
+    expect(goals(req.id)).toHaveLength(2);
+    expect(engineCalls).toBe(2);
+  });
+
+  it('D: a failed goal is retried by the next fan-out, keeping its row', async () => {
+    const req = h.createRequirement(['backend']);
+    const restore = failCreate('backend');
+    const [failed] = await h.fanOutService.execute(req.id);
+    expect(failed.status).toBe('failed');
+    restore();
+
+    const [retried] = await h.fanOutService.execute(req.id);
+
+    expect(retried.id).toBe(failed.id);
+    expect(retried.status).toBe('queued');
+    expect(retried.engine_task_id).toBeTruthy();
+    expect(goals(req.id)).toHaveLength(1);
+    expect(taskRow(h, retried.id).attempts).toBe(2);
+  });
+
+  it('E: stays ready and records task_failed when every goal failed', async () => {
+    const req = h.createRequirement();
+    failCreate('backend');
+    failCreate('mobile');
+
+    await h.fanOutService.execute(req.id);
+
+    expect(h.requirementService.getRequirement(req.id)!.status).toBe('ready');
+    expect((h.db.prepare("SELECT COUNT(*) c FROM events WHERE type = 'task_failed'").get() as any).c).toBe(2);
+  });
+
+  it('E: becomes in_progress once at least one goal reached its engine', async () => {
+    const req = h.createRequirement();
+    failCreate('backend');
+    await h.fanOutService.execute(req.id);
+    expect(h.requirementService.getRequirement(req.id)!.status).toBe('in_progress');
+  });
+
+  it('E: rejects fan-out when no affected project is enabled, leaving the status alone', async () => {
+    const req = h.createRequirement();
+    h.projectService.updateProject('backend', { enabled: false } as any);
+    h.projectService.updateProject('mobile', { enabled: false } as any);
+
+    const res = await testRequest(h.app, 'POST', `/api/requirements/${req.id}/ready`);
+
+    expect(res.status).toBe(409);
+    expect(h.requirementService.getRequirement(req.id)!.status).toBe('draft');
+  });
+
+  it('E: a recalculation does not turn an all-failed ready requirement into in_progress', async () => {
+    const req = h.createRequirement();
+    failCreate('backend');
+    failCreate('mobile');
+    await h.fanOutService.execute(req.id);
+    expect(h.requirementService.recalculateDerivedStatus(req.id)).toBe('ready');
+  });
+});
+
+describe('N: status changes follow the lifecycle', () => {
+  let h: Harness;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => h.db.close());
+
+  const putStatus = (id: string, status: string) =>
+    testRequest(h.app, 'PUT', `/api/requirements/${id}/status`, { body: { status } });
+
+  it('rejects fan-out of a cancelled or done requirement', async () => {
+    const cancelled = h.createRequirement();
+    h.requirementService.updateStatus(cancelled.id, 'cancelled');
+    const done = h.createRequirement();
+    h.requirementService.updateStatus(done.id, 'done');
+
+    expect((await testRequest(h.app, 'POST', `/api/requirements/${cancelled.id}/ready`)).status).toBe(409);
+    expect((await testRequest(h.app, 'POST', `/api/requirements/${done.id}/ready`)).status).toBe(409);
+    expect(h.requirementService.getRequirement(cancelled.id)!.status).toBe('cancelled');
+  });
+
+  it('lets a never-dispatched requirement move freely (plain board use)', async () => {
+    const req = h.createRequirement();
+    expect((await putStatus(req.id, 'in_progress')).status).toBe(200);
+    expect((await putStatus(req.id, 'done')).status).toBe(200);
+  });
+
+  it('once dispatched, rejects manual moves to statuses derived from task progress', async () => {
+    const req = h.createRequirement();
+    await h.fanOutService.execute(req.id);
+
+    const res = await putStatus(req.id, 'in_review');
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/automatically/);
+    expect((await putStatus(req.id, 'draft')).status).toBe(409);
+    expect(h.requirementService.getRequirement(req.id)!.status).toBe('in_progress');
+  });
+
+  it('once dispatched, allows qa, and done only when no task is still active', async () => {
+    const req = h.createRequirement();
+    const tasks = await h.fanOutService.execute(req.id);
+
+    expect((await putStatus(req.id, 'qa')).status).toBe(200);
+    expect((await putStatus(req.id, 'done')).status).toBe(409);
+
+    for (const t of tasks) h.db.prepare("UPDATE bridge_tasks SET status = 'done' WHERE id = ?").run(t.id);
+    expect((await putStatus(req.id, 'done')).status).toBe(200);
+  });
+
+  it('does not recompute a confirmed done requirement away', async () => {
+    const req = h.createRequirement();
+    const [task] = await h.fanOutService.execute(req.id);
+    h.requirementService.updateStatus(req.id, 'done');
+    h.db.prepare("UPDATE bridge_tasks SET status = 'running' WHERE id = ?").run(task.id);
+
+    expect(h.requirementService.recalculateDerivedStatus(req.id)).toBe('done');
+  });
+
+  it('hides goals deduplicated by migration from the graph', async () => {
+    const req = h.createRequirement(['backend']);
+    const [task] = await h.fanOutService.execute(req.id);
+    const now = new Date().toISOString();
+    h.db.prepare(`
+      INSERT INTO bridge_tasks (req_id, project, role, title, status, last_error, revision, created_at, updated_at)
+      VALUES (?, 'backend', 'goal', 'dup', 'cancelled', 'deduplicated by migration 2', 1, ?, ?)
+    `).run(req.id, now, now);
+
+    const graph = await testRequest(h.app, 'GET', `/api/requirements/${req.id}/graph`);
+    expect(graph.body.tasks.map((t: any) => t.id)).toEqual([task.id]);
+  });
+});

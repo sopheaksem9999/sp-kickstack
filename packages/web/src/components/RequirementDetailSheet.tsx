@@ -392,7 +392,7 @@ export function RequirementDetailSheet({
 
               {/* Action Buttons */}
               <div className="flex items-center gap-2">
-                {req.status === 'draft' && (
+                {(req.status === 'draft' || req.status === 'ready') && (
                   <button
                     onClick={() => fanOutMutation.mutate()}
                     disabled={fanOutMutation.isPending}

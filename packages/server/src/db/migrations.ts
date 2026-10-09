@@ -20,7 +20,7 @@ function addColumn(db: Db, table: string, column: string, definition: string) {
   }
 }
 
-const DEDUPE_NOTE = 'deduplicated by migration 2';
+export const DEDUPE_NOTE = 'deduplicated by migration 2';
 
 function dedupeActiveGoals(db: Db) {
   const groups = db

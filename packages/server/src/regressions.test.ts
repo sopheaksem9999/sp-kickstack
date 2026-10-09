@@ -333,3 +333,81 @@ describe('K: task and link routes write valid SQL', () => {
     expect(res.body.task.status).toBe('in_review');
   });
 });
+
+describe('A: resolving a blocking ticket releases the held source engine task', () => {
+  let h: Harness;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => h.db.close());
+
+  async function blockMobileOn(titles: string[]) {
+    const req = h.createRequirement();
+    const tasks = await h.fanOutService.execute(req.id);
+    const mobileGoal = tasks.find((t) => t.project === 'mobile')!;
+    const tickets = [];
+    for (const title of titles) {
+      tickets.push(
+        await h.ticketService.createTicket(
+          { to: 'backend', type: 'api_request', title, body: 'Provide the endpoint please', blocking: true },
+          'mobile',
+          mobileGoal.engine_task_id!
+        )
+      );
+    }
+    return { mobileGoal, tickets };
+  }
+
+  const engineStatus = (engineTaskId: string) => h.mobileEngine.getTaskData(engineTaskId)!.status;
+  const bridgeStatus = (id: number) => (h.db.prepare('SELECT status FROM bridge_tasks WHERE id = ?').get(id) as any).status;
+
+  it('releases the source task in its engine, not the placeholder', async () => {
+    const { mobileGoal, tickets } = await blockMobileOn(['GET /loc']);
+    expect(engineStatus(mobileGoal.engine_task_id!)).toBe('held');
+
+    const released = await h.linkService.evaluateDependencyResolved(tickets[0].ticketId);
+
+    expect(released).toHaveLength(1);
+    expect(released[0].state).toBe('released');
+    expect(engineStatus(mobileGoal.engine_task_id!)).toBe('queued');
+    expect(bridgeStatus(mobileGoal.id)).toBe('queued');
+    const placeholder = h.db.prepare("SELECT status FROM bridge_tasks WHERE role = 'waiting'").get() as any;
+    expect(placeholder.status).toBe('done');
+  });
+
+  it('keeps the source held until every blocking ticket is done', async () => {
+    const { mobileGoal, tickets } = await blockMobileOn(['GET /loc', 'GET /eta']);
+
+    const first = await h.linkService.evaluateDependencyResolved(tickets[0].ticketId);
+    expect(first).toHaveLength(0);
+    expect(engineStatus(mobileGoal.engine_task_id!)).toBe('held');
+    expect(h.mobileEngine.getTaskData(mobileGoal.engine_task_id!)!.notes.join('\n')).toContain(`Ticket #${tickets[0].ticketId}`);
+
+    const second = await h.linkService.evaluateDependencyResolved(tickets[1].ticketId);
+    expect(second.map((l) => l.state)).toEqual(['released', 'released']);
+    expect(engineStatus(mobileGoal.engine_task_id!)).toBe('queued');
+  });
+
+  it('marks the links error and keeps the source held when the engine refuses the release', async () => {
+    const { mobileGoal, tickets } = await blockMobileOn(['GET /loc']);
+    h.adapters.mobile.releaseTask = async () => { throw new Error('engine 503'); };
+
+    const released = await h.linkService.evaluateDependencyResolved(tickets[0].ticketId);
+
+    expect(released).toHaveLength(0);
+    expect(h.linkService.getLinksForTask(mobileGoal.id)[0].state).toBe('error');
+    expect(bridgeStatus(mobileGoal.id)).toBe('held');
+    expect((h.db.prepare('SELECT last_error FROM bridge_tasks WHERE id = ?').get(mobileGoal.id) as any).last_error).toContain('engine 503');
+  });
+
+  it('releases only once when resolved concurrently', async () => {
+    const { tickets } = await blockMobileOn(['GET /loc']);
+    let calls = 0;
+    const original = h.adapters.mobile.releaseTask.bind(h.adapters.mobile);
+    h.adapters.mobile.releaseTask = async (id, ctx) => { calls++; return original(id, ctx); };
+
+    await Promise.all([
+      h.linkService.evaluateDependencyResolved(tickets[0].ticketId),
+      h.linkService.evaluateDependencyResolved(tickets[0].ticketId),
+    ]);
+    expect(calls).toBe(1);
+  });
+});

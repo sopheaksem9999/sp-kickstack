@@ -10,6 +10,7 @@ import {
   startRequirementFanOut,
   cancelRequirement,
   markTaskDone,
+  retryTask,
   releaseLink,
   updateRequirementStatus,
   updateRequirementProjects,
@@ -18,6 +19,7 @@ import {
   startMergeToQa,
 } from '../lib/api.js';
 import { mergeCopy, mergeGateAction } from '../lib/mergeReady.js';
+import { canRetry, pausedLabel } from '../lib/taskActions.js';
 import { useDemoMode } from '../lib/useDemoMode.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { DependencyGraphCanvas } from '../components/DependencyGraphCanvas.js';
@@ -124,6 +126,15 @@ export function RequirementDetailPage() {
       queryClient.invalidateQueries();
     },
     onError: (err: any) => toast.error(err.message || 'Failed to update task'),
+  });
+
+  const retryMutation = useMutation({
+    mutationFn: (taskId: number) => retryTask(taskId),
+    onSuccess: (task) => {
+      toast.success(task.status === 'rate_limited' ? 'Retry queued: the engine is still rate limited' : 'Task sent to its engine again');
+      queryClient.invalidateQueries();
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to retry task'),
   });
 
   const releaseMutation = useMutation({
@@ -657,7 +668,13 @@ export function RequirementDetailPage() {
                         )}
                       </div>
 
-                      {task.last_error && (
+                      {pausedLabel(task) && (
+                        <div className="p-2 rounded bg-yellow-50 dark:bg-yellow-950/40 text-yellow-700 dark:text-yellow-300 text-[10px] font-semibold">
+                          {pausedLabel(task)}
+                        </div>
+                      )}
+
+                      {task.last_error && task.status !== 'rate_limited' && (
                         <div className="p-2 rounded bg-rose-50 dark:bg-rose-950/40 text-rose-600 text-[10px] font-mono break-all">
                           {task.last_error}
                         </div>
@@ -687,6 +704,17 @@ export function RequirementDetailPage() {
                             </a>
                           )}
                         </div>
+
+                        {canRetry(task, req.status) && (
+                          <button
+                            onClick={() => retryMutation.mutate(task.id)}
+                            disabled={retryMutation.isPending}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded bg-amber-100 dark:bg-amber-950/40 hover:bg-amber-200 dark:hover:bg-amber-900/50 text-[10px] font-bold text-amber-700 dark:text-amber-300 transition-colors"
+                            title="Send this task to its engine again on the same branch (the old engine task is cancelled)"
+                          >
+                            <span>Retry</span>
+                          </button>
+                        )}
 
                         {task.status !== 'done' && (
                           <button

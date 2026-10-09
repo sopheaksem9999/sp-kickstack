@@ -29,6 +29,11 @@ export function useBridgeEvents() {
           toast.success(`${data.payload?.reqId} merged and moved to QA`, {
             description: warnings.length ? warnings.join('\n') : undefined,
           });
+        } else if (data.type === 'engine_rate_limited') {
+          const until = data.payload?.until ? new Date(data.payload.until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'later';
+          toast.warning(`${data.payload?.project} engine is rate limited until ${until}; work resumes automatically`);
+        } else if (data.type === 'task_rate_limited') {
+          toast.info(`A ${data.payload?.project} task is paused by a rate limit; it resumes automatically`);
         } else if (data.type === 'merge_failed') {
           toast.error(`Merge failed for ${data.payload?.reqId}`, {
             description: String(data.payload?.error ?? '').split('\n')[0],

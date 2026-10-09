@@ -157,6 +157,11 @@ export async function markTaskDone(taskId: number): Promise<{ ok: boolean }> {
   return request(`${BASE}/tasks/${taskId}/mark-done`, { method: 'POST' });
 }
 
+/** Retry a stopped goal/ticket on its existing branch (old engine task is cancelled). */
+export async function retryTask(taskId: number): Promise<BridgeTask> {
+  return request(`${BASE}/tasks/${taskId}/retry`, { method: 'POST' });
+}
+
 export interface TaskLogItem {
   id: number;
   task_id: number;

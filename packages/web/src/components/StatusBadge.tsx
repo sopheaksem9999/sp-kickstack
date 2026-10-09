@@ -39,6 +39,11 @@ const statusConfig: Record<
     dot: 'bg-amber-500',
     className: 'bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-800/70',
   },
+  rate_limited: {
+    label: 'RATE LIMITED',
+    dot: 'bg-yellow-500 animate-pulse',
+    className: 'bg-yellow-50 text-yellow-700 border-yellow-300 dark:bg-yellow-950/70 dark:text-yellow-300 dark:border-yellow-800/70',
+  },
   needs_human: {
     label: 'NEEDS HUMAN',
     dot: 'bg-orange-500',

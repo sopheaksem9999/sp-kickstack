@@ -140,14 +140,21 @@ ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input
       ownsEngineCall = reclaimed.changes === 1;
     }
 
+    // A target engine that is down must not lose the dependency: the ticket row exists and
+    // the retry sweep creates it later, so record the link and hold the source regardless.
+    let dispatchError: unknown = null;
     if (ownsEngineCall) {
-      await this.dispatchTicket(ticket.id);
+      await this.dispatchTicket(ticket.id).catch((err) => {
+        dispatchError = err;
+      });
     }
 
     // Blocking: record placeholder + link first, then hold the source task.
     if (input.blocking && sourceTask) {
       await this.holdSourceUntilDone(sourceTask, ticket.id, input.to, reqId, depth);
     }
+
+    if (dispatchError) throw dispatchError;
 
     const current = this.findByKey(idempotencyKey)!;
     return {

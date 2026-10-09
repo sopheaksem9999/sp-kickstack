@@ -1408,3 +1408,35 @@ describe('Verification follow-ups', () => {
     expect(h.requirementService.getRequirement(req.id)!.status).toBe('cancelled');
   });
 });
+
+describe('Review fixes: blocking tickets survive a down target engine', () => {
+  let h: Harness;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => h.db.close());
+
+  it('records the link and holds the source even when the ticket cannot reach its engine yet', async () => {
+    const req = h.createRequirement();
+    const tasks = await h.fanOutService.execute(req.id);
+    const mobileGoal = tasks.find((t) => t.project === 'mobile')!;
+    const original = h.adapters.backend.createTask.bind(h.adapters.backend);
+    h.adapters.backend.createTask = async () => { throw new Error('backend engine down'); };
+
+    await expect(
+      h.ticketService.createTicket(
+        { to: 'backend', type: 'api_request', title: 'GET /loc', body: 'Provide location endpoint', blocking: true },
+        'mobile',
+        mobileGoal.engine_task_id!
+      )
+    ).rejects.toMatchObject({ status: 502 });
+
+    const links = h.linkService.getLinksForTask(mobileGoal.id);
+    expect(links).toHaveLength(1);
+    expect(links[0].state).toBe('waiting');
+    expect(taskRow(h, mobileGoal.id).status).toBe('held');
+
+    h.adapters.backend.createTask = original;
+    await new RetrySweeper(h.db, h.fanOutService, h.ticketService, h.linkService, { now: () => Date.now() + 3600_000 }).sweepOnce();
+    expect(taskRow(h, links[0].depends_on_id).engine_task_id).toBeTruthy();
+    expect(h.linkService.getLinksForTask(mobileGoal.id)[0].state).toBe('waiting');
+  });
+});

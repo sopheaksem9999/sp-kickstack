@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
@@ -25,12 +25,15 @@ import {
   Filter,
   SlidersHorizontal,
   ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   X,
   RotateCcw,
   Zap,
   CheckCircle2,
   Calendar,
   Play,
+  ExternalLink,
 } from 'lucide-react';
 import { Priority, RequirementStatus } from '@sp-kickstack/shared';
 
@@ -41,8 +44,8 @@ const priorityConfig: Record<Priority, { color: string; label: string }> = {
   low: { color: 'text-slate-400 fill-slate-400', label: 'Low' },
 };
 
-type GroupByOption = 'status' | 'priority' | 'project';
-type SortByOption = 'newest' | 'oldest' | 'title' | 'priority';
+type GroupByOption = 'none' | 'status' | 'priority' | 'project';
+type SortField = 'id' | 'title' | 'priority' | 'status' | 'created_at';
 
 export function RequirementsPage() {
   const queryClient = useQueryClient();
@@ -66,8 +69,18 @@ export function RequirementsPage() {
   const [hideDone, setHideDone] = useState(false);
 
   // Group & Sort state
-  const [groupBy, setGroupBy] = useState<GroupByOption>('status');
-  const [sortBy, setSortBy] = useState<SortByOption>('newest');
+  const [groupBy, setGroupBy] = useState<GroupByOption>('none');
+  const [sortField, setSortField] = useState<SortField>('created_at');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection(field === 'created_at' || field === 'priority' ? 'desc' : 'asc');
+    }
+  };
 
   // Queries
   const { data: requirements = [], isLoading: reqsLoading } = useQuery({
@@ -207,20 +220,29 @@ export function RequirementsPage() {
 
     // Sorting
     list.sort((a, b) => {
-      if (sortBy === 'newest') {
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      }
-      if (sortBy === 'oldest') {
-        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-      }
-      if (sortBy === 'title') {
-        return a.title.localeCompare(b.title);
-      }
-      if (sortBy === 'priority') {
+      let cmp = 0;
+      if (sortField === 'id') {
+        cmp = a.id.localeCompare(b.id, undefined, { numeric: true });
+      } else if (sortField === 'title') {
+        cmp = a.title.localeCompare(b.title);
+      } else if (sortField === 'priority') {
         const rank: Record<Priority, number> = { urgent: 4, high: 3, normal: 2, low: 1 };
-        return (rank[b.priority] || 0) - (rank[a.priority] || 0);
+        cmp = (rank[a.priority] || 0) - (rank[b.priority] || 0);
+      } else if (sortField === 'status') {
+        const statusRank: Record<RequirementStatus, number> = {
+          draft: 1,
+          ready: 2,
+          in_progress: 3,
+          in_review: 4,
+          qa: 5,
+          done: 6,
+          cancelled: 7,
+        };
+        cmp = (statusRank[a.status] || 0) - (statusRank[b.status] || 0);
+      } else if (sortField === 'created_at') {
+        cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
       }
-      return 0;
+      return sortDirection === 'asc' ? cmp : -cmp;
     });
 
     return list;
@@ -233,7 +255,8 @@ export function RequirementsPage() {
     selectedStatuses,
     selectedPriorities,
     selectedProjects,
-    sortBy,
+    sortField,
+    sortDirection,
   ]);
 
   const toggleGroup = (id: string) => {
@@ -635,6 +658,7 @@ export function RequirementsPage() {
                   onChange={(e) => setGroupBy(e.target.value as GroupByOption)}
                   className="bg-transparent font-medium text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer pr-1"
                 >
+                  <option value="none" className="bg-white dark:bg-[#1e1f26]">None (DataTable)</option>
                   <option value="status" className="bg-white dark:bg-[#1e1f26]">Status</option>
                   <option value="priority" className="bg-white dark:bg-[#1e1f26]">Priority</option>
                   <option value="project" className="bg-white dark:bg-[#1e1f26]">Project</option>
@@ -645,14 +669,21 @@ export function RequirementsPage() {
               <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-[#2a2b36] bg-slate-50 dark:bg-[#1a1b22]">
                 <ArrowUpDown className="w-3 h-3 text-slate-400" />
                 <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as SortByOption)}
+                  value={`${sortField}_${sortDirection}`}
+                  onChange={(e) => {
+                    const [field, dir] = e.target.value.split('_') as [SortField, 'asc' | 'desc'];
+                    setSortField(field);
+                    setSortDirection(dir);
+                  }}
                   className="bg-transparent font-medium text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer pr-1"
                 >
-                  <option value="newest" className="bg-white dark:bg-[#1e1f26]">Sort: Newest</option>
-                  <option value="oldest" className="bg-white dark:bg-[#1e1f26]">Sort: Oldest</option>
-                  <option value="title" className="bg-white dark:bg-[#1e1f26]">Sort: Name (A-Z)</option>
-                  <option value="priority" className="bg-white dark:bg-[#1e1f26]">Sort: Priority</option>
+                  <option value="created_at_desc" className="bg-white dark:bg-[#1e1f26]">Sort: Newest</option>
+                  <option value="created_at_asc" className="bg-white dark:bg-[#1e1f26]">Sort: Oldest</option>
+                  <option value="title_asc" className="bg-white dark:bg-[#1e1f26]">Sort: Name (A-Z)</option>
+                  <option value="title_desc" className="bg-white dark:bg-[#1e1f26]">Sort: Name (Z-A)</option>
+                  <option value="priority_desc" className="bg-white dark:bg-[#1e1f26]">Sort: Priority</option>
+                  <option value="status_asc" className="bg-white dark:bg-[#1e1f26]">Sort: Status</option>
+                  <option value="id_asc" className="bg-white dark:bg-[#1e1f26]">Sort: ID</option>
                 </select>
               </div>
 
@@ -870,175 +901,402 @@ export function RequirementsPage() {
           )}
         </div>
       ) : (scrumTab !== 'sprint' || activeSprint) && viewMode === 'list' ? (
-        /* ClickUp High-Density List View */
-        <div className="space-y-4">
-          {groups.map((group) => {
-            const groupReqs = filteredRequirements.filter(group.match);
-            const isCollapsed = collapsedGroups[group.id];
-
-            return (
-              <div
-                key={group.id}
-                className="bg-white dark:bg-[#16171d] rounded-xl border border-slate-200 dark:border-[#262732] overflow-hidden shadow-sm transition-all"
-              >
-                {/* Group Header */}
-                <div
-                  onClick={() => toggleGroup(group.id)}
-                  className="px-4 py-2.5 bg-slate-50/80 dark:bg-[#1c1d27] border-b border-slate-200 dark:border-[#262732] flex items-center justify-between cursor-pointer select-none"
-                >
-                  <div className="flex items-center gap-2">
-                    {isCollapsed ? (
-                      <ChevronRight className="w-4 h-4 text-slate-400" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-slate-400" />
-                    )}
-                    <span className={`w-2 h-2 rounded-full ${group.color}`} />
-                    <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                      {group.title}
-                    </span>
-                    <span className="text-[11px] font-mono px-2 py-0.2 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold">
-                      {groupReqs.length}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Rows Table */}
-                {!isCollapsed && (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-50/50 dark:bg-[#16171e] text-slate-400 dark:text-slate-500 font-mono text-[10px] uppercase border-b border-slate-100 dark:border-[#22232e]">
-                        <tr>
-                          <th className="px-4 py-2 font-semibold">ID</th>
-                          <th className="px-4 py-2 font-semibold">Name / Spec</th>
-                          <th className="px-4 py-2 font-semibold">Workspace</th>
-                          <th className="px-4 py-2 font-semibold">Priority</th>
-                          <th className="px-4 py-2 font-semibold">Affected Projects</th>
-                          <th className="px-4 py-2 font-semibold">Status</th>
-                          <th className="px-4 py-2 font-semibold">Sprint</th>
-                          <th className="px-4 py-2 font-semibold text-right">Created</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-[#242531]">
-                        {groupReqs.map((req) => {
-                          const prio = priorityConfig[req.priority] || priorityConfig.normal;
-                          const reqSprint = req.sprint_id ? sprints.find((s) => s.id === req.sprint_id) : null;
-
-                          return (
-                            <tr
-                              key={req.id}
-                              className="hover:bg-purple-50/40 dark:hover:bg-[#20212c] transition-colors group"
-                            >
-                              <td className="px-4 py-3 font-mono font-bold text-[#7b68ee]">
-                                <Link
-                                  to={`/requirements/${req.id}`}
-                                  className="hover:underline"
-                                >
-                                  {req.id}
-                                </Link>
-                              </td>
-                              <td className="px-4 py-3 font-semibold text-slate-800 dark:text-slate-200">
-                                <Link
-                                  to={`/requirements/${req.id}`}
-                                  className="hover:text-[#7b68ee] transition-colors"
-                                >
-                                  {req.title}
-                                </Link>
-                              </td>
-                              <td className="px-4 py-3">
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[10px] bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700/60">
-                                  📁 {req.workspace_id || 'default'}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-1.5" title={`Priority: ${prio.label}`}>
-                                  <Flag className={`w-3.5 h-3.5 ${prio.color}`} />
-                                  <span className="capitalize text-slate-600 dark:text-slate-400 font-medium text-[11px]">
-                                    {prio.label}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3">
-                                <div className="flex flex-wrap gap-1">
-                                  {req.affected_projects.map((proj) => (
-                                    <span
-                                      key={proj}
-                                      className="px-2 py-0.5 rounded font-mono text-[10px] font-medium bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40"
-                                    >
-                                      {proj}
-                                    </span>
-                                  ))}
-                                </div>
-                              </td>
-                              <td className="px-4 py-3">
-                                <StatusBadge status={req.status} size="xs" />
-                              </td>
-                              <td className="px-4 py-3">
-                                {scrumTab === 'backlog' ? (
-                                  <select
-                                    value=""
-                                    onChange={(e) => {
-                                      if (e.target.value) {
-                                        assignSprintMutation.mutate({
-                                          reqId: req.id,
-                                          sprintId: e.target.value,
-                                        });
-                                      }
-                                    }}
-                                    className="bg-slate-100 dark:bg-[#20212a] border border-slate-200 dark:border-[#2f313d] text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 rounded-lg px-2 py-1 focus:outline-none cursor-pointer max-w-[130px]"
-                                  >
-                                    <option value="" disabled>
-                                      Move to...
-                                    </option>
-                                    {activeSprint && (
-                                      <option value={activeSprint.id}>
-                                        🏃 Active: {activeSprint.name}
-                                      </option>
-                                    )}
-                                    {plannedSprints.map((s) => (
-                                      <option key={s.id} value={s.id}>
-                                        ⏳ {s.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                ) : (
-                                  <span
-                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[10px] font-semibold border ${
-                                      reqSprint?.status === 'active'
-                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/40'
-                                        : reqSprint
-                                        ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800/40'
-                                        : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-[#20212a] dark:text-slate-400 dark:border-[#2c2d38]'
-                                    }`}
-                                  >
-                                    {reqSprint ? (reqSprint.status === 'active' ? `🏃 ${reqSprint.name}` : `⏳ ${reqSprint.name}`) : '📋 Backlog'}
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-4 py-3 font-mono text-[11px] text-slate-400 text-right">
-                                {new Date(req.created_at).toLocaleDateString()}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-
-                    {/* Table Footer Quick Add */}
-                    <div className="px-4 py-2 bg-slate-50/30 dark:bg-[#14151b] border-t border-slate-100 dark:border-[#22232e]">
-                      <button
-                        type="button"
-                        onClick={openSheet}
-                        className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-[#7b68ee] dark:hover:text-[#a29bfe] font-semibold transition-colors"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Add Task / Requirement</span>
-                      </button>
+        /* Unified High-Density DataTable View */
+        <div className="bg-white dark:bg-[#16171d] rounded-2xl border border-slate-200 dark:border-[#262732] overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead className="bg-slate-50/90 dark:bg-[#1a1b24] text-slate-500 dark:text-slate-400 font-mono text-[10px] uppercase border-b border-slate-200 dark:border-[#262732] select-none sticky top-0 z-10 backdrop-blur">
+                <tr>
+                  <th
+                    onClick={() => handleSort('id')}
+                    className="px-4 py-3 font-semibold cursor-pointer hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>ID</span>
+                      {sortField === 'id' ? (
+                        sortDirection === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#7b68ee]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#7b68ee]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-2.5 h-2.5 text-slate-300 dark:text-slate-600" />
+                      )}
                     </div>
-                  </div>
+                  </th>
+                  <th
+                    onClick={() => handleSort('title')}
+                    className="px-4 py-3 font-semibold cursor-pointer hover:text-slate-900 dark:hover:text-white transition-colors min-w-[220px]"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Requirement / Spec</span>
+                      {sortField === 'title' ? (
+                        sortDirection === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#7b68ee]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#7b68ee]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-2.5 h-2.5 text-slate-300 dark:text-slate-600" />
+                      )}
+                    </div>
+                  </th>
+                  <th className="px-4 py-3 font-semibold whitespace-nowrap">Workspace</th>
+                  <th
+                    onClick={() => handleSort('priority')}
+                    className="px-4 py-3 font-semibold cursor-pointer hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Priority</span>
+                      {sortField === 'priority' ? (
+                        sortDirection === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#7b68ee]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#7b68ee]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-2.5 h-2.5 text-slate-300 dark:text-slate-600" />
+                      )}
+                    </div>
+                  </th>
+                  <th className="px-4 py-3 font-semibold">Affected Projects</th>
+                  <th
+                    onClick={() => handleSort('status')}
+                    className="px-4 py-3 font-semibold cursor-pointer hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Status</span>
+                      {sortField === 'status' ? (
+                        sortDirection === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#7b68ee]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#7b68ee]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-2.5 h-2.5 text-slate-300 dark:text-slate-600" />
+                      )}
+                    </div>
+                  </th>
+                  <th className="px-4 py-3 font-semibold whitespace-nowrap">Sprint</th>
+                  <th
+                    onClick={() => handleSort('created_at')}
+                    className="px-4 py-3 font-semibold text-right cursor-pointer hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap"
+                  >
+                    <div className="flex items-center justify-end gap-1.5">
+                      <span>Created</span>
+                      {sortField === 'created_at' ? (
+                        sortDirection === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#7b68ee]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#7b68ee]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-2.5 h-2.5 text-slate-300 dark:text-slate-600" />
+                      )}
+                    </div>
+                  </th>
+                  <th className="px-4 py-3 font-semibold text-center whitespace-nowrap w-16">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-[#242531]">
+                {groupBy === 'none' ? (
+                  filteredRequirements.map((req) => {
+                    const prio = priorityConfig[req.priority] || priorityConfig.normal;
+                    const reqSprint = req.sprint_id ? sprints.find((s) => s.id === req.sprint_id) : null;
+
+                    return (
+                      <tr
+                        key={req.id}
+                        className="hover:bg-purple-50/30 dark:hover:bg-[#1f202b] transition-colors group"
+                      >
+                        <td className="px-4 py-3 font-mono font-bold text-[#7b68ee] whitespace-nowrap">
+                          <Link to={`/requirements/${req.id}`} className="hover:underline">
+                            {req.id}
+                          </Link>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">
+                          <Link
+                            to={`/requirements/${req.id}`}
+                            className="hover:text-[#7b68ee] transition-colors font-semibold block"
+                          >
+                            {req.title}
+                          </Link>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[10px] bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700/60">
+                            📁 {req.workspace_id || 'default'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5" title={`Priority: ${prio.label}`}>
+                            <Flag className={`w-3.5 h-3.5 ${prio.color}`} />
+                            <span className="capitalize text-slate-600 dark:text-slate-400 font-medium text-[11px]">
+                              {prio.label}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1">
+                            {req.affected_projects && req.affected_projects.length > 0 ? (
+                              req.affected_projects.map((proj) => (
+                                <span
+                                  key={proj}
+                                  className="px-2 py-0.5 rounded font-mono text-[10px] font-medium bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40 whitespace-nowrap"
+                                >
+                                  {proj}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-slate-400 text-[11px] italic">None</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <StatusBadge status={req.status} size="xs" />
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {scrumTab === 'backlog' ? (
+                            <select
+                              value=""
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  assignSprintMutation.mutate({
+                                    reqId: req.id,
+                                    sprintId: e.target.value,
+                                  });
+                                }
+                              }}
+                              className="bg-slate-100 dark:bg-[#20212a] border border-slate-200 dark:border-[#2f313d] text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 rounded-lg px-2 py-1 focus:outline-none cursor-pointer max-w-[130px]"
+                            >
+                              <option value="" disabled>
+                                Move to...
+                              </option>
+                              {activeSprint && (
+                                <option value={activeSprint.id}>
+                                  🏃 Active: {activeSprint.name}
+                                </option>
+                              )}
+                              {plannedSprints.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  ⏳ {s.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[10px] font-semibold border ${
+                                reqSprint?.status === 'active'
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/40'
+                                  : reqSprint
+                                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800/40'
+                                  : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-[#20212a] dark:text-slate-400 dark:border-[#2c2d38]'
+                              }`}
+                            >
+                              {reqSprint
+                                ? reqSprint.status === 'active'
+                                  ? `🏃 ${reqSprint.name}`
+                                  : `⏳ ${reqSprint.name}`
+                                : '📋 Backlog'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-[11px] text-slate-400 text-right whitespace-nowrap">
+                          {new Date(req.created_at).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-3 text-center whitespace-nowrap">
+                          <Link
+                            to={`/requirements/${req.id}`}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-[#7b68ee] hover:bg-purple-50 dark:hover:bg-[#262738] inline-flex items-center justify-center transition-colors"
+                            title="View Details"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  groups
+                    .filter((group) => filteredRequirements.some(group.match))
+                    .map((group) => {
+                      const groupReqs = filteredRequirements.filter(group.match);
+                      const isCollapsed = collapsedGroups[group.id];
+
+                      return (
+                        <Fragment key={group.id}>
+                          <tr
+                            onClick={() => toggleGroup(group.id)}
+                            className="bg-slate-50/90 dark:bg-[#1a1b24] border-y border-slate-200 dark:border-[#262732] cursor-pointer select-none hover:bg-slate-100/90 dark:hover:bg-[#20212d] transition-colors"
+                          >
+                            <td colSpan={9} className="px-4 py-2.5">
+                              <div className="flex items-center gap-2">
+                                {isCollapsed ? (
+                                  <ChevronRight className="w-4 h-4 text-slate-400" />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                                )}
+                                <span className={`w-2.5 h-2.5 rounded-full ${group.color}`} />
+                                <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                                  {group.title}
+                                </span>
+                                <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold">
+                                  {groupReqs.length}
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {!isCollapsed &&
+                            groupReqs.map((req) => {
+                              const prio = priorityConfig[req.priority] || priorityConfig.normal;
+                              const reqSprint = req.sprint_id
+                                ? sprints.find((s) => s.id === req.sprint_id)
+                                : null;
+
+                              return (
+                                <tr
+                                  key={req.id}
+                                  className="hover:bg-purple-50/30 dark:hover:bg-[#1f202b] transition-colors group"
+                                >
+                                  <td className="px-4 py-3 font-mono font-bold text-[#7b68ee] whitespace-nowrap">
+                                    <Link to={`/requirements/${req.id}`} className="hover:underline">
+                                      {req.id}
+                                    </Link>
+                                  </td>
+                                  <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">
+                                    <Link
+                                      to={`/requirements/${req.id}`}
+                                      className="hover:text-[#7b68ee] transition-colors font-semibold block"
+                                    >
+                                      {req.title}
+                                    </Link>
+                                  </td>
+                                  <td className="px-4 py-3 whitespace-nowrap">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[10px] bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700/60">
+                                      📁 {req.workspace_id || 'default'}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 whitespace-nowrap">
+                                    <div
+                                      className="flex items-center gap-1.5"
+                                      title={`Priority: ${prio.label}`}
+                                    >
+                                      <Flag className={`w-3.5 h-3.5 ${prio.color}`} />
+                                      <span className="capitalize text-slate-600 dark:text-slate-400 font-medium text-[11px]">
+                                        {prio.label}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <div className="flex flex-wrap gap-1">
+                                      {req.affected_projects && req.affected_projects.length > 0 ? (
+                                        req.affected_projects.map((proj) => (
+                                          <span
+                                            key={proj}
+                                            className="px-2 py-0.5 rounded font-mono text-[10px] font-medium bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40 whitespace-nowrap"
+                                          >
+                                            {proj}
+                                          </span>
+                                        ))
+                                      ) : (
+                                        <span className="text-slate-400 text-[11px] italic">None</span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 whitespace-nowrap">
+                                    <StatusBadge status={req.status} size="xs" />
+                                  </td>
+                                  <td className="px-4 py-3 whitespace-nowrap">
+                                    {scrumTab === 'backlog' ? (
+                                      <select
+                                        value=""
+                                        onChange={(e) => {
+                                          if (e.target.value) {
+                                            assignSprintMutation.mutate({
+                                              reqId: req.id,
+                                              sprintId: e.target.value,
+                                            });
+                                          }
+                                        }}
+                                        className="bg-slate-100 dark:bg-[#20212a] border border-slate-200 dark:border-[#2f313d] text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 rounded-lg px-2 py-1 focus:outline-none cursor-pointer max-w-[130px]"
+                                      >
+                                        <option value="" disabled>
+                                          Move to...
+                                        </option>
+                                        {activeSprint && (
+                                          <option value={activeSprint.id}>
+                                            🏃 Active: {activeSprint.name}
+                                          </option>
+                                        )}
+                                        {plannedSprints.map((s) => (
+                                          <option key={s.id} value={s.id}>
+                                            ⏳ {s.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <span
+                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[10px] font-semibold border ${
+                                          reqSprint?.status === 'active'
+                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/40'
+                                            : reqSprint
+                                            ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800/40'
+                                            : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-[#20212a] dark:text-slate-400 dark:border-[#2c2d38]'
+                                        }`}
+                                      >
+                                        {reqSprint
+                                          ? reqSprint.status === 'active'
+                                            ? `🏃 ${reqSprint.name}`
+                                            : `⏳ ${reqSprint.name}`
+                                          : '📋 Backlog'}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 font-mono text-[11px] text-slate-400 text-right whitespace-nowrap">
+                                    {new Date(req.created_at).toLocaleDateString()}
+                                  </td>
+                                  <td className="px-4 py-3 text-center whitespace-nowrap">
+                                    <Link
+                                      to={`/requirements/${req.id}`}
+                                      className="p-1.5 rounded-lg text-slate-400 hover:text-[#7b68ee] hover:bg-purple-50 dark:hover:bg-[#262738] inline-flex items-center justify-center transition-colors"
+                                      title="View Details"
+                                    >
+                                      <ExternalLink className="w-3.5 h-3.5" />
+                                    </Link>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </Fragment>
+                      );
+                    })
                 )}
-              </div>
-            );
-          })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Table Footer with Summary and Quick Action */}
+          <div className="px-4 py-3 bg-slate-50/70 dark:bg-[#14151c] border-t border-slate-200 dark:border-[#262732] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex items-center gap-3">
+              <span>
+                Showing <strong className="text-slate-800 dark:text-slate-200">{filteredRequirements.length}</strong> of{' '}
+                <strong className="text-slate-800 dark:text-slate-200">{requirements.length}</strong> requirements
+              </span>
+              {activeFilterCount > 0 && (
+                <span className="text-[11px] text-[#7b68ee] font-medium">
+                  ({activeFilterCount} active filters)
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={openSheet}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 font-bold text-xs transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Task / Requirement</span>
+            </button>
+          </div>
         </div>
       ) : (scrumTab !== 'sprint' || activeSprint) ? (
         /* ClickUp Kanban Board View */

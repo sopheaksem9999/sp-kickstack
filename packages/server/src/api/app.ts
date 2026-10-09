@@ -1,4 +1,7 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+import { execFile } from 'node:child_process';
 import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -40,6 +43,9 @@ import { AiDraftService } from '../services/aiDraftService.js';
 import { AiChatService } from '../services/aiChatService.js';
 import { IdeService } from '../services/ideService.js';
 import { GitReviewService } from '../services/gitReviewService.js';
+import { requestGuard, resolveAllowedHosts, resolveWebOrigins } from './requestGuard.js';
+import { TaskReactor } from '../services/taskReactor.js';
+import { DEDUPE_NOTE } from '../db/migrations.js';
 
 export interface AppDependencies {
   db: AppDatabase;
@@ -58,7 +64,19 @@ export interface AppDependencies {
   ticketService: TicketService;
   broadcaster: SseBroadcaster;
   notifier: Notifier;
+  reactor?: TaskReactor;
+  /** DEMO_MODE=1: enables the simulated CLI runner, seeded logs and the demo "merge to main". */
+  demoMode?: boolean;
   agentToken?: string;
+  webhookSecret?: string;
+  webOrigins?: string[];
+  allowedHosts?: string[];
+}
+
+function safeEqual(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
 }
 
 export function createApp(deps: AppDependencies): Express {
@@ -72,6 +90,10 @@ export function createApp(deps: AppDependencies): Express {
 
   const gitReviewService = new GitReviewService(deps.projectService);
 
+  const reactor =
+    deps.reactor ||
+    new TaskReactor(deps.db, deps.requirementService, deps.linkService, (evt) => deps.broadcaster.broadcast(evt));
+
   const vcsSyncService =
     deps.vcsSyncService ||
     new VcsSyncService(
@@ -79,7 +101,8 @@ export function createApp(deps: AppDependencies): Express {
       deps.projectService,
       deps.requirementService,
       deps.linkService,
-      deps.broadcaster
+      deps.broadcaster,
+      reactor
     );
 
   const metricsService =
@@ -94,15 +117,29 @@ export function createApp(deps: AppDependencies): Express {
     deps.aiChatService ||
     new AiChatService(deps.db, deps.projectService, settingsService);
 
+  const webOrigins = deps.webOrigins || resolveWebOrigins();
+  const allowedHosts = deps.allowedHosts || resolveAllowedHosts();
+
   app.use(helmet({ contentSecurityPolicy: false }));
-  app.use(cors({ origin: true, credentials: true }));
+  app.use(requestGuard({ webOrigins, allowedHosts }));
+  app.use(cors({ origin: webOrigins, credentials: true }));
   app.use(cookieParser());
-  app.use(express.json({ limit: '50mb' }));
+  app.use(
+    express.json({
+      limit: '50mb',
+      // Keep the exact bytes of webhook deliveries for signature verification.
+      verify: (req, _res, buf) => {
+        if (req.url?.startsWith('/api/webhooks/')) {
+          (req as Request & { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+        }
+      },
+    })
+  );
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // Health
   app.get('/api/health', (_req, res) => {
-    res.json({ ok: true, version: '0.2.0' });
+    res.json({ ok: true, version: '0.2.0', demo_mode: Boolean(deps.demoMode) });
   });
 
   // Workspaces
@@ -207,14 +244,17 @@ export function createApp(deps: AppDependencies): Express {
       if (!proj) {
         return res.status(404).json({ error: 'Project not found' });
       }
-      const { exec } = await import('node:child_process');
-      const cmd =
+      if (!fs.existsSync(proj.repo_path) || !fs.statSync(proj.repo_path).isDirectory()) {
+        return res.status(400).json({ error: `Repository path is not a directory: ${proj.repo_path}` });
+      }
+      // argv only, never a shell; `open -R` reveals the folder instead of launching a bundle.
+      const [cmd, args]: [string, string[]] =
         process.platform === 'darwin'
-          ? 'open'
+          ? ['open', ['-R', proj.repo_path]]
           : process.platform === 'win32'
-          ? 'explorer'
-          : 'xdg-open';
-      exec(`${cmd} "${proj.repo_path}"`);
+          ? ['explorer', [proj.repo_path]]
+          : ['xdg-open', [proj.repo_path]];
+      execFile(cmd, args, () => {});
       res.json({ ok: true, path: proj.repo_path });
     } catch (err: any) {
       next(err);
@@ -257,15 +297,29 @@ export function createApp(deps: AppDependencies): Express {
     }
   });
 
-  app.post('/api/requirements/:id/cancel', (req, res) => {
-    deps.requirementService.updateStatus(req.params.id, 'cancelled');
-    deps.broadcaster.broadcast({ type: 'requirement_cancelled', payload: { id: req.params.id } });
-    res.json({ ok: true });
+  const cancelRequirement = async (id: string) => {
+    const result = await deps.fanOutService.cancel(id);
+    deps.broadcaster.broadcast({ type: 'requirement_cancelled', payload: { id, ...result } });
+    return result;
+  };
+
+  app.post('/api/requirements/:id/cancel', async (req, res, next) => {
+    try {
+      const result = await cancelRequirement(req.params.id);
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      next(err);
+    }
   });
 
-  app.put('/api/requirements/:id/status', (req, res, next) => {
+  app.put('/api/requirements/:id/status', async (req, res, next) => {
     try {
       const status = RequirementStatusSchema.parse(req.body.status);
+      if (status === 'cancelled') {
+        // Cancelling must also stop the engine agents, not just relabel the card.
+        await cancelRequirement(req.params.id);
+        return res.json(deps.requirementService.getRequirement(req.params.id));
+      }
       const updated = deps.requirementService.updateRequirementStatus(req.params.id, status);
       if (!updated) return res.status(404).json({ error: 'Requirement not found' });
       deps.broadcaster.broadcast({ type: 'requirement_status_changed', payload: { id: req.params.id, status } });
@@ -277,8 +331,15 @@ export function createApp(deps: AppDependencies): Express {
 
   app.post('/api/requirements/:id/merge-to-main', (req, res, next) => {
     try {
-      const result = deps.requirementService.mergeRequirementToMain(req.params.id);
-      deps.broadcaster.broadcast({ type: 'merge_ready', payload: { id: req.params.id, ...result } });
+      // Outside demo mode the bridge performs no git operation: the operator confirms
+      // that the reviewed work was merged, and the response says so.
+      const result = deps.demoMode
+        ? deps.requirementService.mergeRequirementToMain(req.params.id)
+        : deps.requirementService.confirmMerged(req.params.id);
+      deps.broadcaster.broadcast({
+        type: deps.demoMode ? 'merge_ready' : 'merge_confirmed',
+        payload: { id: req.params.id, ...result },
+      });
       res.json(result);
     } catch (err) {
       next(err);
@@ -287,8 +348,8 @@ export function createApp(deps: AppDependencies): Express {
 
   app.get('/api/requirements/:id/graph', (req, res) => {
     const tasks = deps.db
-      .prepare('SELECT * FROM bridge_tasks WHERE req_id = ?')
-      .all(req.params.id);
+      .prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND (last_error IS NULL OR last_error <> ?)")
+      .all(req.params.id, DEDUPE_NOTE);
     const links = deps.db
       .prepare(`
         SELECT l.* FROM links l
@@ -463,22 +524,20 @@ export function createApp(deps: AppDependencies): Express {
   app.post('/api/tasks/:id/mark-done', async (req, res, next) => {
     try {
       const taskId = Number(req.params.id);
+      const task = deps.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(taskId) as any;
+      if (!task) return res.status(404).json({ error: 'Task not found' });
+      if (task.status === 'done') return res.json({ ok: true, releasedLinks: [] });
+
       const now = new Date().toISOString();
-      deps.db.prepare('UPDATE bridge_tasks SET status = "done", updated_at = ? WHERE id = ?').run(now, taskId);
-
-      // Release any dependent links
-      const releasedLinks = await deps.linkService.evaluateDependencyResolved(taskId);
-
-      // Recalculate requirement status
-      const task = deps.db.prepare('SELECT req_id FROM bridge_tasks WHERE id = ?').get(taskId) as any;
-      if (task) {
-        deps.requirementService.recalculateDerivedStatus(task.req_id);
+      const updated = deps.db
+        .prepare('UPDATE bridge_tasks SET status = ?, updated_at = ? WHERE id = ? AND status = ?')
+        .run('done', now, taskId, task.status);
+      if (updated.changes !== 1) {
+        return res.status(409).json({ error: 'Task changed while marking it done; refresh and retry' });
       }
 
-      deps.broadcaster.broadcast({
-        type: 'task_done',
-        payload: { taskId, releasedLinks },
-      });
+      // Releases dependents and re-derives the requirement status (same path as the watcher)
+      const { releasedLinks } = await reactor.onTaskStatusChanged(task, task.status, 'done', 'manual');
 
       res.json({ ok: true, releasedLinks });
     } catch (err) {
@@ -496,7 +555,8 @@ export function createApp(deps: AppDependencies): Express {
       .prepare('SELECT * FROM task_logs WHERE task_id = ? ORDER BY id ASC')
       .all(taskId) as any[];
 
-    if (logs.length === 0) {
+    // Illustrative log lines are a demo feature; never invent history in normal mode.
+    if (logs.length === 0 && deps.demoMode) {
       const now = new Date().toISOString();
       const project = deps.projectService.getProject(task.project);
       const engineType = project?.engine_type || 'local-ai-cli';
@@ -550,6 +610,12 @@ export function createApp(deps: AppDependencies): Express {
 
   app.post('/api/tasks/:id/run-cli', async (req, res, next) => {
     try {
+      if (!deps.demoMode) {
+        return res
+          .status(501)
+          .json({ error: 'The CLI runner is a simulation; start the server with DEMO_MODE=1 to use it' });
+      }
+
       const taskId = Number(req.params.id);
       const task = deps.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(taskId) as any;
       if (!task) return res.status(404).json({ error: 'Task not found' });
@@ -559,10 +625,10 @@ export function createApp(deps: AppDependencies): Express {
       const repoPath = project?.repo_path || `/workspace/${task.project}`;
 
       // Update to in_progress
-      deps.db.prepare('UPDATE bridge_tasks SET status = "in_progress", updated_at = ? WHERE id = ?').run(now, taskId);
+      deps.db.prepare('UPDATE bridge_tasks SET status = ?, updated_at = ? WHERE id = ?').run('running', now, taskId);
       deps.broadcaster.broadcast({
         type: 'task_status_changed',
-        payload: { taskId, status: 'in_progress' },
+        payload: { taskId, status: 'running' },
       });
 
       const appendLog = (stream: 'stdout' | 'stderr' | 'system', msg: string) => {
@@ -582,7 +648,9 @@ export function createApp(deps: AppDependencies): Express {
       appendLog('system', `[VCS] Pushing feature branch and opening pull request to develop.`);
 
       const prUrl = `https://github.com/my-org/${task.project}/pull/${Math.floor(Math.random() * 80 + 20)}`;
-      deps.db.prepare('UPDATE bridge_tasks SET status = "in_review", pr_url = ?, updated_at = ? WHERE id = ?').run(prUrl, new Date().toISOString(), taskId);
+      deps.db
+        .prepare('UPDATE bridge_tasks SET status = ?, pr_url = ?, updated_at = ? WHERE id = ?')
+        .run('in_review', prUrl, new Date().toISOString(), taskId);
 
       appendLog('stdout', `[PR Ready] Pull request opened: ${prUrl}`);
       appendLog('system', `[Done] Task transitioned to IN_REVIEW.`);
@@ -606,7 +674,7 @@ export function createApp(deps: AppDependencies): Express {
       const link = deps.linkService.getLink(linkId);
       if (!link) return res.status(404).json({ error: 'Link not found' });
 
-      const released = await deps.linkService.evaluateDependencyResolved(link.depends_on_id);
+      const released = await deps.linkService.forceRelease(linkId);
       deps.broadcaster.broadcast({ type: 'link_released', payload: { linkId, released } });
       res.json({ ok: true, released });
     } catch (err) {
@@ -614,11 +682,17 @@ export function createApp(deps: AppDependencies): Express {
     }
   });
 
-  app.post('/api/links/:id/cancel', (req, res) => {
-    const linkId = Number(req.params.id);
-    deps.db.prepare('UPDATE links SET state = "cancelled" WHERE id = ?').run(linkId);
-    deps.broadcaster.broadcast({ type: 'link_cancelled', payload: { linkId } });
-    res.json({ ok: true });
+  app.post('/api/links/:id/cancel', async (req, res, next) => {
+    try {
+      const linkId = Number(req.params.id);
+      if (!deps.linkService.getLink(linkId)) return res.status(404).json({ error: 'Link not found' });
+      // The source resumes if this was the last thing it waited on.
+      const released = await deps.linkService.cancelLink(linkId);
+      deps.broadcaster.broadcast({ type: 'link_cancelled', payload: { linkId, released } });
+      res.json({ ok: true, released });
+    } catch (err) {
+      next(err);
+    }
   });
 
   // Tickets
@@ -631,23 +705,40 @@ export function createApp(deps: AppDependencies): Express {
       const resp = await deps.ticketService.createTicket(validated, sourceProject, sourceTaskId);
       deps.broadcaster.broadcast({ type: 'ticket_created', payload: resp });
       res.status(201).json(resp);
-    } catch (err: any) {
-      if (err.message.includes('not registered') || err.message.includes('exceeds')) {
-        return res.status(400).json({ error: err.message });
-      }
-      if (err.message.includes('limit')) {
-        return res.status(429).json({ error: err.message });
-      }
+    } catch (err) {
+      // TicketService errors carry their HTTP status (400 invalid, 429 limits, 502 engine).
       next(err);
     }
   };
 
-  app.post('/api/tickets', handleCreateTicket);
-  app.post('/api/agent/tickets', handleCreateTicket);
+  const requireAgentToken = (req: Request, res: Response, next: NextFunction) => {
+    if (!deps.agentToken) return next();
+    if (safeEqual(req.headers.authorization || '', `Bearer ${deps.agentToken}`)) return next();
+    return res.status(401).json({ error: 'Invalid or missing agent token' });
+  };
+
+  app.post('/api/tickets', requireAgentToken, handleCreateTicket);
+  app.post('/api/agent/tickets', requireAgentToken, handleCreateTicket);
 
   // VCS Webhooks Sync
+  const hasValidGitHubSignature = (req: Request): boolean => {
+    if (!deps.webhookSecret) return true;
+    const signature = req.headers['x-hub-signature-256'];
+    const raw = (req as Request & { rawBody?: Buffer }).rawBody;
+    if (typeof signature !== 'string' || !raw) return false;
+    const expected = 'sha256=' + crypto.createHmac('sha256', deps.webhookSecret).update(raw).digest('hex');
+    return safeEqual(signature, expected);
+  };
+
   app.post('/api/webhooks/github', async (req, res, next) => {
     try {
+      // GitHub delivers JSON; refusing form bodies stops <form>-based cross-site posts.
+      if (!req.is('application/json')) {
+        return res.status(415).json({ error: 'Webhook payload must be application/json' });
+      }
+      if (!hasValidGitHubSignature(req)) {
+        return res.status(401).json({ error: 'Invalid webhook signature' });
+      }
       const event = (req.headers['x-github-event'] as string) || req.body?.event || 'pull_request';
       const result = await vcsSyncService.handleGitHubWebhook(event, req.body);
       res.status(200).json(result);

@@ -182,6 +182,9 @@ describe('Phase 4: Cross-Repo Tickets, Links, and Outbox Scanner', () => {
       .prepare('SELECT status FROM bridge_tasks WHERE id = ?')
       .get(mobileGoal.id) as any;
     expect(mobileResumed.status).toBe('queued');
+
+    // ...and the engine itself released the held task (not just the bridge row)
+    expect(mobileEngine.getTaskData(mobileGoal.engine_task_id!)!.status).toBe('queued');
   });
 
   it('outbox scanner picks up drop files from .devflow/outbox and creates tickets', async () => {
@@ -194,6 +197,7 @@ describe('Phase 4: Cross-Repo Tickets, Links, and Outbox Scanner', () => {
       title: 'Outbox endpoint ticket',
       body: 'Generated from sandboxed agent file outbox',
       blocking: false,
+      req_id: 'REQ-001',
     };
 
     fs.writeFileSync(

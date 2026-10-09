@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
+import { submitTicket } from './submit.js';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -79,56 +80,14 @@ Options for create:
     engineTaskId,
   };
 
-  // Attempt 1: Call Bridge HTTP API
-  try {
-    const res = await fetch(`${bridgeUrl}/api/agent/tickets`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      console.log(JSON.stringify(data));
-      process.exit(0);
-    } else {
-      const err = await res.json().catch(() => ({ error: res.statusText }));
-      if (res.status === 400) {
-        console.error(`Validation error: ${err.error || JSON.stringify(err)}`);
-        process.exit(2);
-      } else if (res.status === 429) {
-        console.error(`Limit hit: ${err.error || 'Too many tickets'}`);
-        process.exit(3);
-      }
-    }
-  } catch (netErr: any) {
-    // Attempt 2: Fallback to worktree .devflow/outbox file
-    try {
-      const outboxDir = path.resolve('.devflow', 'outbox');
-      if (!fs.existsSync(outboxDir)) {
-        fs.mkdirSync(outboxDir, { recursive: true });
-      }
-      const outboxFileName = `ticket-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.json`;
-      const outboxFilePath = path.join(outboxDir, outboxFileName);
-      fs.writeFileSync(outboxFilePath, JSON.stringify(payload, null, 2), 'utf-8');
-
-      console.log(
-        JSON.stringify({
-          ticketId: 0,
-          target: values.to,
-          blocking: Boolean(values.blocking),
-          status: 'queued_outbox',
-        })
-      );
-      process.exit(0);
-    } catch (fsErr: any) {
-      console.error(`Bridge unreachable (${netErr.message}) and outbox failed: ${fsErr.message}`);
-      process.exit(4);
-    }
-  }
+  const result = await submitTicket(payload, {
+    bridgeUrl,
+    token,
+    outboxDir: path.resolve('.devflow', 'outbox'),
+  });
+  if (result.stdout) console.log(result.stdout);
+  if (result.stderr) console.error(result.stderr);
+  process.exit(result.exitCode);
 }
 
 main().catch((err) => {

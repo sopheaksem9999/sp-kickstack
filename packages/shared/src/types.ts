@@ -43,7 +43,20 @@ export type EventType =
   | 'engine_up'
   | 'requirement_done'
   | 'limit_hit'
-  | 'task_status_changed';
+  | 'task_status_changed'
+  | 'task_updated'
+  | 'link_released'
+  | 'fanout_completed'
+  | 'ticket_rejected'
+  | 'webhook_ignored'
+  | 'merge_confirmed';
+
+export interface HealthResponse {
+  ok: boolean;
+  version: string;
+  /** DEMO_MODE=1 on the server: simulated CLI runner, seeded logs, demo merge. */
+  demo_mode: boolean;
+}
 
 export type BranchMergePolicy = 'manual_review_merge' | 'auto_merge_main';
 

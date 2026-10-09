@@ -132,8 +132,8 @@ async function runDemo() {
 
   // 6. Watcher Poll & Hold Release
   logStep('STEP 6', 'Watcher detects backend merge and triggers hold release');
-  await watcher.scanOnce();
-  const released = await linkService.evaluateDependencyResolved(ticketResp.ticketId);
+  await watcher.scanOnce(); // the finished ticket releases the blocked mobile goal by itself
+  const released = linkService.getLinksForTask(mobileGoal.id).filter((l) => l.state === 'released');
   logInfo('Dependency Released', `${released.length} links unblocked`);
   logNotice('Upstream Context Injected to Mobile', released[0].context_md);
 

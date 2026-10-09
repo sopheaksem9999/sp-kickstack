@@ -16,6 +16,9 @@ import { createAdapter } from './adapters/index.js';
 import { VcsSyncService } from './services/vcsSyncService.js';
 import { MetricsService } from './services/metricsService.js';
 import { createApp } from './api/app.js';
+import { TaskReactor } from './services/taskReactor.js';
+import { RetrySweeper } from './services/retrySweeper.js';
+import { startScheduler } from './services/scheduler.js';
 
 const PORT = Number(process.env.PORT || 4100);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -44,12 +47,14 @@ const ticketService = new TicketService(db, projectService, linkService, getAdap
 const fanOutService = new FanOutService(db, projectService, requirementService, getAdapter);
 const broadcaster = new SseBroadcaster();
 const notifier = new Notifier();
+const reactor = new TaskReactor(db, requirementService, linkService, (evt) => broadcaster.broadcast(evt));
 const vcsSyncService = new VcsSyncService(
   db,
   projectService,
   requirementService,
   linkService,
-  broadcaster
+  broadcaster,
+  reactor
 );
 const metricsService = new MetricsService(db, sprintService);
 
@@ -58,10 +63,14 @@ const watcher = new EngineWatcher(
   projectService,
   requirementService,
   getAdapter,
-  (evt) => broadcaster.broadcast(evt)
+  (evt) => broadcaster.broadcast(evt),
+  5000,
+  reactor
 );
 
 const outboxScanner = new OutboxScanner(projectService, ticketService);
+const retrySweeper = new RetrySweeper(db, fanOutService, ticketService, linkService);
+const TICK_MS = Number(process.env.WATCH_INTERVAL_MS) || 5000;
 
 // Seed from projects.yaml if present
 const yamlPath = path.join(WORKSPACE_DIR, 'projects.yaml');
@@ -83,14 +92,25 @@ const app = createApp({
   ticketService,
   broadcaster,
   notifier,
+  reactor,
+  demoMode: process.env.DEMO_MODE === '1',
+  agentToken: process.env.AGENT_TOKEN || undefined,
+  webhookSecret: process.env.GITHUB_WEBHOOK_SECRET || undefined,
 });
 
 const server = app.listen(PORT, HOST, () => {
   console.log(`🚀 SP Kickstack DevFlow Bridge running at http://${HOST}:${PORT}`);
-  watcher.start();
-  setInterval(() => {
-    outboxScanner.scanOnce().catch(() => {});
-  }, 5000);
+  // Each tick starts every job that is not still running: sync engine state, retry failed
+  // side effects (also recovers reservations left pending by a crash), pick up outbox tickets.
+  // A slow job never delays the others.
+  startScheduler(
+    [
+      ['watcher', () => watcher.scanOnce()],
+      ['retry', () => retrySweeper.sweepOnce()],
+      ['outbox', () => outboxScanner.scanOnce()],
+    ],
+    TICK_MS
+  );
 });
 
 export { app, server };

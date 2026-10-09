@@ -16,6 +16,8 @@ import {
   updateRequirementMergePolicy,
   mergeRequirementToMain,
 } from '../lib/api.js';
+import { isMergeReady as computeMergeReady, mergeCopy } from '../lib/mergeReady.js';
+import { useDemoMode } from '../lib/useDemoMode.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { DependencyGraphCanvas } from '../components/DependencyGraphCanvas.js';
 import { BridgeTask, RequirementStatus, BranchMergePolicy } from '@sp-kickstack/shared';
@@ -54,6 +56,8 @@ const stateOptions: { value: RequirementStatus; label: string }[] = [
 export function RequirementDetailPage() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
+  const demoMode = useDemoMode();
+  const mergeText = mergeCopy(demoMode);
 
   // Embedded VS Code Review Modal state
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
@@ -119,7 +123,7 @@ export function RequirementDetailPage() {
   const mergeMutation = useMutation({
     mutationFn: () => mergeRequirementToMain(id!),
     onSuccess: () => {
-      toast.success('Successfully reviewed and merged into main branch! 🎉');
+      toast.success(mergeText.success);
       queryClient.invalidateQueries();
     },
     onError: (err: any) => toast.error(err.message || 'Failed to merge to main'),
@@ -202,7 +206,7 @@ export function RequirementDetailPage() {
     return <FileText className="w-4 h-4 text-slate-400" />;
   };
 
-  const isMergeReady = req.status === 'qa' || req.status === 'in_review' || req.status === 'done';
+  const isMergeReady = computeMergeReady(req.status, graph?.tasks);
 
   return (
     <div className="w-full max-w-[1600px] mx-auto space-y-6">
@@ -302,7 +306,7 @@ export function RequirementDetailPage() {
 
         <div className="flex items-center gap-2.5">
           {/* Fan-Out Dispatch */}
-          {req.status === 'draft' && (
+          {(req.status === 'draft' || req.status === 'ready') && (
             <button
               onClick={() => fanOutMutation.mutate()}
               disabled={fanOutMutation.isPending}
@@ -335,10 +339,14 @@ export function RequirementDetailPage() {
               onClick={() => mergeMutation.mutate()}
               disabled={mergeMutation.isPending}
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-xs font-bold shadow-md shadow-emerald-600/20 active:scale-[0.98] transition-all disabled:opacity-50"
-              title="Operator review passed: Merge develop branch into main"
+              title={
+                demoMode
+                  ? 'Operator review passed: Merge develop branch into main'
+                  : 'Confirm the reviewed work was merged (the bridge runs no git command)'
+              }
             >
               <GitMerge className="w-3.5 h-3.5" />
-              <span>{mergeMutation.isPending ? 'Merging...' : 'Review & Merge to Main'}</span>
+              <span>{mergeMutation.isPending ? mergeText.pending : mergeText.action}</span>
             </button>
           )}
 

@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { BridgeTask } from '@sp-kickstack/shared';
 import { fetchTaskLogs, runTaskCli } from '../lib/api.js';
 import { StatusBadge } from './StatusBadge.js';
+import { useDemoMode } from '../lib/useDemoMode.js';
 
 interface LiveTaskLogsDrawerProps {
   task: BridgeTask | null;
@@ -25,6 +26,8 @@ interface LiveTaskLogsDrawerProps {
 
 export function LiveTaskLogsDrawer({ task, isOpen, onClose }: LiveTaskLogsDrawerProps) {
   const queryClient = useQueryClient();
+  // The CLI runner is a simulation, offered only when the server runs with DEMO_MODE=1.
+  const demoMode = useDemoMode();
   const terminalEndRef = useRef<HTMLDivElement | null>(null);
   const [copied, setCopied] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -100,15 +103,17 @@ export function LiveTaskLogsDrawer({ task, isOpen, onClose }: LiveTaskLogsDrawer
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => runMutation.mutate()}
-              disabled={runMutation.isPending || currentTask.status === 'done'}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#7b68ee] to-[#6366f1] hover:from-[#6c5ce7] hover:to-[#4f46e5] text-white text-xs font-bold shadow transition-all disabled:opacity-40 active:scale-95"
-            >
-              <Play className="w-3.5 h-3.5 fill-current" />
-              <span>{runMutation.isPending ? 'Executing...' : 'Run with AI CLI'}</span>
-            </button>
+            {demoMode && (
+              <button
+                type="button"
+                onClick={() => runMutation.mutate()}
+                disabled={runMutation.isPending || currentTask.status === 'done'}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#7b68ee] to-[#6366f1] hover:from-[#6c5ce7] hover:to-[#4f46e5] text-white text-xs font-bold shadow transition-all disabled:opacity-40 active:scale-95"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>{runMutation.isPending ? 'Executing...' : 'Run with AI CLI'}</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -201,7 +206,9 @@ export function LiveTaskLogsDrawer({ task, isOpen, onClose }: LiveTaskLogsDrawer
               </div>
             ) : logs.length === 0 ? (
               <div className="text-slate-500 py-8 text-center italic">
-                No logs recorded yet. Click "Run with AI CLI" to initiate execution.
+                {demoMode
+                  ? 'No logs recorded yet. Click "Run with AI CLI" to initiate execution.'
+                  : 'No logs recorded yet. Engine activity for this task will appear here.'}
               </div>
             ) : (
               logs.map((log) => {

@@ -1,9 +1,11 @@
+import path from 'node:path';
 import { AppDatabase } from '../db/index.js';
 import { ProjectService } from './projectService.js';
 import { RequirementService } from './requirementService.js';
 import { LinkService } from './linkService.js';
 import { SseBroadcaster } from '../sse/broadcaster.js';
 import { BridgeTask } from '@sp-kickstack/shared';
+import { TaskReactor } from './taskReactor.js';
 
 export interface GitHubWebhookPayload {
   action: string;
@@ -36,13 +38,19 @@ export interface VcsSyncResult {
 }
 
 export class VcsSyncService {
+  private reactor: TaskReactor;
+
   constructor(
     private db: AppDatabase,
     private projectService: ProjectService,
     private requirementService: RequirementService,
     private linkService: LinkService,
-    private broadcaster: SseBroadcaster
-  ) {}
+    private broadcaster: SseBroadcaster,
+    reactor?: TaskReactor
+  ) {
+    this.reactor =
+      reactor ?? new TaskReactor(db, requirementService, linkService, (evt) => broadcaster.broadcast(evt));
+  }
 
   public async handleGitHubWebhook(
     event: string,
@@ -55,20 +63,13 @@ export class VcsSyncService {
     const pr = payload.pull_request;
     const repoName = payload.repository?.name;
     const branch = pr.head.ref;
-    const titleAndBody = `${pr.title} ${pr.body || ''}`;
 
-    // Find candidate matching tasks in bridge_tasks
-    const candidateTasks = this.findMatchingTasks(repoName, branch, titleAndBody);
-
-    if (candidateTasks.length === 0) {
-      return {
-        processed: false,
-        action: 'ignored',
-        message: 'No matching bridge tasks found for pull request',
-      };
+    const match = this.findMatchingTask(repoName, branch, pr.title, pr.html_url);
+    if (!match.task) {
+      return { processed: false, action: 'ignored', message: match.reason };
     }
 
-    const task = candidateTasks[0];
+    const task = match.task;
     const now = new Date().toISOString();
 
     // 1. PR Opened or Reopened -> transition to in_review
@@ -93,14 +94,9 @@ export class VcsSyncService {
           now
         );
 
-      this.broadcaster.broadcast({
-        type: 'task_status_changed',
-        payload: {
-          taskId: task.id,
-          reqId: task.req_id,
-          status: 'in_review',
-          prUrl: pr.html_url,
-        },
+      await this.reactor.onTaskStatusChanged(task, task.status, 'in_review', 'webhook', {
+        rawStatus: 'needs_review',
+        prUrl: pr.html_url,
       });
 
       return {
@@ -133,21 +129,10 @@ export class VcsSyncService {
           now
         );
 
-      // Evaluate and release downstream dependents waiting on this task
-      const releasedLinks = await this.linkService.evaluateDependencyResolved(task.id);
-
-      // Check if all tasks for the requirement are done
-      this.checkAndUpdateRequirementCompletion(task.req_id);
-
-      this.broadcaster.broadcast({
-        type: 'task_status_changed',
-        payload: {
-          taskId: task.id,
-          reqId: task.req_id,
-          status: 'done',
-          prUrl: pr.html_url,
-          releasedLinksCount: releasedLinks.length,
-        },
+      // Releases dependents and re-derives the requirement status (same path as the watcher)
+      await this.reactor.onTaskStatusChanged(task, task.status, 'done', 'webhook', {
+        rawStatus: 'merged',
+        prUrl: pr.html_url,
       });
 
       return {
@@ -161,54 +146,61 @@ export class VcsSyncService {
     return { processed: false, action: 'ignored', message: `PR action '${payload.action}' ignored` };
   }
 
-  private findMatchingTasks(
-    repoName?: string,
-    branch?: string,
-    text?: string
-  ): BridgeTask[] {
-    // 1. Look for explicit REQ-XXX pattern in branch or text
-    const reqMatches = (branch ? branch + ' ' : '') + (text || '');
-    const reqIdMatch = reqMatches.match(/REQ-\d+/i);
-    const reqId = reqIdMatch ? reqIdMatch[0].toUpperCase() : null;
-
-    let query = "SELECT * FROM bridge_tasks WHERE status != 'done'";
-    const params: any[] = [];
-
-    if (reqId) {
-      query += ' AND req_id = ?';
-      params.push(reqId);
-    }
-
-    if (repoName) {
-      query += ' AND project = ?';
-      params.push(repoName);
-    }
-
-    query += ' ORDER BY id DESC';
-    const results = this.db.prepare(query).all(...params) as BridgeTask[];
-    if (results.length > 0) return results;
-
-    // Fallback: match by project alone if only one active task
-    if (repoName) {
-      return this.db
-        .prepare("SELECT * FROM bridge_tasks WHERE project = ? AND status != 'done' ORDER BY id DESC")
-        .all(repoName) as BridgeTask[];
-    }
-
-    return [];
+  private resolveProjectName(repoName?: string): string | null {
+    if (!repoName) return null;
+    const projects = this.projectService.listProjects();
+    const project =
+      projects.find((p) => p.name === repoName) ||
+      projects.find((p) => path.basename(p.repo_path) === repoName);
+    return project?.name ?? null;
   }
 
-  private checkAndUpdateRequirementCompletion(reqId: string): void {
-    const activeTasks = this.db
-      .prepare("SELECT COUNT(*) as count FROM bridge_tasks WHERE req_id = ? AND role = 'goal' AND status != 'done'")
-      .get(reqId) as { count: number };
+  /**
+   * Find the one active goal/ticket a pull request belongs to. Requires a registered
+   * repository and an explicit REQ-### in the branch or title; among several candidates
+   * prefer the task whose PR URL was recorded, then an explicit task-<id> reference.
+   * Anything still ambiguous is ignored (and recorded) rather than guessed.
+   */
+  private findMatchingTask(
+    repoName: string | undefined,
+    branch: string,
+    title: string,
+    prUrl: string
+  ): { task?: BridgeTask; reason: string } {
+    const project = this.resolveProjectName(repoName);
+    if (!project) return { reason: `Repository ${repoName ?? '(none)'} is not a registered project` };
 
-    if (activeTasks && activeTasks.count === 0) {
-      this.requirementService.updateStatus(reqId, 'done');
-      this.broadcaster.broadcast({
-        type: 'requirement_status_changed',
-        payload: { id: reqId, status: 'done' },
-      });
+    const text = `${branch} ${title}`;
+    const reqMatch = text.match(/REQ-\d+/i);
+    if (!reqMatch) return { reason: 'Pull request names no requirement (REQ-###) in its branch or title' };
+    const reqId = reqMatch[0].toUpperCase();
+
+    const candidates = this.db
+      .prepare(`
+        SELECT * FROM bridge_tasks
+        WHERE req_id = ? AND project = ? AND role IN ('goal', 'ticket')
+          AND status NOT IN ('done', 'cancelled', 'failed')
+        ORDER BY id
+      `)
+      .all(reqId, project) as BridgeTask[];
+
+    const byUrl = candidates.find((t) => t.pr_url === prUrl);
+    if (byUrl) return { task: byUrl, reason: 'matched by PR URL' };
+
+    const taskRef = text.match(/\btask[-_/#]?(\d+)\b/i);
+    const byRef = taskRef ? candidates.find((t) => t.id === Number(taskRef[1])) : undefined;
+    if (byRef) return { task: byRef, reason: 'matched by task reference' };
+
+    if (candidates.length === 1) return { task: candidates[0], reason: 'single active task' };
+
+    if (candidates.length === 0) {
+      return { reason: `No active task for ${reqId} in ${project}` };
     }
+
+    const reason = `Ambiguous: ${candidates.length} active tasks for ${reqId} in ${project}; add task-<id> to the branch or title`;
+    this.db
+      .prepare("INSERT INTO events (req_id, type, payload, read, at) VALUES (?, 'webhook_ignored', ?, 0, ?)")
+      .run(reqId, JSON.stringify({ reason, prUrl, project, candidateTaskIds: candidates.map((t) => t.id) }), new Date().toISOString());
+    return { reason };
   }
 }

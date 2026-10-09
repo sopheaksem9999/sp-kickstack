@@ -6,8 +6,12 @@ import {
   NormStatus,
   AttachmentItem,
 } from '@sp-kickstack/shared';
+import { HttpError, conflict } from '../lib/httpError.js';
 import fs from 'node:fs';
 import path from 'node:path';
+
+const OPERATOR_OWNED_STATUSES: RequirementStatus[] = ['draft', 'ready', 'qa', 'done', 'cancelled'];
+const TERMINAL_TASK_STATUSES: NormStatus[] = ['done', 'cancelled', 'failed'];
 
 export class RequirementService {
   constructor(
@@ -68,23 +72,20 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
   }
 
   public createRequirement(input: CreateRequirementInput): Requirement {
-    const seq = this.getNextSeq();
-    const id = this.formatId(seq);
     const now = new Date().toISOString();
     const status: RequirementStatus = input.status || 'draft';
     const revision = 1;
     const attachments = input.attachments || [];
-
     const reqDir = path.join(this.workspaceDir, 'requirements');
-    if (!fs.existsSync(reqDir)) {
-      fs.mkdirSync(reqDir, { recursive: true });
-    }
 
-    const filePath = path.join(reqDir, `${id}.md`);
-    const bodyMd = this.renderMarkdown(id, input, status, revision);
-    fs.writeFileSync(filePath, bodyMd, 'utf-8');
-
+    // Allocate the sequence number and insert in one IMMEDIATE transaction:
+    // the MCP server process writes to the same database.
     const insertTx = this.db.transaction(() => {
+      const seq = this.getNextSeq();
+      const id = this.formatId(seq);
+      const filePath = path.join(reqDir, `${id}.md`);
+      const bodyMd = this.renderMarkdown(id, input, status, revision);
+
       this.db.prepare(`
         INSERT INTO requirements (id, workspace_id, session_id, seq, title, status, priority, body_md, file_path, revision, attachments, merge_policy, sprint_id, created_at, updated_at)
         VALUES (@id, @workspace_id, @session_id, @seq, @title, @status, @priority, @body_md, @file_path, @revision, @attachments, @merge_policy, @sprint_id, @created_at, @updated_at)
@@ -112,9 +113,19 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
       for (const proj of input.affected_projects) {
         insertProj.run(id, proj);
       }
+
+      return { id, filePath, bodyMd };
     });
 
-    insertTx();
+    const { id, filePath, bodyMd } = insertTx.immediate();
+
+    // Write the markdown copy only after the row is committed, atomically via rename.
+    if (!fs.existsSync(reqDir)) {
+      fs.mkdirSync(reqDir, { recursive: true });
+    }
+    const tmpPath = `${filePath}.${process.pid}.tmp`;
+    fs.writeFileSync(tmpPath, bodyMd, 'utf-8');
+    fs.renameSync(tmpPath, filePath);
 
     return this.getRequirement(id)!;
   }
@@ -221,11 +232,74 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
     `).run(status, id);
   }
 
+  /**
+   * Operator-driven status change (Kanban drag, status select). A requirement with no
+   * dispatched tasks moves freely; once dispatched, the board follows the engines: only
+   * qa, and done when no task is still active, can be set by hand.
+   */
   public updateRequirementStatus(id: string, status: RequirementStatus): Requirement | null {
+    const req = this.getRequirement(id);
+    if (!req) return null;
+    if (req.status === status) return req;
+
+    const tasks = this.db
+      .prepare("SELECT status FROM bridge_tasks WHERE req_id = ? AND role IN ('goal', 'ticket')")
+      .all(id) as { status: NormStatus }[];
+
+    if (tasks.length > 0) {
+      if (req.status === 'cancelled') {
+        throw conflict(`${id} was cancelled after dispatch; create a new requirement instead of reopening it`);
+      }
+      // Leaving QA for work statuses hands control back to task progress.
+      if (req.status === 'qa' && (status === 'in_progress' || status === 'in_review')) {
+        this.updateStatus(id, 'in_progress');
+        this.recalculateDerivedStatus(id);
+        return this.getRequirement(id);
+      }
+      const active = tasks.filter((t) => !TERMINAL_TASK_STATUSES.includes(t.status));
+      if (status === 'done' && active.length > 0) {
+        throw conflict(`${active.length} task(s) are still active; finish or cancel them before marking ${id} done`);
+      }
+      if (status !== 'qa' && status !== 'done') {
+        throw conflict(`"${status}" is set automatically from task progress once ${id} is dispatched`);
+      }
+    }
+
     this.updateStatus(id, status);
     return this.getRequirement(id);
   }
 
+  /**
+   * Operator confirms the reviewed work was merged (the bridge itself runs no git
+   * command). Allowed only when every goal/ticket task is in review or done.
+   */
+  public confirmMerged(id: string): { ok: boolean; status: string; merged_branch: null; git_operation: false } {
+    const req = this.getRequirement(id);
+    if (!req) throw new HttpError(404, `Requirement ${id} not found`);
+    if (req.status === 'cancelled' || req.status === 'done' || req.status === 'draft') {
+      throw conflict(`${id} is ${req.status}; only dispatched, open requirements can be confirmed merged`);
+    }
+
+    const tasks = this.db
+      .prepare("SELECT status FROM bridge_tasks WHERE req_id = ? AND role IN ('goal', 'ticket') AND status <> 'cancelled'")
+      .all(id) as { status: NormStatus }[];
+    if (tasks.length === 0) {
+      throw conflict(`${id} has no dispatched work to confirm`);
+    }
+    const open = tasks.filter((t) => t.status !== 'in_review' && t.status !== 'done');
+    if (open.length > 0) {
+      throw conflict(`${open.length} task(s) of ${id} are not in review or done yet`);
+    }
+
+    this.updateStatus(id, 'done');
+    this.db
+      .prepare("INSERT INTO events (req_id, type, payload, read, at) VALUES (?, 'merge_confirmed', ?, 0, ?)")
+      .run(id, JSON.stringify({ req_id: id, action: 'operator_confirmed', git_operation: false }), new Date().toISOString());
+
+    return { ok: true, status: 'done', merged_branch: null, git_operation: false };
+  }
+
+  /** DEMO_MODE only: marks the requirement done as if merged; no git operation happens. */
   public mergeRequirementToMain(id: string): { ok: boolean; status: string; merged_branch: string } {
     const req = this.getRequirement(id);
     if (!req) throw new Error(`Requirement ${id} not found`);
@@ -258,26 +332,26 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
     const req = this.getRequirement(reqId);
     if (!req) throw new Error(`Requirement ${reqId} not found`);
 
-    if (req.status === 'draft' || req.status === 'cancelled' || req.status === 'qa') {
+    // Set by people (or by fan-out for ready -> in_progress); never recomputed away.
+    if (OPERATOR_OWNED_STATUSES.includes(req.status)) {
       return req.status;
     }
 
     const tasks = this.db
-      .prepare("SELECT status, role FROM bridge_tasks WHERE req_id = ? AND role IN ('goal', 'ticket')")
+      .prepare("SELECT status, role FROM bridge_tasks WHERE req_id = ? AND role IN ('goal', 'ticket') AND status <> 'cancelled'")
       .all(reqId) as { status: NormStatus; role: string }[];
 
     if (tasks.length === 0) {
       return req.status;
     }
 
-    const allDone = tasks.every((t) => t.status === 'done' || t.status === 'cancelled');
-    if (allDone) {
+    if (tasks.every((t) => t.status === 'done')) {
       this.updateStatus(reqId, 'done');
       return 'done';
     }
 
-    const nonTerminal = tasks.filter((t) => t.status !== 'done' && t.status !== 'cancelled');
-    const allInReview = nonTerminal.length > 0 && nonTerminal.every((t) => t.status === 'in_review' || t.status === 'qa');
+    const nonTerminal = tasks.filter((t) => t.status !== 'done');
+    const allInReview = nonTerminal.every((t) => t.status === 'in_review' || t.status === 'qa');
     if (allInReview) {
       this.updateStatus(reqId, 'in_review');
       return 'in_review';

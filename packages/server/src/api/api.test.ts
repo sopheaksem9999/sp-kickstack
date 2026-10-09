@@ -483,7 +483,7 @@ describe('Bridge REST API Integration Tests', () => {
     `).run(reqId, past, now);
     const t2 = db.prepare(`
       INSERT INTO bridge_tasks (project, req_id, role, title, status, engine_task_id, created_at, updated_at)
-      VALUES ('backend', ?, 'goal', 'DB Task', 'in_review', 'sf-2', ?, ?)
+      VALUES ('backend', ?, 'ticket', 'DB Task', 'in_review', 'sf-2', ?, ?)
     `).run(reqId, past, now);
 
     db.prepare(`

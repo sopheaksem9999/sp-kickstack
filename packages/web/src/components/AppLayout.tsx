@@ -22,6 +22,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { useTheme } from '../lib/ThemeContext.js';
 import { useCreateRequirement } from '../lib/CreateRequirementContext.js';
+import { healthQueryOptions } from '../lib/useDemoMode.js';
 import { CreateWorkspaceModal, WorkspaceRulesModal } from './WorkspaceModals.js';
 import { CreateRequirementSheet } from './CreateRequirementSheet.js';
 
@@ -34,16 +35,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  const { isError: isOffline } = useQuery({
-    queryKey: ['health'],
-    queryFn: async () => {
-      const res = await fetch('/api/health');
-      if (!res.ok) throw new Error('Unhealthy');
-      return res.json();
-    },
-    refetchInterval: 5000,
-    retry: 1,
-  });
+  const { isError: isOffline } = useQuery(healthQueryOptions);
 
   const navItems = [
     { label: 'Requirements', path: '/requirements', icon: Layers, badge: 'Tasks' },

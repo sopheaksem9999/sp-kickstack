@@ -10,6 +10,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['packages/**/*.{test,spec}.ts'],
+    globalSetup: ['./vitest.global-setup.ts'],
     pool: 'threads',
     poolOptions: {
       threads: {

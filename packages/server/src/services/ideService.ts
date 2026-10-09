@@ -1,4 +1,4 @@
-import { ChildProcess, spawn, execSync } from 'child_process';
+import { ChildProcess, spawn, execFileSync } from 'child_process';
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
@@ -54,7 +54,7 @@ export class IdeService {
         if (fs.existsSync(bin)) return bin;
       } else {
         try {
-          const res = execSync(`which ${bin} 2>/dev/null`, { encoding: 'utf8' }).trim();
+          const res = execFileSync('which', [bin], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
           if (res && fs.existsSync(res)) return res;
         } catch {
           // not found

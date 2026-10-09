@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "npm run --workspaces --if-present typecheck",
+    "verify": "npm run typecheck && vitest run",
     "demo": "npx tsx scripts/demo-flow.ts",
     "mcp": "npx tsx packages/server/src/mcp/run.ts",
     "dev": "node scripts/dev.mjs",

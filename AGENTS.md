@@ -39,3 +39,5 @@ re-read whole files.
 After big code changes, refresh the graph with `graft build` (deterministic,
 no API key, $0).
 <!-- graft:end -->
+
+- Automated error triage: .agents/rules/clef-auto-triage.md — automated bug diagnosis and severity classification (P0–P3) via Clef.

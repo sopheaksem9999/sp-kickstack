@@ -8,7 +8,9 @@ export type NormStatus =
   | 'qa'
   | 'done'
   | 'failed'
-  | 'cancelled';
+  | 'cancelled'
+  /** The engine (or its AI provider) is rate limited; resumes on its own (see paused_until). */
+  | 'rate_limited';
 
 export type RequirementStatus =
   | 'draft'
@@ -52,7 +54,10 @@ export type EventType =
   | 'merge_confirmed'
   | 'merge_started'
   | 'merge_succeeded'
-  | 'merge_failed';
+  | 'merge_failed'
+  | 'engine_rate_limited'
+  | 'task_rate_limited'
+  | 'task_retried';
 
 export interface HealthResponse {
   ok: boolean;
@@ -164,6 +169,8 @@ export interface BridgeTask {
   /** Merge commit on the base branch; null with merged_at set = nothing to merge. */
   merge_sha?: string | null;
   merged_at?: string | null;
+  /** Rate limited: nothing is retried for this task before this time (ISO). */
+  paused_until?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -197,6 +204,8 @@ export interface EngineTask {
   url?: string;
   prUrl?: string;
   summary?: string;
+  /** When a rate-limited task is expected to resume (ISO time), if the engine says. */
+  resumeAt?: string;
 }
 
 export interface SharedAsset {

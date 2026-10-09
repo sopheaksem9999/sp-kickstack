@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { FakeEngineServer } from './fakeEngine.js';
 import { StoneforgeAdapter } from './stoneforgeAdapter.js';
 import { ManualAdapter } from './manualAdapter.js';
+import { parseRetryAfter } from './rateLimit.js';
 
 describe('Engine Adapters with FakeEngineServer', () => {
   let fakeEngine: FakeEngineServer;
@@ -91,5 +92,44 @@ describe('StoneforgeAdapter status normalization', () => {
     expect(adapter.normalizeStatus('in_review')).toBe('in_review');
     expect(adapter.normalizeStatus('needs_review')).toBe('in_review');
     expect(adapter.normalizeStatus('qa')).toBe('in_review');
+  });
+});
+
+describe('Rate-limit signals from Stoneforge', () => {
+  const respond = (status: number, body: unknown, headers: Record<string, string> = {}) =>
+    (async () => new Response(typeof body === 'string' ? body : JSON.stringify(body), { status, headers })) as unknown as typeof fetch;
+
+  it('maps engine rate-limit statuses to rate_limited', () => {
+    const adapter = new StoneforgeAdapter('http://127.0.0.1:1', '/r');
+    for (const raw of ['rate_limited', 'rate-limited', 'quota_exceeded', 'usage_limited', 'throttled']) {
+      expect(adapter.normalizeStatus(raw)).toBe('rate_limited');
+    }
+  });
+
+  it('exposes the resume time the engine reports', async () => {
+    const adapter = new StoneforgeAdapter('http://e', '/r', undefined, respond(200, {
+      id: 7, title: 't', status: 'rate_limited', resetAt: '2026-10-10T15:00:00.000Z',
+    }));
+    expect(await adapter.getTask('7')).toMatchObject({ status: 'rate_limited', resumeAt: '2026-10-10T15:00:00.000Z' });
+  });
+
+  it('turns HTTP 429 into an EngineRateLimitError carrying Retry-After', async () => {
+    const adapter = new StoneforgeAdapter('http://e', '/r', undefined, respond(429, 'slow down', { 'Retry-After': '120' }));
+    await expect(adapter.createGoal({ title: 't', bodyMd: 'b' })).rejects.toMatchObject({
+      name: 'EngineRateLimitError', retryAfterMs: 120_000, local: false,
+    });
+  });
+
+  it('reports a rate-limited health check as a rate limit, not as a down engine', async () => {
+    const adapter = new StoneforgeAdapter('http://e', '/r', undefined, respond(429, '', { 'Retry-After': '30' }));
+    await expect(adapter.health()).rejects.toMatchObject({ name: 'EngineRateLimitError', retryAfterMs: 30_000 });
+  });
+
+  it('parses Retry-After seconds and HTTP dates, and ignores garbage', () => {
+    const now = Date.parse('2026-10-10T12:00:00Z');
+    expect(parseRetryAfter('15', now)).toBe(15_000);
+    expect(parseRetryAfter('Sat, 10 Oct 2026 12:05:00 GMT', now)).toBe(300_000);
+    expect(parseRetryAfter(null, now)).toBeNull();
+    expect(parseRetryAfter('soon', now)).toBeNull();
   });
 });

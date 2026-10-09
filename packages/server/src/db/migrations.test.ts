@@ -49,9 +49,9 @@ describe('Database migrations', () => {
   it('brings a fresh database to the latest version with the new columns', () => {
     const db = initDatabase(':memory:');
     expect(db.pragma('user_version', { simple: true })).toBe(LATEST_VERSION);
-    expect(LATEST_VERSION).toBe(3);
+    expect(LATEST_VERSION).toBe(4);
     expect(columns(db, 'bridge_tasks')).toEqual(
-      expect.arrayContaining(['attempts', 'idempotency_key', 'branch', 'base_sha', 'merge_sha', 'merged_at'])
+      expect.arrayContaining(['attempts', 'idempotency_key', 'branch', 'base_sha', 'merge_sha', 'merged_at', 'paused_until'])
     );
     expect(columns(db, 'requirements')).toEqual(expect.arrayContaining(['merge_state', 'merge_error']));
     expect(columns(db, 'projects')).toContain('test_command');

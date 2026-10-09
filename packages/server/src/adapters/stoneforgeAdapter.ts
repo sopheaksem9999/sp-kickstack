@@ -1,5 +1,14 @@
 import { EngineTask, NormStatus } from '@sp-kickstack/shared';
 import { CreateEngineTaskInput, EngineAdapter } from './types.js';
+import { DEFAULT_RATE_LIMIT_WAIT_MS, EngineRateLimitError, isRateLimit, parseRetryAfter } from './rateLimit.js';
+
+/** Resume time an engine reports for a rate-limited task, in whichever field it uses. */
+function resumeAtOf(data: any): string | undefined {
+  const value = data?.resumeAt ?? data?.resetAt ?? data?.rateLimitResetAt ?? data?.rate_limit_reset_at;
+  return typeof value === 'string' && value ? value : undefined;
+}
+
+const RATE_LIMIT_STATUSES = new Set(['rate_limited', 'rate-limited', 'ratelimited', 'quota_exceeded', 'usage_limited', 'throttled']);
 
 export class StoneforgeAdapter implements EngineAdapter {
   public type = 'stoneforge' as const;
@@ -26,6 +35,11 @@ export class StoneforgeAdapter implements EngineAdapter {
       headers,
       signal: options.signal ?? AbortSignal.timeout(this.timeoutMs),
     });
+    if (res.status === 429) {
+      const wait = parseRetryAfter(res.headers.get('retry-after')) ?? DEFAULT_RATE_LIMIT_WAIT_MS;
+      const detail = (await res.text().catch(() => '')).trim();
+      throw new EngineRateLimitError(`Engine rate limited (429)${detail ? `: ${detail}` : ''}`, wait);
+    }
     if (!res.ok) {
       const errorText = await res.text().catch(() => res.statusText);
       throw new Error(`Engine request failed (${res.status}): ${errorText}`);
@@ -35,6 +49,7 @@ export class StoneforgeAdapter implements EngineAdapter {
 
   public normalizeStatus(rawStatus: string): NormStatus {
     const s = rawStatus.toLowerCase();
+    if (RATE_LIMIT_STATUSES.has(s)) return 'rate_limited';
     if (s === 'ready' || s === 'queued' || s === 'pending') return 'queued';
     if (s === 'in_progress' || s === 'running' || s === 'active') return 'running';
     if (s === 'deferred' || s === 'held' || s === 'waiting') return 'held';
@@ -51,6 +66,8 @@ export class StoneforgeAdapter implements EngineAdapter {
       const data = await this.fetchJson<{ ok: boolean; version?: string }>('/health');
       return { ok: true, version: data.version || 'stoneforge' };
     } catch (err: any) {
+      // A rate-limited engine is up; the caller must back off, not mark it down.
+      if (isRateLimit(err)) throw err;
       return { ok: false, error: err.message };
     }
   }
@@ -68,6 +85,7 @@ export class StoneforgeAdapter implements EngineAdapter {
       url: data.url || `${this.baseUrl}/tasks/${data.id}`,
       prUrl: data.prUrl,
       summary: data.summary,
+      resumeAt: resumeAtOf(data),
     };
   }
 
@@ -84,6 +102,7 @@ export class StoneforgeAdapter implements EngineAdapter {
       url: data.url || `${this.baseUrl}/tasks/${data.id}`,
       prUrl: data.prUrl,
       summary: data.summary,
+      resumeAt: resumeAtOf(data),
     };
   }
 
@@ -98,6 +117,7 @@ export class StoneforgeAdapter implements EngineAdapter {
         url: data.url || `${this.baseUrl}/tasks/${data.id}`,
         prUrl: data.prUrl,
         summary: data.summary,
+        resumeAt: resumeAtOf(data),
       };
     } catch (err: any) {
       if (err.message.includes('404')) return null;

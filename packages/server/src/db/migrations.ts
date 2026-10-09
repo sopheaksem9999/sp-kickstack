@@ -121,6 +121,13 @@ export const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 4,
+    name: 'rate-limit pause time for tasks',
+    up: (db) => {
+      addColumn(db, 'bridge_tasks', 'paused_until', 'TEXT');
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

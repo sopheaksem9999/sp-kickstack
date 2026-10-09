@@ -11,6 +11,7 @@ export const NormStatusSchema = z.enum([
   'done',
   'failed',
   'cancelled',
+  'rate_limited',
 ]);
 
 export const RequirementStatusSchema = z.enum([

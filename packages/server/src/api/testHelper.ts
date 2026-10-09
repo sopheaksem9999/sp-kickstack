@@ -60,6 +60,6 @@ export async function testRequest(
       });
     };
 
-    app.handle(req, res);
+    (app as any).handle(req, res);
   });
 }

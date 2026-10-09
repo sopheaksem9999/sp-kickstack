@@ -157,7 +157,7 @@ ${input.body}
     return {
       ticketId: ticketTaskId,
       target: input.to,
-      blocking: input.blocking,
+      blocking: Boolean(input.blocking),
       status: engineTask.status,
     };
   }

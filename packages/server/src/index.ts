@@ -75,4 +75,4 @@ const server = app.listen(PORT, HOST, () => {
   }, 5000);
 });
 
-export { app, server, db };
+export { app, server };

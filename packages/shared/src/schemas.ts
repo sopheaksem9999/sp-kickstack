@@ -97,6 +97,6 @@ export const TicketResponseSchema = z.object({
   status: z.string(),
 });
 
-export type CreateRequirementInput = z.infer<typeof CreateRequirementInputSchema>;
-export type CreateTicketInput = z.infer<typeof CreateTicketInputSchema>;
+export type CreateRequirementInput = z.input<typeof CreateRequirementInputSchema>;
+export type CreateTicketInput = z.input<typeof CreateTicketInputSchema>;
 export type TicketResponse = z.infer<typeof TicketResponseSchema>;

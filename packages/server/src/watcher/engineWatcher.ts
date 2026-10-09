@@ -1,6 +1,6 @@
 import { AppDatabase } from '../db/index.js';
-import { ProjectService } from './projectService.js';
-import { RequirementService } from './requirementService.js';
+import { ProjectService } from '../services/projectService.js';
+import { RequirementService } from '../services/requirementService.js';
 import { AdapterFactory } from '../services/fanOutService.js';
 import { BridgeTask, NormStatus } from '@sp-kickstack/shared';
 

@@ -96,6 +96,33 @@ function makeHarness(appOverrides: Partial<AppDependencies> = {}) {
 
 type Harness = ReturnType<typeof makeHarness>;
 
+/** POST a raw (non-JSON) body, the way a cross-site <form> would. */
+async function testRequestRaw(app: any, url: string, body: string, contentType: string) {
+  const { Readable } = await import('node:stream');
+  const { EventEmitter } = await import('node:events');
+  return new Promise<{ status: number; body: any }>((resolve) => {
+    const req: any = Readable.from([Buffer.from(body)]);
+    req.method = 'POST';
+    req.url = url;
+    req.headers = { 'content-type': contentType, 'content-length': String(Buffer.byteLength(body)), 'x-github-event': 'pull_request' };
+    const res: any = new EventEmitter();
+    res.statusCode = 200;
+    res._headers = {};
+    res.setHeader = (n: string, v: any) => { res._headers[n.toLowerCase()] = v; };
+    res.getHeader = (n: string) => res._headers[n.toLowerCase()];
+    res.removeHeader = (n: string) => { delete res._headers[n.toLowerCase()]; };
+    let data = '';
+    res.write = (chunk: any) => { data += chunk; return true; };
+    res.end = (chunk?: any) => {
+      if (chunk) data += chunk;
+      let parsed: any = data;
+      try { parsed = JSON.parse(data); } catch {}
+      resolve({ status: res.statusCode, body: parsed });
+    };
+    app.handle(req, res);
+  });
+}
+
 async function blockMobileOn(h: Harness, titles: string[]) {
   const req = h.createRequirement();
   const tasks = await h.fanOutService.execute(req.id);
@@ -283,12 +310,33 @@ describe('J/I: GitHub webhook signature', () => {
     h.db.close();
   });
 
-  it('is not blocked by the cross-site guard (deliveries come through tunnels)', async () => {
+  it('accepts deliveries through a tunnel (foreign Host, no browser headers)', async () => {
     const h = makeHarness();
     const res = await testRequest(h.app, 'POST', '/api/webhooks/github', {
-      body: payload, headers: { 'x-github-event': 'pull_request', 'sec-fetch-site': 'cross-site', host: 'abc.ngrok.app' },
+      body: payload, headers: { 'x-github-event': 'pull_request', host: 'abc.ngrok.app' },
     });
     expect(res.status).toBe(200);
+    h.db.close();
+  });
+
+  it('rejects browser cross-site posts to the webhook (CSRF), even without a secret', async () => {
+    const h = makeHarness();
+    const res = await testRequest(h.app, 'POST', '/api/webhooks/github', {
+      body: payload,
+      headers: { 'x-github-event': 'pull_request', 'sec-fetch-site': 'cross-site', origin: 'https://evil.example' },
+    });
+    expect(res.status).toBe(403);
+    h.db.close();
+  });
+
+  it('rejects form-encoded webhook payloads (only GitHub JSON deliveries)', async () => {
+    const h = makeHarness();
+    const req = h.createRequirement(['backend']);
+    const [task] = await h.fanOutService.execute(req.id);
+    const form = `action=closed&pull_request[merged]=true&pull_request[title]=${req.id}&pull_request[head][ref]=b&pull_request[html_url]=x&repository[name]=backend`;
+    const res = await testRequestRaw(h.app, '/api/webhooks/github', form, 'application/x-www-form-urlencoded');
+    expect(res.status).toBe(415);
+    expect(taskRow(h, task.id).status).toBe('queued');
     h.db.close();
   });
 });

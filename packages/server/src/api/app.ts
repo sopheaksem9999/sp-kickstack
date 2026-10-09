@@ -726,6 +726,10 @@ export function createApp(deps: AppDependencies): Express {
 
   app.post('/api/webhooks/github', async (req, res, next) => {
     try {
+      // GitHub delivers JSON; refusing form bodies stops <form>-based cross-site posts.
+      if (!req.is('application/json')) {
+        return res.status(415).json({ error: 'Webhook payload must be application/json' });
+      }
       if (!hasValidGitHubSignature(req)) {
         return res.status(401).json({ error: 'Invalid webhook signature' });
       }

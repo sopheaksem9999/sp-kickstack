@@ -35,18 +35,18 @@ function hostname(hostHeader: string): string {
 /**
  * Blocks browser-driven cross-site requests (CSRF / drive-by from any web page the operator
  * visits) and DNS-rebinding attacks. Non-browser clients (agents, curl) send neither
- * Sec-Fetch-Site nor a foreign Host and pass through. Webhooks are exempt: they arrive via
- * tunnels and are authenticated by signature instead.
+ * Sec-Fetch-Site nor a foreign Host and pass through. Webhooks skip only the Host check
+ * (they arrive through tunnels); GitHub never sends Sec-Fetch-Site, so browsers stay blocked.
  */
 export function requestGuard(options: { webOrigins: string[]; allowedHosts: string[] }): RequestHandler {
   const origins = new Set(options.webOrigins);
   const hosts = new Set(options.allowedHosts.map((h) => h.toLowerCase()));
 
   return (req: Request, res: Response, next: NextFunction) => {
-    if (req.path.startsWith('/api/webhooks/')) return next();
+    const isWebhook = req.path.startsWith('/api/webhooks/');
 
     const host = req.headers.host;
-    if (host && !hosts.has(hostname(host))) {
+    if (!isWebhook && host && !hosts.has(hostname(host))) {
       return res.status(403).json({ error: `Host not allowed: ${host}` });
     }
 

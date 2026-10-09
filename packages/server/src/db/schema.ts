@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS requirements (
   id          TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL DEFAULT 'default' REFERENCES workspaces(id) ON DELETE CASCADE,
+  session_id  TEXT DEFAULT NULL REFERENCES ai_chat_sessions(id) ON DELETE SET NULL,
   seq         INTEGER NOT NULL UNIQUE,
   title       TEXT NOT NULL,
   status      TEXT NOT NULL,
@@ -139,4 +140,40 @@ CREATE TABLE IF NOT EXISTS settings (
 
 INSERT OR IGNORE INTO settings (key, value)
 VALUES ('branch_merge_settings', '{"default_base_branch":"develop","merge_policy":"manual_review_merge","auto_delete_branch":false}');
+
+CREATE TABLE IF NOT EXISTS ai_chat_sessions (
+  id           TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL DEFAULT 'default' REFERENCES workspaces(id) ON DELETE CASCADE,
+  title        TEXT NOT NULL,
+  provider     TEXT NOT NULL DEFAULT 'auto',
+  model        TEXT,
+  effort       TEXT NOT NULL DEFAULT 'medium',
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_chat_sessions_workspace ON ai_chat_sessions(workspace_id);
+
+CREATE TABLE IF NOT EXISTS ai_chat_messages (
+  id           TEXT PRIMARY KEY,
+  session_id   TEXT NOT NULL REFERENCES ai_chat_sessions(id) ON DELETE CASCADE,
+  role         TEXT NOT NULL,
+  content      TEXT NOT NULL,
+  spec_json    TEXT,
+  attachments  TEXT NOT NULL DEFAULT '[]',
+  created_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_chat_messages_session ON ai_chat_messages(session_id);
+
+CREATE TABLE IF NOT EXISTS task_logs (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id    INTEGER NOT NULL REFERENCES bridge_tasks(id) ON DELETE CASCADE,
+  stream     TEXT NOT NULL DEFAULT 'stdout',
+  message    TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_logs_task ON task_logs(task_id);
 `;
+

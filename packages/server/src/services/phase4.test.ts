@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest';
 import { initDatabase, AppDatabase } from '../db/index.js';
 import { ProjectService } from './projectService.js';
 import { RequirementService } from './requirementService.js';
@@ -10,6 +10,12 @@ import { FakeEngineServer } from '../adapters/fakeEngine.js';
 import { StoneforgeAdapter } from '../adapters/stoneforgeAdapter.js';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const tempRepoBackend = path.resolve(__dirname, '../../.temp/sp-test-repo-backend');
+const tempRepoMobile = path.resolve(__dirname, '../../.temp/sp-test-repo-mobile');
+const tempWorkspace = path.resolve(__dirname, '../../.temp/sp-test-workspace-phase4');
 
 describe('Phase 4: Cross-Repo Tickets, Links, and Outbox Scanner', () => {
   let db: AppDatabase;
@@ -24,16 +30,14 @@ describe('Phase 4: Cross-Repo Tickets, Links, and Outbox Scanner', () => {
   let backendAdapter: StoneforgeAdapter;
   let mobileAdapter: StoneforgeAdapter;
 
-  const tempRepoBackend = `/tmp/sp-test-repo-backend-${Date.now()}`;
-  const tempRepoMobile = `/tmp/sp-test-repo-mobile-${Date.now()}`;
-
   beforeEach(() => {
     fs.mkdirSync(tempRepoBackend, { recursive: true });
     fs.mkdirSync(tempRepoMobile, { recursive: true });
+    fs.mkdirSync(tempWorkspace, { recursive: true });
 
     db = initDatabase(':memory:');
     projectService = new ProjectService(db);
-    requirementService = new RequirementService(db, '/tmp/workspace');
+    requirementService = new RequirementService(db, tempWorkspace);
 
     backendEngine = new FakeEngineServer('http://127.0.0.1:3457');
     mobileEngine = new FakeEngineServer('http://127.0.0.1:3477');
@@ -92,6 +96,12 @@ describe('Phase 4: Cross-Repo Tickets, Links, and Outbox Scanner', () => {
 
   afterEach(() => {
     db.close();
+  });
+
+  afterAll(() => {
+    fs.rmSync(tempRepoBackend, { recursive: true, force: true });
+    fs.rmSync(tempRepoMobile, { recursive: true, force: true });
+    fs.rmSync(tempWorkspace, { recursive: true, force: true });
   });
 
   it('detects and rejects dependency cycles', () => {

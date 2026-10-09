@@ -1,0 +1,13 @@
+{
+  "name": "@sp-kickstack/desktop",
+  "version": "0.2.0",
+  "private": true,
+  "description": "SP Kickstack Desktop App powered by Tauri v2",
+  "scripts": {
+    "dev": "tauri dev",
+    "build:desktop": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0"
+  }
+}

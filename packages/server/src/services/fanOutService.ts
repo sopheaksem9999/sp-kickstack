@@ -41,6 +41,11 @@ export class FanOutService {
 - Target Branch: All changes must be developed on the \`${baseBranch}\` branch.
 - Merge Strategy: ${mergePolicyDesc}
 ${assetsBlock}
+## Execution Autonomy & Headless Protocol (Strategy A)
+- **Operate headlessly & autonomously**: Do NOT halt execution to ask user confirmation for running standard builds, package installations, tests, or mechanical file refactorings.
+- **Architectural Disambiguation**: If an implementation fork or design choice arises, pick the safest industry standard convention, record the rationale in \`specs/${reqId}/decision.md\`, and proceed without waiting for interactive human prompts.
+- **Cross-Service Contracts**: Never pause to chat interactively with the human about other repositories; instead issue a blocking \`xticket\` so the dependency graph handles orchestration automatically.
+
 ## What to do
 1. Read the requirement below and inspect this codebase on the \`${baseBranch}\` branch.
 2. Write \`specs/${reqId}/spec.md\` (what THIS project must do, affected modules,

@@ -13,6 +13,8 @@ import { OutboxScanner } from './watcher/outboxScanner.js';
 import { SseBroadcaster } from './sse/broadcaster.js';
 import { Notifier } from './notify/notifier.js';
 import { createAdapter } from './adapters/index.js';
+import { VcsSyncService } from './services/vcsSyncService.js';
+import { MetricsService } from './services/metricsService.js';
 import { createApp } from './api/app.js';
 
 const PORT = Number(process.env.PORT || 4100);
@@ -42,6 +44,14 @@ const ticketService = new TicketService(db, projectService, linkService, getAdap
 const fanOutService = new FanOutService(db, projectService, requirementService, getAdapter);
 const broadcaster = new SseBroadcaster();
 const notifier = new Notifier();
+const vcsSyncService = new VcsSyncService(
+  db,
+  projectService,
+  requirementService,
+  linkService,
+  broadcaster
+);
+const metricsService = new MetricsService(db, sprintService);
 
 const watcher = new EngineWatcher(
   db,
@@ -66,6 +76,8 @@ const app = createApp({
   projectService,
   requirementService,
   sprintService,
+  vcsSyncService,
+  metricsService,
   fanOutService,
   linkService,
   ticketService,

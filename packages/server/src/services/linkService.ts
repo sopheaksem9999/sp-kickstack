@@ -101,7 +101,7 @@ ${contractBlock}
       const upstreamContext = this.formatUpstreamContext(
         dependencyTask,
         dependencyTask.project,
-        targetProject?.contract_path,
+        targetProject?.contract_path || undefined,
         targetProject?.base_branch
       );
 

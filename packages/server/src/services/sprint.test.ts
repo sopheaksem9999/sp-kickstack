@@ -1,7 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll } from 'vitest';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { initDatabase, AppDatabase } from '../db/index.js';
 import { SprintService } from './sprintService.js';
 import { RequirementService } from './requirementService.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const testWorkspace = path.resolve(__dirname, '../../.temp/test-workspace-sprint');
 
 describe('SprintService & Scrum Lifecycle', () => {
   let db: AppDatabase;
@@ -9,6 +15,7 @@ describe('SprintService & Scrum Lifecycle', () => {
   let requirementService: RequirementService;
 
   beforeEach(() => {
+    fs.mkdirSync(testWorkspace, { recursive: true });
     db = initDatabase(':memory:');
     db.prepare(`
       INSERT OR IGNORE INTO workspaces (id, name, description, rules, context, created_at, updated_at)
@@ -21,7 +28,11 @@ describe('SprintService & Scrum Lifecycle', () => {
       VALUES ('p1', 'ws_1', '/tmp/p1', 'fake', datetime('now'), datetime('now'))
     `).run();
     sprintService = new SprintService(db);
-    requirementService = new RequirementService(db, '/tmp/test-workspace');
+    requirementService = new RequirementService(db, testWorkspace);
+  });
+
+  afterAll(() => {
+    fs.rmSync(testWorkspace, { recursive: true, force: true });
   });
 
   it('should create and list sprints', () => {

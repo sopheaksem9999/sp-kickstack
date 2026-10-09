@@ -360,8 +360,8 @@ export function RequirementsPage() {
           id: 'low',
           title: 'LOW PRIORITY',
           color: 'bg-slate-400',
-          bgLight: 'bg-slate-50/80 dark:bg-[#16171e]/70 border-slate-200 dark:border-[#262732]',
-          headerBg: 'bg-slate-100/90 dark:bg-[#1a1b26] border-slate-200 dark:border-[#262732]',
+          bgLight: 'bg-slate-50/80 dark:bg-[#1e1e1e]/80 border-slate-200 dark:border-[#2d2d2d]',
+          headerBg: 'bg-slate-100/90 dark:bg-[#242424] border-slate-200 dark:border-[#2d2d2d]',
           headerText: 'text-slate-700 dark:text-slate-300',
           badgeBg: 'bg-slate-200/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300',
           match: (r: any) => r.priority === 'low',
@@ -390,8 +390,8 @@ export function RequirementsPage() {
         id: 'draft',
         title: 'TO DO / DRAFT',
         color: 'bg-slate-400',
-        bgLight: 'bg-slate-50/90 dark:bg-[#16171e]/80 border-slate-200 dark:border-[#262732]',
-        headerBg: 'bg-slate-100 dark:bg-[#1c1d27] border-slate-200 dark:border-[#262732]',
+        bgLight: 'bg-slate-50/90 dark:bg-[#1e1e1e]/80 border-slate-200 dark:border-[#2d2d2d]',
+        headerBg: 'bg-slate-100 dark:bg-[#242424] border-slate-200 dark:border-[#2d2d2d]',
         headerText: 'text-slate-700 dark:text-slate-300',
         badgeBg: 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300',
         match: (r: any) => r.status === 'draft',
@@ -450,7 +450,7 @@ export function RequirementsPage() {
   }, [groupBy, allProjectNames]);
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4">
+    <div className="w-full max-w-[1600px] mx-auto space-y-4">
       {/* ClickUp Title & Top Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -486,12 +486,12 @@ export function RequirementsPage() {
       </div>
 
       {/* Scrum Navigation Tabs */}
-      <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100/80 dark:bg-[#16171d] rounded-xl border border-slate-200 dark:border-[#262732] w-fit shadow-inner">
+      <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100/80 dark:bg-[#1e1e1e] rounded-xl border border-slate-200 dark:border-[#2d2d2d] w-fit shadow-inner">
         <button
           onClick={() => setScrumTab('sprint')}
           className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
             scrumTab === 'sprint'
-              ? 'bg-white dark:bg-[#23242e] text-indigo-600 dark:text-indigo-400 shadow-sm'
+              ? 'bg-white dark:bg-[#282828] text-indigo-600 dark:text-indigo-400 shadow-sm'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
@@ -513,7 +513,7 @@ export function RequirementsPage() {
           onClick={() => setScrumTab('backlog')}
           className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
             scrumTab === 'backlog'
-              ? 'bg-white dark:bg-[#23242e] text-indigo-600 dark:text-indigo-400 shadow-sm'
+              ? 'bg-white dark:bg-[#282828] text-indigo-600 dark:text-indigo-400 shadow-sm'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
@@ -527,7 +527,7 @@ export function RequirementsPage() {
           onClick={() => setScrumTab('all')}
           className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
             scrumTab === 'all'
-              ? 'bg-white dark:bg-[#23242e] text-indigo-600 dark:text-indigo-400 shadow-sm'
+              ? 'bg-white dark:bg-[#282828] text-indigo-600 dark:text-indigo-400 shadow-sm'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
@@ -540,7 +540,7 @@ export function RequirementsPage() {
 
       {/* Active Sprint Header Banner Card (when on Sprint tab) */}
       {scrumTab === 'sprint' && activeSprint && (
-        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-indigo-50/70 via-white to-purple-50/40 dark:from-[#1c1d27] dark:via-[#16171d] dark:to-[#1a1b24] border border-indigo-200/80 dark:border-indigo-900/40 shadow-sm space-y-3 animate-in fade-in duration-150">
+        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-indigo-50/70 via-white to-purple-50/40 dark:from-[#222222] dark:via-[#1e1e1e] dark:to-[#242424] border border-indigo-200/80 dark:border-indigo-900/40 shadow-sm space-y-3 animate-in fade-in duration-150">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
@@ -613,7 +613,7 @@ export function RequirementsPage() {
 
       {/* When on Sprint tab but no active sprint */}
       {scrumTab === 'sprint' && !activeSprint && !isLoading && (
-        <div className="p-8 rounded-2xl bg-white dark:bg-[#16171d] border border-dashed border-slate-300 dark:border-[#2e303d] text-center space-y-4 shadow-sm animate-in fade-in duration-150">
+        <div className="p-8 rounded-2xl bg-white dark:bg-[#1e1e1e] border border-dashed border-slate-300 dark:border-[#303030] text-center space-y-4 shadow-sm animate-in fade-in duration-150">
           <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 mx-auto flex items-center justify-center font-bold text-xl shadow-inner">
             <Zap className="w-6 h-6" />
           </div>
@@ -631,7 +631,7 @@ export function RequirementsPage() {
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                 Planned Sprints Ready to Start ({plannedSprints.length})
               </span>
-              <div className="divide-y divide-slate-100 dark:divide-[#252632] border border-slate-200 dark:border-[#282a36] rounded-xl overflow-hidden bg-slate-50/50 dark:bg-[#1b1c24]">
+              <div className="divide-y divide-slate-100 dark:divide-[#2d2d2d] border border-slate-200 dark:border-[#303030] rounded-xl overflow-hidden bg-slate-50/50 dark:bg-[#242424]">
                 {plannedSprints.map((s) => (
                   <div key={s.id} className="p-3.5 flex items-center justify-between gap-3">
                     <div>
@@ -679,7 +679,7 @@ export function RequirementsPage() {
       {/* ClickUp View & Filter Bar (shown if not in empty sprint launcher) */}
       {(scrumTab !== 'sprint' || activeSprint) && (
         <div className="space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-2.5 p-1.5 rounded-xl bg-white dark:bg-[#16171d] border border-slate-200 dark:border-[#262732] shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2.5 p-1.5 rounded-xl bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-[#2d2d2d] shadow-sm">
             {/* Left: View Switchers (List / Board) */}
             <div className="flex items-center gap-1">
               <button
@@ -687,7 +687,7 @@ export function RequirementsPage() {
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                   viewMode === 'list'
                     ? 'bg-purple-100 dark:bg-purple-950/60 text-[#7b68ee] dark:text-purple-300 shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#20212c]'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#282828]'
                 }`}
               >
                 <List className="w-3.5 h-3.5" />
@@ -699,7 +699,7 @@ export function RequirementsPage() {
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                   viewMode === 'board'
                     ? 'bg-purple-100 dark:bg-purple-950/60 text-[#7b68ee] dark:text-purple-300 shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#20212c]'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#282828]'
                 }`}
               >
                 <Kanban className="w-3.5 h-3.5" />
@@ -715,7 +715,7 @@ export function RequirementsPage() {
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all ${
                   activeFilterCount > 0 || isFilterPanelOpen
                     ? 'bg-purple-50 dark:bg-purple-950/50 border-[#7b68ee] text-[#7b68ee] dark:text-purple-300 font-bold'
-                    : 'border-slate-200 dark:border-[#2a2b36] text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-[#20212a]'
+                    : 'border-slate-200 dark:border-[#303030] text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-[#282828]'
                 }`}
               >
                 <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -728,22 +728,22 @@ export function RequirementsPage() {
               </button>
 
               {/* Group By Selector */}
-              <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-[#2a2b36] bg-slate-50 dark:bg-[#1a1b22]">
+              <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424]">
                 <span className="text-[10px] uppercase font-bold text-slate-400">Group:</span>
                 <select
                   value={groupBy}
                   onChange={(e) => setGroupBy(e.target.value as GroupByOption)}
                   className="bg-transparent font-medium text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer pr-1"
                 >
-                  <option value="none" className="bg-white dark:bg-[#1e1f26]">None (DataTable)</option>
-                  <option value="status" className="bg-white dark:bg-[#1e1f26]">Status</option>
-                  <option value="priority" className="bg-white dark:bg-[#1e1f26]">Priority</option>
-                  <option value="project" className="bg-white dark:bg-[#1e1f26]">Project</option>
+                  <option value="none" className="bg-white dark:bg-[#242424]">None (DataTable)</option>
+                  <option value="status" className="bg-white dark:bg-[#242424]">Status</option>
+                  <option value="priority" className="bg-white dark:bg-[#242424]">Priority</option>
+                  <option value="project" className="bg-white dark:bg-[#242424]">Project</option>
                 </select>
               </div>
 
               {/* Sort By Selector */}
-              <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-[#2a2b36] bg-slate-50 dark:bg-[#1a1b22]">
+              <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424]">
                 <ArrowUpDown className="w-3 h-3 text-slate-400" />
                 <select
                   value={`${sortField}_${sortDirection}`}
@@ -754,13 +754,13 @@ export function RequirementsPage() {
                   }}
                   className="bg-transparent font-medium text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer pr-1"
                 >
-                  <option value="created_at_desc" className="bg-white dark:bg-[#1e1f26]">Sort: Newest</option>
-                  <option value="created_at_asc" className="bg-white dark:bg-[#1e1f26]">Sort: Oldest</option>
-                  <option value="title_asc" className="bg-white dark:bg-[#1e1f26]">Sort: Name (A-Z)</option>
-                  <option value="title_desc" className="bg-white dark:bg-[#1e1f26]">Sort: Name (Z-A)</option>
-                  <option value="priority_desc" className="bg-white dark:bg-[#1e1f26]">Sort: Priority</option>
-                  <option value="status_asc" className="bg-white dark:bg-[#1e1f26]">Sort: Status</option>
-                  <option value="id_asc" className="bg-white dark:bg-[#1e1f26]">Sort: ID</option>
+                  <option value="created_at_desc" className="bg-white dark:bg-[#242424]">Sort: Newest</option>
+                  <option value="created_at_asc" className="bg-white dark:bg-[#242424]">Sort: Oldest</option>
+                  <option value="title_asc" className="bg-white dark:bg-[#242424]">Sort: Name (A-Z)</option>
+                  <option value="title_desc" className="bg-white dark:bg-[#242424]">Sort: Name (Z-A)</option>
+                  <option value="priority_desc" className="bg-white dark:bg-[#242424]">Sort: Priority</option>
+                  <option value="status_asc" className="bg-white dark:bg-[#242424]">Sort: Status</option>
+                  <option value="id_asc" className="bg-white dark:bg-[#242424]">Sort: ID</option>
                 </select>
               </div>
 
@@ -772,7 +772,7 @@ export function RequirementsPage() {
                   placeholder="Search..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 pr-7 py-1 bg-slate-100 dark:bg-[#20212c] border border-slate-200 dark:border-[#2e303d] rounded-lg text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-[#7b68ee] w-36 sm:w-52"
+                  className="pl-8 pr-7 py-1 bg-slate-100 dark:bg-[#262626] border border-slate-200 dark:border-[#333333] rounded-lg text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-[#7b68ee] w-36 sm:w-52"
                 />
                 {searchQuery && (
                   <button
@@ -788,8 +788,8 @@ export function RequirementsPage() {
 
           {/* ClickUp Dedicated Filter Options Drawer / Popover Panel */}
           {(isFilterPanelOpen || activeFilterCount > 0) && (
-            <div className="p-3.5 rounded-xl bg-white dark:bg-[#16171d] border border-purple-100 dark:border-[#262732] shadow-sm space-y-3 animate-in fade-in duration-150">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#22232e] pb-2">
+            <div className="p-3.5 rounded-xl bg-white dark:bg-[#1e1e1e] border border-purple-100 dark:border-[#2d2d2d] shadow-sm space-y-3 animate-in fade-in duration-150">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#2d2d2d] pb-2">
                 <div className="flex items-center gap-2">
                   <Filter className="w-3.5 h-3.5 text-[#7b68ee]" />
                   <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
@@ -830,7 +830,7 @@ export function RequirementsPage() {
                           className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-all uppercase ${
                             active
                               ? 'bg-purple-600 text-white shadow-sm'
-                              : 'bg-slate-100 dark:bg-[#20212b] text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                              : 'bg-slate-100 dark:bg-[#282828] text-slate-600 dark:text-slate-400 hover:bg-slate-200'
                           }`}
                         >
                           {st}
@@ -855,7 +855,7 @@ export function RequirementsPage() {
                           className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-all capitalize ${
                             active
                               ? 'bg-purple-600 text-white shadow-sm'
-                              : 'bg-slate-100 dark:bg-[#20212b] text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                              : 'bg-slate-100 dark:bg-[#282828] text-slate-600 dark:text-slate-400 hover:bg-slate-200'
                           }`}
                         >
                           {pr}
@@ -881,7 +881,7 @@ export function RequirementsPage() {
                             className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-all font-mono ${
                               active
                                 ? 'bg-purple-600 text-white shadow-sm'
-                                : 'bg-slate-100 dark:bg-[#20212b] text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                                : 'bg-slate-100 dark:bg-[#282828] text-slate-600 dark:text-slate-400 hover:bg-slate-200'
                             }`}
                           >
                             {proj}
@@ -895,7 +895,7 @@ export function RequirementsPage() {
 
               {/* Active Filter Chips Summary */}
               {activeFilterCount > 0 && (
-                <div className="pt-2 border-t border-slate-100 dark:border-[#22232e] flex flex-wrap items-center gap-1.5 text-xs">
+                <div className="pt-2 border-t border-slate-100 dark:border-[#2d2d2d] flex flex-wrap items-center gap-1.5 text-xs">
                   <span className="text-[10px] font-bold uppercase text-slate-400">Active:</span>
 
                   {hideDone && (
@@ -947,7 +947,7 @@ export function RequirementsPage() {
           Loading requirements & sprint board...
         </div>
       ) : filteredRequirements.length === 0 && (scrumTab !== 'sprint' || activeSprint) ? (
-        <div className="p-12 text-center border border-dashed border-slate-300 dark:border-[#2c2d38] rounded-2xl bg-white dark:bg-[#16171d]/60 shadow-sm space-y-3">
+        <div className="p-12 text-center border border-dashed border-slate-300 dark:border-[#303030] rounded-2xl bg-white dark:bg-[#1e1e1e]/60 shadow-sm space-y-3">
           <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">
             {activeFilterCount > 0
               ? 'No requirements match your active filter options.'
@@ -970,7 +970,7 @@ export function RequirementsPage() {
           {activeFilterCount > 0 && (
             <button
               onClick={clearAllFilters}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 dark:bg-[#20212a] text-slate-700 dark:text-slate-300 hover:bg-slate-200"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 dark:bg-[#262626] text-slate-700 dark:text-slate-300 hover:bg-slate-200"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Clear Filter Options</span>
@@ -979,10 +979,10 @@ export function RequirementsPage() {
         </div>
       ) : (scrumTab !== 'sprint' || activeSprint) && viewMode === 'list' ? (
         /* Unified High-Density DataTable View */
-        <div className="bg-white dark:bg-[#16171d] rounded-2xl border border-slate-200 dark:border-[#262732] overflow-hidden shadow-sm">
+        <div className="bg-white dark:bg-[#1e1e1e] rounded-2xl border border-slate-200 dark:border-[#2d2d2d] overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-slate-50/90 dark:bg-[#1a1b24] text-slate-500 dark:text-slate-400 font-mono text-[10px] uppercase border-b border-slate-200 dark:border-[#262732] select-none sticky top-0 z-10 backdrop-blur">
+              <thead className="bg-slate-50/90 dark:bg-[#222222] text-slate-500 dark:text-slate-400 font-mono text-[10px] uppercase border-b border-slate-200 dark:border-[#2d2d2d] select-none sticky top-0 z-10 backdrop-blur">
                 <tr>
                   <th
                     onClick={() => handleSort('id')}
@@ -1075,7 +1075,7 @@ export function RequirementsPage() {
                   <th className="px-4 py-3 font-semibold text-center whitespace-nowrap w-16">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-[#242531]">
+              <tbody className="divide-y divide-slate-100 dark:divide-[#2d2d2d]">
                 {groupBy === 'none' ? (
                   filteredRequirements.map((req) => {
                     const prio = priorityConfig[req.priority] || priorityConfig.normal;
@@ -1084,7 +1084,7 @@ export function RequirementsPage() {
                     return (
                       <tr
                         key={req.id}
-                        className="hover:bg-purple-50/30 dark:hover:bg-[#1f202b] transition-colors group"
+                        className="hover:bg-purple-50/30 dark:hover:bg-[#262626] transition-colors group"
                       >
                         <td className="px-4 py-3 font-mono font-bold text-[#7b68ee] whitespace-nowrap">
                           <button
@@ -1148,7 +1148,7 @@ export function RequirementsPage() {
                                   });
                                 }
                               }}
-                              className="bg-slate-100 dark:bg-[#20212a] border border-slate-200 dark:border-[#2f313d] text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 rounded-lg px-2 py-1 focus:outline-none cursor-pointer max-w-[130px]"
+                              className="bg-slate-100 dark:bg-[#262626] border border-slate-200 dark:border-[#333333] text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 rounded-lg px-2 py-1 focus:outline-none cursor-pointer max-w-[130px]"
                             >
                               <option value="" disabled>
                                 Move to...
@@ -1171,7 +1171,7 @@ export function RequirementsPage() {
                                   ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/40'
                                   : reqSprint
                                   ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800/40'
-                                  : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-[#20212a] dark:text-slate-400 dark:border-[#2c2d38]'
+                                  : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-[#262626] dark:text-slate-400 dark:border-[#303030]'
                               }`}
                             >
                               {reqSprint
@@ -1189,7 +1189,7 @@ export function RequirementsPage() {
                           <button
                             type="button"
                             onClick={() => setSelectedRequirementId(req.id)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-[#7b68ee] hover:bg-purple-50 dark:hover:bg-[#262738] inline-flex items-center justify-center transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-[#7b68ee] hover:bg-purple-50 dark:hover:bg-[#282828] inline-flex items-center justify-center transition-colors cursor-pointer"
                             title="View Details in Sheet"
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
@@ -1209,7 +1209,7 @@ export function RequirementsPage() {
                         <Fragment key={group.id}>
                           <tr
                             onClick={() => toggleGroup(group.id)}
-                            className="bg-slate-50/90 dark:bg-[#1a1b24] border-y border-slate-200 dark:border-[#262732] cursor-pointer select-none hover:bg-slate-100/90 dark:hover:bg-[#20212d] transition-colors"
+                            className="bg-slate-50/90 dark:bg-[#222222] border-y border-slate-200 dark:border-[#2d2d2d] cursor-pointer select-none hover:bg-slate-100/90 dark:hover:bg-[#262626] transition-colors"
                           >
                             <td colSpan={9} className="px-4 py-2.5">
                               <div className="flex items-center gap-2">
@@ -1239,7 +1239,7 @@ export function RequirementsPage() {
                               return (
                                 <tr
                                   key={req.id}
-                                  className="hover:bg-purple-50/30 dark:hover:bg-[#1f202b] transition-colors group"
+                                  className="hover:bg-purple-50/30 dark:hover:bg-[#262626] transition-colors group"
                                 >
                                   <td className="px-4 py-3 font-mono font-bold text-[#7b68ee] whitespace-nowrap">
                                     <button
@@ -1306,7 +1306,7 @@ export function RequirementsPage() {
                                             });
                                           }
                                         }}
-                                        className="bg-slate-100 dark:bg-[#20212a] border border-slate-200 dark:border-[#2f313d] text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 rounded-lg px-2 py-1 focus:outline-none cursor-pointer max-w-[130px]"
+                                        className="bg-slate-100 dark:bg-[#262626] border border-slate-200 dark:border-[#333333] text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 rounded-lg px-2 py-1 focus:outline-none cursor-pointer max-w-[130px]"
                                       >
                                         <option value="" disabled>
                                           Move to...
@@ -1329,7 +1329,7 @@ export function RequirementsPage() {
                                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/40'
                                             : reqSprint
                                             ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800/40'
-                                            : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-[#20212a] dark:text-slate-400 dark:border-[#2c2d38]'
+                                            : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-[#262626] dark:text-slate-400 dark:border-[#303030]'
                                         }`}
                                       >
                                         {reqSprint
@@ -1347,7 +1347,7 @@ export function RequirementsPage() {
                                     <button
                                       type="button"
                                       onClick={() => setSelectedRequirementId(req.id)}
-                                      className="p-1.5 rounded-lg text-slate-400 hover:text-[#7b68ee] hover:bg-purple-50 dark:hover:bg-[#262738] inline-flex items-center justify-center transition-colors cursor-pointer"
+                                      className="p-1.5 rounded-lg text-slate-400 hover:text-[#7b68ee] hover:bg-purple-50 dark:hover:bg-[#282828] inline-flex items-center justify-center transition-colors cursor-pointer"
                                       title="View Details in Sheet"
                                     >
                                       <ExternalLink className="w-3.5 h-3.5" />
@@ -1365,7 +1365,7 @@ export function RequirementsPage() {
           </div>
 
           {/* Table Footer with Summary and Quick Action */}
-          <div className="px-4 py-3 bg-slate-50/70 dark:bg-[#14151c] border-t border-slate-200 dark:border-[#262732] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
+          <div className="px-4 py-3 bg-slate-50/70 dark:bg-[#171717] border-t border-slate-200 dark:border-[#2d2d2d] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
             <div className="flex items-center gap-3">
               <span>
                 Showing <strong className="text-slate-800 dark:text-slate-200">{filteredRequirements.length}</strong> of{' '}
@@ -1439,7 +1439,7 @@ export function RequirementsPage() {
                   )}
 
                   {groupReqs.length === 0 && (!dragOverGroupId || dragOverGroupId !== group.id) && (
-                    <div className="p-6 text-center text-slate-400 dark:text-slate-500 text-xs italic border border-dashed border-slate-300/60 dark:border-[#282a38] rounded-xl my-2">
+                    <div className="p-6 text-center text-slate-400 dark:text-slate-500 text-xs italic border border-dashed border-slate-300/60 dark:border-[#303030] rounded-xl my-2">
                       Drop cards here
                     </div>
                   )}
@@ -1470,7 +1470,7 @@ export function RequirementsPage() {
                           if (isDraggingJustEndedRef.current) return;
                           setSelectedRequirementId(req.id);
                         }}
-                        className={`block p-3.5 rounded-xl bg-white dark:bg-[#1a1b26] hover:bg-slate-50/90 dark:hover:bg-[#222332] border border-slate-200/80 dark:border-[#2d2f3e] shadow-2xs hover:shadow-md transition-all group cursor-grab active:cursor-grabbing select-none ${
+                        className={`block p-3.5 rounded-xl bg-white dark:bg-[#242424] hover:bg-slate-50/90 dark:hover:bg-[#262626] border border-slate-200/80 dark:border-[#2d2d2d] shadow-2xs hover:shadow-md transition-all group cursor-grab active:cursor-grabbing select-none ${
                           isBeingDragged
                             ? 'opacity-40 scale-95 border-dashed border-[#7b68ee]'
                             : ''
@@ -1488,7 +1488,7 @@ export function RequirementsPage() {
                           {req.title}
                         </div>
 
-                        <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-[#262737]">
+                        <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-[#2d2d2d]">
                           <div className="flex flex-wrap items-center gap-1">
                             {req.affected_projects.map((proj) => (
                               <span
@@ -1513,7 +1513,7 @@ export function RequirementsPage() {
                   <button
                     type="button"
                     onClick={openSheet}
-                    className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-white/80 dark:hover:bg-[#20212a] font-semibold transition-colors"
+                    className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-white/80 dark:hover:bg-[#282828] font-semibold transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Add Task</span>

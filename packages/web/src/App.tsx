@@ -7,6 +7,8 @@ import { RequirementDetailPage } from './pages/RequirementDetailPage.js';
 import { ProjectsPage } from './pages/ProjectsPage.js';
 import { AttachmentsPage } from './pages/AttachmentsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
+import { MetricsPage } from './pages/MetricsPage.js';
+import { AiChatPage } from './pages/AiChatPage.js';
 import { useBridgeEvents } from './lib/useEvents.js';
 import { WorkspaceProvider } from './lib/WorkspaceContext.js';
 import { ThemeProvider } from './lib/ThemeContext.js';
@@ -30,8 +32,10 @@ function AppRoutes() {
         <Route path="/requirements" element={<RequirementsPage />} />
         <Route path="/requirements/new" element={<NewRequirementPage />} />
         <Route path="/requirements/:id" element={<RequirementDetailPage />} />
+        <Route path="/chat" element={<AiChatPage />} />
         <Route path="/attachments" element={<AttachmentsPage />} />
         <Route path="/projects" element={<ProjectsPage />} />
+        <Route path="/metrics" element={<MetricsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Routes>
     </AppLayout>

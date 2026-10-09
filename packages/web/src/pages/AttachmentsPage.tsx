@@ -175,7 +175,7 @@ export function AttachmentsPage() {
   const totalSharedBytes = sharedAssets.reduce((sum, item) => sum + (item.size || 0), 0);
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-6">
+    <div className="w-full max-w-[1600px] mx-auto space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

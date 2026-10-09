@@ -9,7 +9,8 @@ interface WorkspaceContextType {
   activeWorkspace: Workspace | null;
   setActiveWorkspaceId: (id: string) => void;
   isLoading: boolean;
-  refreshWorkspaces: () => void;
+  refreshWorkspaces: () => Promise<void>;
+  upsertWorkspace: (workspace: Workspace, autoSwitch?: boolean) => void;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -28,9 +29,35 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const setActiveWorkspaceId = (id: string) => {
     setActiveWorkspaceIdState(id);
     localStorage.setItem('sp_active_workspace', id);
-    // Invalidate queries so projects and requirements refetch with new workspace scope
+    // Invalidate queries so workspace-scoped data refetches immediately
     queryClient.invalidateQueries({ queryKey: ['projects'] });
     queryClient.invalidateQueries({ queryKey: ['requirements'] });
+    queryClient.invalidateQueries({ queryKey: ['sprints'] });
+    queryClient.invalidateQueries({ queryKey: ['assets'] });
+    queryClient.invalidateQueries({ queryKey: ['ai-chat-sessions'] });
+  };
+
+  const upsertWorkspace = (ws: Workspace, autoSwitch: boolean = false) => {
+    // 1. Immediately update React Query cache so UI components have the new workspace synchronously
+    queryClient.setQueryData<Workspace[]>(['workspaces'], (old = []) => {
+      const exists = old.some((w) => w.id === ws.id);
+      if (exists) {
+        return old.map((w) => (w.id === ws.id ? ws : w));
+      }
+      return [...old, ws];
+    });
+
+    // 2. Auto-switch active workspace if requested
+    if (autoSwitch) {
+      setActiveWorkspaceId(ws.id);
+    }
+
+    // 3. Reconcile with server in background
+    queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+  };
+
+  const refreshWorkspaces = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
   };
 
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) || null;
@@ -43,7 +70,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         activeWorkspace,
         setActiveWorkspaceId,
         isLoading,
-        refreshWorkspaces: () => queryClient.invalidateQueries({ queryKey: ['workspaces'] }),
+        refreshWorkspaces,
+        upsertWorkspace,
       }}
     >
       {children}

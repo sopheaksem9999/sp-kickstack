@@ -76,10 +76,10 @@ export interface Project {
   kind: 'backend' | 'frontend' | 'mobile' | 'other';
   repo_path: string;
   engine_type: EngineType;
-  engine_url?: string;
+  engine_url?: string | null;
   engine_meta?: Record<string, unknown>;
   base_branch: string;
-  contract_path?: string;
+  contract_path?: string | null;
   done_means: DoneMeans;
   high_risk_paths: string[];
   enabled: boolean;
@@ -105,6 +105,7 @@ export interface Sprint {
 export interface Requirement {
   id: string; // REQ-001
   workspace_id?: string;
+  session_id?: string | null;
   sprint_id?: string | null;
   seq: number;
   title: string;
@@ -181,3 +182,106 @@ export interface SharedAsset {
   notes?: string;
   created_at: string;
 }
+
+export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+export interface SingleCliConfig {
+  enabled: boolean;
+  model: string;
+  effort: ReasoningEffort;
+  customPath?: string;
+  ultracode?: boolean;
+}
+
+export interface AiCliSettings {
+  defaultProvider: 'auto' | 'claude-cli' | 'agy-cli' | 'codex-cli' | 'ollama' | 'heuristic';
+  claude: SingleCliConfig;
+  agy: SingleCliConfig;
+  codex?: SingleCliConfig;
+  ollama: SingleCliConfig & { url: string };
+}
+
+export type AiChatRole = 'user' | 'assistant' | 'system';
+
+export interface DraftRequirementResult {
+  title: string;
+  goal: string;
+  user_story: string;
+  acceptance_criteria: string[];
+  affected_projects: string[];
+  api_hints?: string;
+  provider_used: string;
+}
+
+export interface ChatAttachmentItem {
+  id?: string;
+  name: string;
+  type?: string;
+  size?: number;
+  data_url?: string;
+  asset_id?: string;
+}
+
+export interface AiChatMessage {
+  id: string;
+  role: AiChatRole;
+  content: string;
+  timestamp: string;
+  suggested_spec?: DraftRequirementResult;
+  attachments?: ChatAttachmentItem[];
+}
+
+export interface AiChatRequest {
+  messages: AiChatMessage[];
+  provider?: 'auto' | 'claude-cli' | 'agy-cli' | 'codex-cli' | 'ollama' | 'heuristic';
+  model?: string;
+  effort?: ReasoningEffort;
+  workspace_id?: string;
+  context_project?: string;
+}
+
+export interface AiChatResponse {
+  message: AiChatMessage;
+  suggested_spec?: DraftRequirementResult;
+  provider_used: string;
+}
+
+export interface AiChatSession {
+  id: string;
+  workspace_id: string;
+  title: string;
+  provider: 'auto' | 'claude-cli' | 'agy-cli' | 'codex-cli' | 'ollama' | 'heuristic';
+  model?: string;
+  effort?: ReasoningEffort;
+  created_at: string;
+  updated_at: string;
+  messages?: AiChatMessage[];
+}
+
+export interface IdeSettings {
+  enabled: boolean;
+  binaryPath?: string;
+  port: number;
+  host: string;
+  externalUrl?: string;
+  autoStart?: boolean;
+}
+
+export interface IdeServerStatus {
+  installed: boolean;
+  running: boolean;
+  binaryPath?: string;
+  port: number;
+  host: string;
+  url?: string;
+  pid?: number;
+  error?: string;
+}
+
+export interface StartIdeInput {
+  project_name?: string;
+  folder_path?: string;
+  port?: number;
+}
+
+

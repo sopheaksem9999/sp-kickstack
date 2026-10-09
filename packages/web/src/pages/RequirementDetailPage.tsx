@@ -17,6 +17,7 @@ import {
   mergeRequirementToMain,
 } from '../lib/api.js';
 import { StatusBadge } from '../components/StatusBadge.js';
+import { DependencyGraphCanvas } from '../components/DependencyGraphCanvas.js';
 import { BridgeTask, RequirementStatus, BranchMergePolicy } from '@sp-kickstack/shared';
 import { toast } from 'sonner';
 import {
@@ -37,7 +38,11 @@ import {
   FileText,
   Edit3,
   X,
+  Terminal,
+  Code2,
 } from 'lucide-react';
+import { LiveTaskLogsDrawer } from '../components/LiveTaskLogsDrawer.js';
+import { ProjectGitReviewModal } from '../components/ProjectGitReviewModal.js';
 
 const stateOptions: { value: RequirementStatus; label: string }[] = [
   { value: 'draft', label: 'ToDo' },
@@ -49,6 +54,10 @@ const stateOptions: { value: RequirementStatus; label: string }[] = [
 export function RequirementDetailPage() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
+
+  // Embedded VS Code Review Modal state
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [selectedReviewProject, setSelectedReviewProject] = useState<string | undefined>(undefined);
 
   const { data: req, isLoading: reqLoading } = useQuery({
     queryKey: ['requirement', id],
@@ -118,6 +127,8 @@ export function RequirementDetailPage() {
 
   const [isEditingProjects, setIsEditingProjects] = useState(false);
   const [editingProjectsList, setEditingProjectsList] = useState<string[]>([]);
+  const [viewTab, setViewTab] = useState<'board' | 'dag'>('board');
+  const [logTask, setLogTask] = useState<BridgeTask | null>(null);
 
   const { data: allProjects = [] } = useQuery({
     queryKey: ['projects', req?.workspace_id || 'default'],
@@ -194,7 +205,7 @@ export function RequirementDetailPage() {
   const isMergeReady = req.status === 'qa' || req.status === 'in_review' || req.status === 'done';
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="w-full max-w-[1600px] mx-auto space-y-6">
       {/* ClickUp Header & Action Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
         <div className="flex items-start gap-3">
@@ -302,6 +313,22 @@ export function RequirementDetailPage() {
             </button>
           )}
 
+          {/* In-App Git Review & Code Diff Button */}
+          {req.affected_projects && req.affected_projects.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedReviewProject(req.affected_projects[0]);
+                setReviewModalOpen(true);
+              }}
+              className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold shadow-md shadow-blue-500/20 active:scale-[0.98] transition-all"
+              title="Review project code and git diffs before merging to main"
+            >
+              <Code2 className="w-3.5 h-3.5" />
+              <span>Review Code & Git Changes</span>
+            </button>
+          )}
+
           {/* Human Review & Click Merge to Main Button */}
           {isMergeReady && (
             <button
@@ -383,12 +410,40 @@ export function RequirementDetailPage() {
         )}
       </div>
 
-      {/* Multi-Project Columns (ClickUp Task Board Per Repo) */}
+      {/* Multi-Project Columns & Visual DAG Switcher */}
       <div>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Per-Repo Agent Engine Runtimes
-          </h3>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3">
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Execution Views
+            </h3>
+            <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-[#1f202b] border border-slate-200 dark:border-[#2b2c3a]">
+              <button
+                type="button"
+                onClick={() => setViewTab('board')}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${
+                  viewTab === 'board'
+                    ? 'bg-white dark:bg-[#282937] text-slate-900 dark:text-white shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+                }`}
+              >
+                Task Columns
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewTab('dag')}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  viewTab === 'dag'
+                    ? 'bg-white dark:bg-[#282937] text-[#7b68ee] dark:text-purple-300 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+                }`}
+              >
+                <GitFork className="w-3.5 h-3.5" />
+                <span>Topology DAG</span>
+              </button>
+            </div>
+          </div>
+
           <div className="flex items-center gap-2.5">
             <span className="text-xs font-mono text-slate-400">
               {req.affected_projects.length} connected repos (targeted to develop branch)
@@ -407,7 +462,17 @@ export function RequirementDetailPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {viewTab === 'dag' ? (
+          <DependencyGraphCanvas
+            requirement={req}
+            tasks={graph?.tasks || []}
+            links={graph?.links || []}
+            onReleaseLink={(linkId) => releaseMutation.mutate(linkId)}
+            isReleasing={releaseMutation.isPending}
+          />
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {Array.from(tasksByProject.entries()).map(([projectName, tasks]) => (
             <div
               key={projectName}
@@ -454,19 +519,29 @@ export function RequirementDetailPage() {
                       )}
 
                       <div className="flex items-center justify-between pt-1">
-                        {task.engine_url ? (
-                          <a
-                            href={task.engine_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 text-[11px] text-[#7b68ee] hover:underline"
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setLogTask(task)}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950/40 text-[#7b68ee] dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/50 text-[10px] font-bold border border-purple-200 dark:border-purple-800/40 transition-colors"
+                            title="View real-time CLI terminal logs and progress"
                           >
-                            <span>Open Engine</span>
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
-                        ) : (
-                          <div />
-                        )}
+                            <Terminal className="w-3 h-3" />
+                            <span>CLI Logs</span>
+                          </button>
+
+                          {task.engine_url && (
+                            <a
+                              href={task.engine_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] text-[#7b68ee] hover:underline"
+                            >
+                              <span>Open Engine</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
 
                         {task.status !== 'done' && (
                           <button
@@ -486,7 +561,6 @@ export function RequirementDetailPage() {
             </div>
           ))}
         </div>
-      </div>
 
       {/* Dependency Links Panel (Cross-repo Contract Locks) */}
       <div className="bg-white dark:bg-[#181922] border border-slate-200 dark:border-[#262732] rounded-2xl p-5 shadow-sm space-y-3">
@@ -548,6 +622,9 @@ export function RequirementDetailPage() {
               </div>
             ))}
           </div>
+        )}
+      </div>
+          </>
         )}
       </div>
 
@@ -621,6 +698,26 @@ export function RequirementDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Live CLI Task Execution & Process Logs Drawer */}
+      <LiveTaskLogsDrawer
+        task={logTask}
+        isOpen={Boolean(logTask)}
+        onClose={() => setLogTask(null)}
+      />
+
+      {/* In-App Git Review & Code Diff Modal (100% Self-Contained) */}
+      <ProjectGitReviewModal
+        isOpen={reviewModalOpen}
+        onClose={() => setReviewModalOpen(false)}
+        projectName={selectedReviewProject || req.affected_projects?.[0]}
+        projectNames={req.affected_projects || []}
+        requirementTitle={req.title}
+        baseBranch="develop"
+        targetBranch="main"
+        onMergeToMain={isMergeReady ? () => mergeMutation.mutate() : undefined}
+        isMerging={mergeMutation.isPending}
+      />
     </div>
   );
 }

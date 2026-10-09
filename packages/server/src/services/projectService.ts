@@ -86,6 +86,64 @@ export class ProjectService {
     `).run(status, name);
   }
 
+  public updateProject(name: string, patch: Partial<Project>): Project {
+    const existing = this.getProject(name);
+    if (!existing) {
+      throw new Error(`Project '${name}' not found`);
+    }
+
+    const updated = {
+      ...existing,
+      ...patch,
+      name: existing.name,
+      updated_at: new Date().toISOString(),
+    };
+    const validated = ProjectSchema.parse(updated);
+
+    this.db.prepare(`
+      UPDATE projects SET
+        workspace_id = @workspace_id,
+        kind = @kind,
+        repo_path = @repo_path,
+        engine_type = @engine_type,
+        engine_url = @engine_url,
+        engine_meta = @engine_meta,
+        base_branch = @base_branch,
+        contract_path = @contract_path,
+        done_means = @done_means,
+        high_risk_paths = @high_risk_paths,
+        enabled = @enabled,
+        updated_at = @updated_at
+      WHERE name = @name
+    `).run({
+      ...validated,
+      engine_meta: JSON.stringify(validated.engine_meta || {}),
+      high_risk_paths: JSON.stringify(validated.high_risk_paths || []),
+      enabled: validated.enabled ? 1 : 0,
+      engine_url: validated.engine_url || null,
+      contract_path: validated.contract_path || null,
+    });
+
+    return this.getProject(name)!;
+  }
+
+  public deleteProject(name: string): void {
+    const existing = this.getProject(name);
+    if (!existing) {
+      throw new Error(`Project '${name}' not found`);
+    }
+
+    this.db.transaction(() => {
+      this.db.prepare('DELETE FROM requirement_projects WHERE project = ?').run(name);
+      this.db.prepare(`
+        DELETE FROM links WHERE task_id IN (SELECT id FROM bridge_tasks WHERE project = ?)
+           OR depends_on_id IN (SELECT id FROM bridge_tasks WHERE project = ?)
+      `).run(name, name);
+      this.db.prepare('DELETE FROM bridge_tasks WHERE project = ?').run(name);
+      this.db.prepare('DELETE FROM projects WHERE name = ?').run(name);
+    })();
+  }
+
   public seedFromYaml(yamlContent: string) {
     const parsed = YAML.parse(yamlContent);
     const projects = Array.isArray(parsed) ? parsed : parsed.projects || [];

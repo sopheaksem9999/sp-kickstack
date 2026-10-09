@@ -4,6 +4,8 @@ import {
   CreateTicketInputSchema,
   CreateWorkspaceInputSchema,
   ProjectSchema,
+  AiChatMessageSchema,
+  AiChatRequestSchema,
 } from './schemas.js';
 
 describe('Shared Schemas Validation', () => {
@@ -79,5 +81,26 @@ describe('Shared Schemas Validation', () => {
       expect(parsed.data.acceptance_criteria).toEqual([]);
     }
   });
+
+  it('validates AI chat message and request schemas', () => {
+    const msg = {
+      id: 'msg-1',
+      role: 'user' as const,
+      content: 'I want to build an avatar upload endpoint and React component',
+      timestamp: new Date().toISOString(),
+    };
+    const parsedMsg = AiChatMessageSchema.safeParse(msg);
+    expect(parsedMsg.success).toBe(true);
+
+    const req = {
+      messages: [msg],
+      provider: 'claude-cli' as const,
+      model: 'claude-3-7-sonnet',
+      effort: 'high' as const,
+    };
+    const parsedReq = AiChatRequestSchema.safeParse(req);
+    expect(parsedReq.success).toBe(true);
+  });
 });
+
 

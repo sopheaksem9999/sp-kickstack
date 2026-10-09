@@ -41,6 +41,17 @@ export function initDatabase(dbPath: string = ':memory:'): AppDatabase {
     if (reqCols.length > 0 && !reqCols.some((col) => col.name === 'sprint_id')) {
       db.exec("ALTER TABLE requirements ADD COLUMN sprint_id TEXT DEFAULT NULL REFERENCES sprints(id) ON DELETE SET NULL;");
     }
+    if (reqCols.length > 0 && !reqCols.some((col) => col.name === 'session_id')) {
+      db.exec("ALTER TABLE requirements ADD COLUMN session_id TEXT DEFAULT NULL REFERENCES ai_chat_sessions(id) ON DELETE SET NULL;");
+    }
+    const chatCols = db.pragma('table_info(ai_chat_sessions)') as any[];
+    if (chatCols.length > 0 && !chatCols.some((col) => col.name === 'effort')) {
+      db.exec("ALTER TABLE ai_chat_sessions ADD COLUMN effort TEXT NOT NULL DEFAULT 'medium';");
+    }
+    const msgCols = db.pragma('table_info(ai_chat_messages)') as any[];
+    if (msgCols.length > 0 && !msgCols.some((col) => col.name === 'attachments')) {
+      db.exec("ALTER TABLE ai_chat_messages ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]';");
+    }
   } catch (err) {
     // Already migrated or in-memory
   }

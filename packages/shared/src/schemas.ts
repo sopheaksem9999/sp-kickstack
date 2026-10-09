@@ -105,10 +105,10 @@ export const ProjectSchema = z.object({
   kind: z.enum(['backend', 'frontend', 'mobile', 'other']).default('other'),
   repo_path: z.string().min(1),
   engine_type: EngineTypeSchema,
-  engine_url: z.string().url().optional().or(z.literal('')),
+  engine_url: z.string().url().optional().nullable().or(z.literal('')),
   engine_meta: z.record(z.unknown()).default({}),
   base_branch: z.string().default('develop'),
-  contract_path: z.string().optional(),
+  contract_path: z.string().optional().nullable(),
   done_means: DoneMeansSchema.default('merged'),
   high_risk_paths: z.array(z.string()).default([]),
   enabled: z.boolean().default(true),
@@ -119,6 +119,7 @@ export const ProjectSchema = z.object({
 
 export const CreateRequirementInputSchema = z.object({
   workspace_id: z.string().default('default'),
+  session_id: z.string().nullable().optional(),
   title: z.string().min(1).max(200),
   goal: z.string().min(1),
   user_story: z.string().optional(),
@@ -222,3 +223,152 @@ export type CreateSharedAssetInput = z.input<typeof CreateSharedAssetInputSchema
 export type SharedAssetItem = z.infer<typeof SharedAssetSchema>;
 export type CreateTicketInput = z.input<typeof CreateTicketInputSchema>;
 export type TicketResponse = z.infer<typeof TicketResponseSchema>;
+
+export const ReasoningEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
+
+export const SingleCliConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  model: z.string().default(''),
+  effort: ReasoningEffortSchema.default('medium'),
+  customPath: z.string().optional(),
+  ultracode: z.boolean().optional().default(false),
+});
+
+export const AiCliSettingsSchema = z.object({
+  defaultProvider: z
+    .enum(['auto', 'claude-cli', 'agy-cli', 'codex-cli', 'ollama', 'heuristic'])
+    .default('auto'),
+  claude: SingleCliConfigSchema.default({
+    enabled: true,
+    model: 'claude-3-7-sonnet',
+    effort: 'medium',
+  }),
+  agy: SingleCliConfigSchema.default({
+    enabled: true,
+    model: 'gemini-3.8-flash',
+    effort: 'medium',
+  }),
+  codex: SingleCliConfigSchema.default({
+    enabled: true,
+    model: 'default',
+    effort: 'medium',
+  }),
+  ollama: SingleCliConfigSchema.extend({
+    url: z.string().default('http://127.0.0.1:11434'),
+  }).default({
+    enabled: true,
+    model: 'llama3.2',
+    effort: 'medium',
+    url: 'http://127.0.0.1:11434',
+  }),
+});
+
+export type UpdateAiCliSettingsInput = z.input<typeof AiCliSettingsSchema>;
+
+export const DraftRequirementResultSchema = z.object({
+  title: z.string(),
+  goal: z.string(),
+  user_story: z.string().default(''),
+  acceptance_criteria: z.array(z.string()).default([]),
+  affected_projects: z.array(z.string()).default([]),
+  api_hints: z.string().optional(),
+  provider_used: z.string().default('local-ai'),
+});
+
+export const ChatAttachmentItemSchema = z.object({
+  id: z.string().optional(),
+  name: z.string(),
+  type: z.string().optional(),
+  size: z.number().optional(),
+  data_url: z.string().optional(),
+  asset_id: z.string().optional(),
+});
+
+export const AiChatMessageSchema = z.object({
+  id: z.string(),
+  role: z.enum(['user', 'assistant', 'system']),
+  content: z.string(),
+  timestamp: z.string(),
+  suggested_spec: DraftRequirementResultSchema.optional(),
+  attachments: z.array(ChatAttachmentItemSchema).optional(),
+});
+
+export const AiChatRequestSchema = z.object({
+  messages: z.array(AiChatMessageSchema),
+  provider: z.enum(['auto', 'claude-cli', 'agy-cli', 'codex-cli', 'ollama', 'heuristic']).optional(),
+  model: z.string().optional(),
+  effort: ReasoningEffortSchema.optional(),
+  workspace_id: z.string().optional(),
+  context_project: z.string().optional(),
+});
+
+export type DraftRequirementResultItem = z.infer<typeof DraftRequirementResultSchema>;
+export type AiChatMessageItem = z.infer<typeof AiChatMessageSchema>;
+export type AiChatRequestItem = z.infer<typeof AiChatRequestSchema>;
+
+export const AiChatSessionSchema = z.object({
+  id: z.string(),
+  workspace_id: z.string().default('default'),
+  title: z.string(),
+  provider: z.enum(['auto', 'claude-cli', 'agy-cli', 'codex-cli', 'ollama', 'heuristic']).default('auto'),
+  model: z.string().optional(),
+  effort: ReasoningEffortSchema.default('medium'),
+  created_at: z.string(),
+  updated_at: z.string(),
+  messages: z.array(AiChatMessageSchema).optional(),
+});
+
+export const CreateAiChatSessionInputSchema = z.object({
+  workspace_id: z.string().default('default'),
+  title: z.string().optional(),
+  provider: z.enum(['auto', 'claude-cli', 'agy-cli', 'codex-cli', 'ollama', 'heuristic']).optional(),
+  model: z.string().optional(),
+  effort: ReasoningEffortSchema.optional(),
+});
+
+export const UpdateAiChatSessionInputSchema = z.object({
+  title: z.string().optional(),
+  provider: z.enum(['auto', 'claude-cli', 'agy-cli', 'codex-cli', 'ollama', 'heuristic']).optional(),
+  model: z.string().optional(),
+  effort: ReasoningEffortSchema.optional(),
+});
+
+export const SendAiChatMessageInputSchema = z.object({
+  content: z.string().min(1, 'Message cannot be empty'),
+  provider: z.enum(['auto', 'claude-cli', 'agy-cli', 'codex-cli', 'ollama', 'heuristic']).optional(),
+  model: z.string().optional(),
+  effort: ReasoningEffortSchema.optional(),
+  attachments: z.array(ChatAttachmentItemSchema).optional(),
+});
+
+export type CreateAiChatSessionInput = z.infer<typeof CreateAiChatSessionInputSchema>;
+export type UpdateAiChatSessionInput = z.infer<typeof UpdateAiChatSessionInputSchema>;
+export type SendAiChatMessageInput = z.infer<typeof SendAiChatMessageInputSchema>;
+
+export const IdeSettingsSchema = z.object({
+  enabled: z.boolean().default(true),
+  binaryPath: z.string().optional(),
+  port: z.number().int().positive().default(8443),
+  host: z.string().default('127.0.0.1'),
+  externalUrl: z.string().optional(),
+  autoStart: z.boolean().default(false),
+});
+
+export const IdeServerStatusSchema = z.object({
+  installed: z.boolean(),
+  running: z.boolean(),
+  binaryPath: z.string().optional(),
+  port: z.number(),
+  host: z.string(),
+  url: z.string().optional(),
+  pid: z.number().optional(),
+  error: z.string().optional(),
+});
+
+export const StartIdeInputSchema = z.object({
+  project_name: z.string().optional(),
+  folder_path: z.string().optional(),
+  port: z.number().int().positive().optional(),
+});
+
+

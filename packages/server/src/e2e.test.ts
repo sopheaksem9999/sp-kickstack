@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { initDatabase } from './db/index.js';
 import { ProjectService } from './services/projectService.js';
 import { RequirementService } from './services/requirementService.js';
@@ -9,11 +9,19 @@ import { EngineWatcher } from './watcher/engineWatcher.js';
 import { FakeEngineServer } from './adapters/fakeEngine.js';
 import { StoneforgeAdapter } from './adapters/stoneforgeAdapter.js';
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const workspaceDir = path.resolve(__dirname, '../.temp/sp-e2e-workspace');
 
 describe('MVP Acceptance Scenario (§16 Full End-to-End)', () => {
-  const workspaceDir = `/tmp/sp-e2e-workspace-${Date.now()}`;
   fs.mkdirSync(workspaceDir, { recursive: true });
   const dbFile = `${workspaceDir}/bridge.db`;
+
+  afterAll(() => {
+    fs.rmSync(workspaceDir, { recursive: true, force: true });
+  });
 
   it('runs complete cross-repo flow: fan-out -> xticket -> hold -> unblock with context -> done -> restart recovery', async () => {
     // 1. Three engines running (backend, admin, mobile)

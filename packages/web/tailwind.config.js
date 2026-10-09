@@ -16,13 +16,13 @@ export default {
           emerald: '#10b981',
           amber: '#f59e0b',
           rose: '#ef4444',
-          // ClickUp Dark Theme surfaces
-          darkBg: '#111217',
-          darkSidebar: '#17181f',
-          darkCard: '#1e1f26',
-          darkCardHover: '#262732',
-          darkBorder: '#2c2d38',
-          darkMuted: '#9aa0ac',
+          // Dark Theme surfaces (#191919)
+          darkBg: '#191919',
+          darkSidebar: '#1e1e1e',
+          darkCard: '#242424',
+          darkCardHover: '#2a2a2a',
+          darkBorder: '#303030',
+          darkMuted: '#9a9a9a',
           // ClickUp Light Theme surfaces
           lightBg: '#f7f8fa',
           lightSidebar: '#fbfcfd',

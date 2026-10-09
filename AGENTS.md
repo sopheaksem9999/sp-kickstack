@@ -41,3 +41,4 @@ no API key, $0).
 <!-- graft:end -->
 
 - Automated error triage: .agents/rules/clef-auto-triage.md — automated bug diagnosis and severity classification (P0–P3) via Clef.
+- Web UI Radix Priority: .agents/rules/ui-radix-priority.md — prioritize Radix UI primitives over native HTML elements for web UI components.

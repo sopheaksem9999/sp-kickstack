@@ -60,3 +60,12 @@ vite.config.ts.timestamp-*
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
+
+# Scratch & spike workspace directories
+workspace/spike/
+packages/server/workspace/
+
+# Rust / Tauri build output
+target/
+src-tauri/target/
+**/src-tauri/target/

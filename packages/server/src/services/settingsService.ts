@@ -1,5 +1,12 @@
 import { AppDatabase } from '../db/index.js';
-import { BranchMergeSettings, BranchMergeSettingsSchema } from '@sp-kickstack/shared';
+import {
+  BranchMergeSettings,
+  BranchMergeSettingsSchema,
+  AiCliSettings,
+  AiCliSettingsSchema,
+  IdeSettings,
+  IdeSettingsSchema,
+} from '@sp-kickstack/shared';
 
 export class SettingsService {
   constructor(private db: AppDatabase) {}
@@ -36,4 +43,67 @@ export class SettingsService {
 
     return updated;
   }
+
+  public getAiCliSettings(): AiCliSettings {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'ai_cli_settings'").get() as any;
+    if (row && row.value) {
+      try {
+        const parsed = JSON.parse(row.value);
+        return AiCliSettingsSchema.parse(parsed);
+      } catch (err) {
+        // Fallback to default
+      }
+    }
+    return AiCliSettingsSchema.parse({});
+  }
+
+  public updateAiCliSettings(updates: Partial<AiCliSettings>): AiCliSettings {
+    const current = this.getAiCliSettings();
+    const updated = AiCliSettingsSchema.parse({
+      ...current,
+      ...updates,
+      claude: { ...current.claude, ...updates.claude },
+      agy: { ...current.agy, ...updates.agy },
+      codex: updates.codex ? { ...(current.codex || {}), ...updates.codex } : current.codex,
+      ollama: { ...current.ollama, ...updates.ollama },
+    });
+
+    this.db.prepare(`
+      INSERT INTO settings (key, value)
+      VALUES ('ai_cli_settings', ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run(JSON.stringify(updated));
+
+    return updated;
+  }
+
+  public getIdeSettings(): IdeSettings {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'ide_settings'").get() as any;
+    if (row && row.value) {
+      try {
+        const parsed = JSON.parse(row.value);
+        return IdeSettingsSchema.parse(parsed);
+      } catch {
+        // Fallback to default
+      }
+    }
+    return IdeSettingsSchema.parse({});
+  }
+
+  public updateIdeSettings(updates: Partial<IdeSettings>): IdeSettings {
+    const current = this.getIdeSettings();
+    const updated = IdeSettingsSchema.parse({
+      ...current,
+      ...updates,
+    });
+
+    this.db.prepare(`
+      INSERT INTO settings (key, value)
+      VALUES ('ide_settings', ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run(JSON.stringify(updated));
+
+    return updated;
+  }
 }
+

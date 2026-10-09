@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest';
 import { initDatabase, AppDatabase } from '../db/index.js';
 import { ProjectService } from './projectService.js';
 import { RequirementService } from './requirementService.js';
@@ -7,6 +7,11 @@ import { EngineWatcher } from '../watcher/engineWatcher.js';
 import { FakeEngineServer } from '../adapters/fakeEngine.js';
 import { StoneforgeAdapter } from '../adapters/stoneforgeAdapter.js';
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const tempWorkspace = path.resolve(__dirname, '../../.temp/sp-test-workspace-phase3');
 
 describe('Phase 3: Requirements, Fan-Out, and Watcher Sync', () => {
   let db: AppDatabase;
@@ -20,9 +25,8 @@ describe('Phase 3: Requirements, Fan-Out, and Watcher Sync', () => {
   let watcher: EngineWatcher;
   const recordedEvents: any[] = [];
 
-  const tempWorkspace = `/tmp/sp-test-workspace-${Date.now()}`;
-
   beforeEach(() => {
+    fs.mkdirSync(tempWorkspace, { recursive: true });
     db = initDatabase(':memory:');
     projectService = new ProjectService(db);
     requirementService = new RequirementService(db, tempWorkspace);
@@ -91,6 +95,10 @@ describe('Phase 3: Requirements, Fan-Out, and Watcher Sync', () => {
     db.close();
   });
 
+  afterAll(() => {
+    fs.rmSync(tempWorkspace, { recursive: true, force: true });
+  });
+
   it('creates requirement with sequential ID and markdown file', () => {
     const req = requirementService.createRequirement({
       title: 'Realtime driver map',
@@ -126,6 +134,8 @@ describe('Phase 3: Requirements, Fan-Out, and Watcher Sync', () => {
     const backendTask = backendEngine.getTaskData(tasks.find((t) => t.project === 'backend')!.engine_task_id!);
     expect(backendTask).toBeDefined();
     expect(backendTask?.notes[0]).toContain('<untrusted_input name="requirement">');
+    expect(backendTask?.notes[0]).toContain('Execution Autonomy & Headless Protocol (Strategy A)');
+    expect(backendTask?.notes[0]).toContain('Operate headlessly & autonomously');
 
     // Test idempotency: re-running fan-out must not create duplicate tasks
     const secondRun = await fanOutService.execute(req.id);

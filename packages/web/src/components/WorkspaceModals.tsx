@@ -10,9 +10,10 @@ interface CreateWorkspaceModalProps {
 }
 
 export function CreateWorkspaceModal({ isOpen, onClose }: CreateWorkspaceModalProps) {
-  const { refreshWorkspaces, setActiveWorkspaceId } = useWorkspace();
+  const { upsertWorkspace } = useWorkspace();
   const [id, setId] = useState('');
   const [name, setName] = useState('');
+  const [idTouched, setIdTouched] = useState(false);
   const [description, setDescription] = useState('');
   const [rules, setRules] = useState('');
   const [context, setContext] = useState('');
@@ -20,9 +21,24 @@ export function CreateWorkspaceModal({ isOpen, onClose }: CreateWorkspaceModalPr
 
   if (!isOpen) return null;
 
+  const handleNameChange = (val: string) => {
+    setName(val);
+    if (!idTouched) {
+      setId(val.toLowerCase().replace(/[^a-z0-9_-]/g, '-').slice(0, 32));
+    }
+  };
+
+  const handleIdChange = (val: string) => {
+    setIdTouched(true);
+    setId(val);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!id.trim() || !name.trim()) {
+    const finalId = id.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+    const finalName = name.trim();
+
+    if (!finalId || !finalName) {
       toast.error('Workspace ID and Name are required');
       return;
     }
@@ -30,18 +46,21 @@ export function CreateWorkspaceModal({ isOpen, onClose }: CreateWorkspaceModalPr
     setIsSubmitting(true);
     try {
       const created = await createWorkspace({
-        id: id.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-'),
-        name: name.trim(),
+        id: finalId,
+        name: finalName,
         description: description.trim() || undefined,
         rules: rules.trim() || undefined,
         context: context.trim() || undefined,
       });
       toast.success(`Workspace "${created.name}" created`);
-      refreshWorkspaces();
-      setActiveWorkspaceId(created.id);
+      
+      // Immediately inject into React Query cache & auto-switch active workspace
+      upsertWorkspace(created, true);
+
       onClose();
       setId('');
       setName('');
+      setIdTouched(false);
       setDescription('');
       setRules('');
       setContext('');
@@ -83,7 +102,7 @@ export function CreateWorkspaceModal({ isOpen, onClose }: CreateWorkspaceModalPr
               required
               placeholder="workspace-a"
               value={id}
-              onChange={(e) => setId(e.target.value)}
+              onChange={(e) => handleIdChange(e.target.value)}
               className="w-full px-3 py-2 bg-slate-50 dark:bg-[#14151b] border border-slate-300 dark:border-[#2e303d] rounded-lg text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee] focus:ring-1 focus:ring-[#7b68ee]"
             />
           </div>
@@ -97,7 +116,7 @@ export function CreateWorkspaceModal({ isOpen, onClose }: CreateWorkspaceModalPr
               required
               placeholder="Workspace A (Mobile & Core API)"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => handleNameChange(e.target.value)}
               className="w-full px-3 py-2 bg-slate-50 dark:bg-[#14151b] border border-slate-300 dark:border-[#2e303d] rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee] focus:ring-1 focus:ring-[#7b68ee]"
             />
           </div>
@@ -169,7 +188,7 @@ interface WorkspaceRulesModalProps {
 }
 
 export function WorkspaceRulesModal({ isOpen, onClose }: WorkspaceRulesModalProps) {
-  const { activeWorkspace, refreshWorkspaces } = useWorkspace();
+  const { activeWorkspace, upsertWorkspace } = useWorkspace();
   const [rules, setRules] = useState(activeWorkspace?.rules || '');
   const [context, setContext] = useState(activeWorkspace?.context || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -187,12 +206,12 @@ export function WorkspaceRulesModal({ isOpen, onClose }: WorkspaceRulesModalProp
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      await updateWorkspace(activeWorkspace.id, {
+      const updated = await updateWorkspace(activeWorkspace.id, {
         rules,
         context,
       });
       toast.success('Workspace shared rules & context updated');
-      refreshWorkspaces();
+      upsertWorkspace(updated, false);
       onClose();
     } catch (err: any) {
       toast.error(err.message || 'Failed to update workspace');

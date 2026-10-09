@@ -86,11 +86,12 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
 
     const insertTx = this.db.transaction(() => {
       this.db.prepare(`
-        INSERT INTO requirements (id, workspace_id, seq, title, status, priority, body_md, file_path, revision, attachments, merge_policy, sprint_id, created_at, updated_at)
-        VALUES (@id, @workspace_id, @seq, @title, @status, @priority, @body_md, @file_path, @revision, @attachments, @merge_policy, @sprint_id, @created_at, @updated_at)
+        INSERT INTO requirements (id, workspace_id, session_id, seq, title, status, priority, body_md, file_path, revision, attachments, merge_policy, sprint_id, created_at, updated_at)
+        VALUES (@id, @workspace_id, @session_id, @seq, @title, @status, @priority, @body_md, @file_path, @revision, @attachments, @merge_policy, @sprint_id, @created_at, @updated_at)
       `).run({
         id,
         workspace_id: input.workspace_id || 'default',
+        session_id: input.session_id || null,
         seq,
         title: input.title,
         status,
@@ -138,6 +139,7 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
     return {
       ...row,
       workspace_id: row.workspace_id || 'default',
+      session_id: row.session_id || null,
       affected_projects: projRows.map((p) => p.project),
       attachments: this.parseAttachments(row.attachments),
       merge_policy: row.merge_policy || null,
@@ -145,12 +147,23 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
     };
   }
 
-  public listRequirements(workspaceId?: string): Requirement[] {
-    const rows = (
-      workspaceId
-        ? this.db.prepare('SELECT * FROM requirements WHERE workspace_id = ? ORDER BY seq DESC').all(workspaceId)
-        : this.db.prepare('SELECT * FROM requirements ORDER BY seq DESC').all()
-    ) as any[];
+  public listRequirements(workspaceId?: string, sessionId?: string): Requirement[] {
+    let query = 'SELECT * FROM requirements';
+    const params: any[] = [];
+    if (workspaceId && sessionId) {
+      query += ' WHERE workspace_id = ? AND session_id = ? ORDER BY seq DESC';
+      params.push(workspaceId, sessionId);
+    } else if (workspaceId) {
+      query += ' WHERE workspace_id = ? ORDER BY seq DESC';
+      params.push(workspaceId);
+    } else if (sessionId) {
+      query += ' WHERE session_id = ? ORDER BY seq DESC';
+      params.push(sessionId);
+    } else {
+      query += ' ORDER BY seq DESC';
+    }
+
+    const rows = this.db.prepare(query).all(...params) as any[];
 
     return rows.map((row) => {
       const projRows = this.db
@@ -159,6 +172,7 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
       return {
         ...row,
         workspace_id: row.workspace_id || 'default',
+        session_id: row.session_id || null,
         affected_projects: projRows.map((p) => p.project),
         attachments: this.parseAttachments(row.attachments),
         merge_policy: row.merge_policy || null,

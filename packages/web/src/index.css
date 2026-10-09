@@ -12,7 +12,7 @@
 }
 
 html.dark body {
-  background-color: #111217;
+  background-color: #191919;
   color: #f3f4f6;
 }
 
@@ -32,12 +32,12 @@ html.light body {
 }
 
 html.dark ::-webkit-scrollbar-thumb {
-  background: #2e303d;
+  background: #303030;
   border-radius: 9999px;
 }
 
 html.dark ::-webkit-scrollbar-thumb:hover {
-  background: #3e4152;
+  background: #404040;
 }
 
 html.light ::-webkit-scrollbar-thumb {
@@ -61,12 +61,12 @@ html.light ::-webkit-scrollbar-thumb:hover {
 
 html.dark .rdp-root {
   --rdp-accent-color: #6366f1;
-  --rdp-accent-background-color: #2e3048;
+  --rdp-accent-background-color: #2a2a2a;
   color: #f1f5f9;
 }
 
 html.dark .rdp-button:hover:not([disabled]):not(.rdp-day_selected):not(.rdp-selected) {
-  background-color: #262838;
+  background-color: #262626;
 }
 
 html.dark .rdp-caption_label,

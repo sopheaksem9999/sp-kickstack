@@ -44,15 +44,15 @@ const SheetContent = React.forwardRef<
     <SheetPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed z-50 gap-4 bg-white dark:bg-[#16171d] shadow-2xl transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out duration-300 flex flex-col',
+        'fixed z-50 gap-4 bg-white dark:bg-[#1e1e1e] shadow-2xl transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out duration-300 flex flex-col',
         side === 'right' &&
-          'inset-y-0 right-0 h-full w-full max-w-2xl border-l border-slate-200 dark:border-[#262732] data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right',
+          'inset-y-0 right-0 h-full w-full max-w-2xl border-l border-slate-200 dark:border-[#2d2d2d] data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right',
         side === 'left' &&
-          'inset-y-0 left-0 h-full w-full max-w-2xl border-r border-slate-200 dark:border-[#262732] data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left',
+          'inset-y-0 left-0 h-full w-full max-w-2xl border-r border-slate-200 dark:border-[#2d2d2d] data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left',
         side === 'top' &&
-          'inset-x-0 top-0 border-b border-slate-200 dark:border-[#262732] data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top',
+          'inset-x-0 top-0 border-b border-slate-200 dark:border-[#2d2d2d] data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top',
         side === 'bottom' &&
-          'inset-x-0 bottom-0 border-t border-slate-200 dark:border-[#262732] data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom',
+          'inset-x-0 bottom-0 border-t border-slate-200 dark:border-[#2d2d2d] data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom',
         className
       )}
       {...props}

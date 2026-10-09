@@ -252,7 +252,7 @@ export function RequirementDetailSheet({
             {requirementId && (
               <Link
                 to={`/requirements/${requirementId}`}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-[#7b68ee] hover:bg-purple-50 dark:hover:bg-[#252636] transition-colors inline-flex items-center gap-1 text-xs font-semibold"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-[#7b68ee] hover:bg-purple-50 dark:hover:bg-[#282828] transition-colors inline-flex items-center gap-1 text-xs font-semibold"
                 title="Open full page"
               >
                 <ExternalLink className="w-4 h-4" />
@@ -262,7 +262,7 @@ export function RequirementDetailSheet({
 
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#20212c] transition-colors"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#282828] transition-colors"
               title="Close panel"
             >
               <X className="w-4 h-4" />
@@ -282,10 +282,10 @@ export function RequirementDetailSheet({
         ) : (
           <>
             {/* Quick Metadata & State Bar */}
-            <div className="px-6 py-2.5 bg-slate-50/50 dark:bg-[#181922] border-b border-slate-100 dark:border-[#22232e] flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="px-6 py-2.5 bg-slate-50/50 dark:bg-[#242424] border-b border-slate-100 dark:border-[#2d2d2d] flex flex-wrap items-center justify-between gap-3 text-xs">
               <div className="flex flex-wrap items-center gap-2">
                 {/* Status Switcher */}
-                <div className="flex items-center gap-1.5 bg-white dark:bg-[#1f202b] px-2 py-1 rounded-lg border border-slate-200 dark:border-[#2d2f3d] shadow-2xs">
+                <div className="flex items-center gap-1.5 bg-white dark:bg-[#2a2a2a] px-2 py-1 rounded-lg border border-slate-200 dark:border-[#333333] shadow-2xs">
                   <StatusBadge status={req.status} size="xs" />
                   <select
                     value={req.status === 'in_review' ? 'qa' : req.status}
@@ -299,7 +299,7 @@ export function RequirementDetailSheet({
                       <option
                         key={st.value}
                         value={st.value}
-                        className="bg-white dark:bg-[#1a1b22] text-slate-800 dark:text-slate-200"
+                        className="bg-white dark:bg-[#242424] text-slate-800 dark:text-slate-200"
                       >
                         State: {st.label}
                       </option>
@@ -310,7 +310,7 @@ export function RequirementDetailSheet({
                 {/* Priority Display */}
                 {prio && (
                   <div
-                    className="flex items-center gap-1.5 bg-white dark:bg-[#1f202b] px-2 py-1 rounded-lg border border-slate-200 dark:border-[#2d2f3d] shadow-2xs"
+                    className="flex items-center gap-1.5 bg-white dark:bg-[#2a2a2a] px-2 py-1 rounded-lg border border-slate-200 dark:border-[#333333] shadow-2xs"
                     title={`Priority: ${prio.label}`}
                   >
                     <Flag className={`w-3.5 h-3.5 ${prio.color}`} />
@@ -321,7 +321,7 @@ export function RequirementDetailSheet({
                 )}
 
                 {/* Sprint Switcher */}
-                <div className="flex items-center gap-1.5 bg-white dark:bg-[#1f202b] px-2 py-1 rounded-lg border border-slate-200 dark:border-[#2d2f3d] shadow-2xs">
+                <div className="flex items-center gap-1.5 bg-white dark:bg-[#2a2a2a] px-2 py-1 rounded-lg border border-slate-200 dark:border-[#333333] shadow-2xs">
                   <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
                     {req.sprint_id ? '🏃 Sprint:' : '📋'}
                   </span>
@@ -335,7 +335,7 @@ export function RequirementDetailSheet({
                   >
                     <option
                       value=""
-                      className="bg-white dark:bg-[#1a1b22] text-slate-800 dark:text-slate-200"
+                      className="bg-white dark:bg-[#242424] text-slate-800 dark:text-slate-200"
                     >
                       Product Backlog
                     </option>
@@ -343,7 +343,7 @@ export function RequirementDetailSheet({
                       <option
                         key={s.id}
                         value={s.id}
-                        className="bg-white dark:bg-[#1a1b22] text-slate-800 dark:text-slate-200"
+                        className="bg-white dark:bg-[#242424] text-slate-800 dark:text-slate-200"
                       >
                         {s.status === 'active'
                           ? '🏃 Active: '
@@ -357,7 +357,7 @@ export function RequirementDetailSheet({
                 </div>
 
                 {/* Merge Policy Selector */}
-                <div className="flex items-center gap-1.5 bg-white dark:bg-[#1f202b] px-2 py-1 rounded-lg border border-slate-200 dark:border-[#2d2f3d] shadow-2xs">
+                <div className="flex items-center gap-1.5 bg-white dark:bg-[#2a2a2a] px-2 py-1 rounded-lg border border-slate-200 dark:border-[#333333] shadow-2xs">
                   <span className="text-[10px] text-slate-400 font-bold uppercase">Merge:</span>
                   <select
                     value={req.merge_policy || 'default'}
@@ -371,20 +371,20 @@ export function RequirementDetailSheet({
                     className="bg-transparent text-[11px] font-bold text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
                     title="Ticket Merge Policy"
                   >
-                    <option value="default" className="bg-white dark:bg-[#1a1b22] text-slate-800 dark:text-slate-200">
+                    <option value="default" className="bg-white dark:bg-[#242424] text-slate-800 dark:text-slate-200">
                       Default Policy
                     </option>
-                    <option value="manual_review_merge" className="bg-white dark:bg-[#1a1b22] text-slate-800 dark:text-slate-200">
+                    <option value="manual_review_merge" className="bg-white dark:bg-[#242424] text-slate-800 dark:text-slate-200">
                       Manual Review & Merge
                     </option>
-                    <option value="auto_merge_main" className="bg-white dark:bg-[#1a1b22] text-slate-800 dark:text-slate-200">
+                    <option value="auto_merge_main" className="bg-white dark:bg-[#242424] text-slate-800 dark:text-slate-200">
                       Auto-Merge to Main
                     </option>
                   </select>
                 </div>
 
                 {/* Implementation Branch Tag */}
-                <span className="inline-flex items-center gap-1 text-[11px] font-mono text-slate-600 dark:text-slate-300 bg-white dark:bg-[#1f202b] px-2 py-1 rounded-md border border-slate-200 dark:border-[#2d2f3d]">
+                <span className="inline-flex items-center gap-1 text-[11px] font-mono text-slate-600 dark:text-slate-300 bg-white dark:bg-[#2a2a2a] px-2 py-1 rounded-md border border-slate-200 dark:border-[#333333]">
                   <GitBranch className="w-3 h-3 text-[#7b68ee]" />
                   <span>develop</span>
                 </span>
@@ -419,7 +419,7 @@ export function RequirementDetailSheet({
                   <button
                     onClick={() => cancelMutation.mutate()}
                     disabled={cancelMutation.isPending}
-                    className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-[#20212c] hover:bg-slate-100 dark:hover:bg-[#2a2b38] text-slate-600 dark:text-slate-300 rounded-lg text-xs font-semibold border border-slate-200 dark:border-[#2e303d] transition-colors"
+                    className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-[#242424] hover:bg-slate-100 dark:hover:bg-[#2e2e2e] text-slate-600 dark:text-slate-300 rounded-lg text-xs font-semibold border border-slate-200 dark:border-[#303030] transition-colors"
                   >
                     <XCircle className="w-3.5 h-3.5 text-rose-500" />
                     <span>Cancel</span>
@@ -438,8 +438,8 @@ export function RequirementDetailSheet({
               </div>
 
               {/* Requirement Document & Spec Preview */}
-              <div className="border border-slate-200 dark:border-[#262732] rounded-xl overflow-hidden bg-white dark:bg-[#181922] shadow-2xs space-y-2">
-                <div className="px-4 py-2.5 border-b border-slate-200 dark:border-[#262732] bg-slate-50/80 dark:bg-[#1a1b24] flex items-center justify-between text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
+              <div className="border border-slate-200 dark:border-[#2d2d2d] rounded-xl overflow-hidden bg-white dark:bg-[#242424] shadow-2xs space-y-2">
+                <div className="px-4 py-2.5 border-b border-slate-200 dark:border-[#2d2d2d] bg-slate-50/80 dark:bg-[#202020] flex items-center justify-between text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
                   <div className="flex items-center gap-2">
                     <BookOpen className="w-3.5 h-3.5" />
                     <span>Specification & Details</span>
@@ -449,14 +449,14 @@ export function RequirementDetailSheet({
                   </span>
                 </div>
 
-                <div className="p-4 text-xs font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap max-h-56 overflow-y-auto leading-relaxed bg-slate-50/40 dark:bg-[#14151c]">
+                <div className="p-4 text-xs font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap max-h-56 overflow-y-auto leading-relaxed bg-slate-50/40 dark:bg-[#171717]">
                   {req.body_md}
                 </div>
               </div>
 
               {/* Attached Files & Assets (if any) */}
               {req.attachments && req.attachments.length > 0 && (
-                <div className="border border-slate-200 dark:border-[#262732] rounded-xl p-4 bg-white dark:bg-[#181922] shadow-2xs space-y-2.5">
+                <div className="border border-slate-200 dark:border-[#2d2d2d] rounded-xl p-4 bg-white dark:bg-[#242424] shadow-2xs space-y-2.5">
                   <div className="flex items-center gap-1.5 text-xs font-bold uppercase text-slate-400 tracking-wider">
                     <Paperclip className="w-3.5 h-3.5 text-[#7b68ee]" />
                     <span>Attached Assets ({req.attachments.length}):</span>
@@ -465,7 +465,7 @@ export function RequirementDetailSheet({
                     {req.attachments.map((file, idx) => (
                       <div
                         key={idx}
-                        className="flex items-center gap-2.5 p-2 rounded-lg bg-slate-50 dark:bg-[#14151b] border border-slate-200 dark:border-[#262732] text-xs"
+                        className="flex items-center gap-2.5 p-2 rounded-lg bg-slate-50 dark:bg-[#171717] border border-slate-200 dark:border-[#2d2d2d] text-xs"
                       >
                         {getAttachmentIcon(file.name, file.type)}
                         <div className="min-w-0 flex-1">
@@ -535,7 +535,7 @@ export function RequirementDetailSheet({
                             className={`px-2.5 py-1 rounded-lg border font-mono text-[11px] font-semibold transition-all ${
                               isSelected
                                 ? 'bg-[#7b68ee] text-white border-[#7b68ee]'
-                                : 'bg-white dark:bg-[#1a1b22] text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                : 'bg-white dark:bg-[#242424] text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                             }`}
                           >
                             {p.name}
@@ -568,13 +568,13 @@ export function RequirementDetailSheet({
                   {Array.from(tasksByProject.entries()).map(([projectName, tasks]) => (
                     <div
                       key={projectName}
-                      className="bg-white dark:bg-[#181922] border border-slate-200 dark:border-[#262732] rounded-xl p-3.5 shadow-2xs space-y-2.5"
+                      className="bg-white dark:bg-[#242424] border border-slate-200 dark:border-[#2d2d2d] rounded-xl p-3.5 shadow-2xs space-y-2.5"
                     >
-                      <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-[#262732]">
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-[#2d2d2d]">
                         <span className="font-bold text-xs uppercase text-slate-800 dark:text-slate-200 tracking-wider">
                           📁 {projectName}
                         </span>
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 dark:bg-[#20212b] text-slate-500 font-bold">
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 dark:bg-[#2a2a2a] text-slate-500 font-bold">
                           {tasks.length} task{tasks.length !== 1 ? 's' : ''}
                         </span>
                       </div>
@@ -587,7 +587,7 @@ export function RequirementDetailSheet({
                         tasks.map((task) => (
                           <div
                             key={task.id}
-                            className="p-3 rounded-lg bg-slate-50 dark:bg-[#14151b] border border-slate-200 dark:border-[#22232e] space-y-2"
+                            className="p-3 rounded-lg bg-slate-50 dark:bg-[#171717] border border-slate-200 dark:border-[#2d2d2d] space-y-2"
                           >
                             <div className="flex items-start justify-between gap-2">
                               <span className="font-semibold text-xs text-slate-800 dark:text-slate-100 leading-snug">
@@ -609,7 +609,7 @@ export function RequirementDetailSheet({
                               </div>
                             )}
 
-                            <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-[#1c1d27]">
+                            <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-[#2d2d2d]">
                               {task.engine_url ? (
                                 <a
                                   href={task.engine_url}
@@ -628,7 +628,7 @@ export function RequirementDetailSheet({
                                 <button
                                   onClick={() => doneMutation.mutate(task.id)}
                                   disabled={doneMutation.isPending}
-                                  className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-200 dark:bg-[#20212c] hover:bg-slate-300 dark:hover:bg-[#2a2b38] text-[10px] font-bold text-slate-700 dark:text-slate-300 transition-colors"
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-200 dark:bg-[#282828] hover:bg-slate-300 dark:hover:bg-[#303030] text-[10px] font-bold text-slate-700 dark:text-slate-300 transition-colors"
                                 >
                                   <CheckCircle2 className="w-3 h-3 text-emerald-500" />
                                   <span>Mark Done</span>
@@ -645,7 +645,7 @@ export function RequirementDetailSheet({
 
               {/* Cross-Repo Dependency Links (if any) */}
               {graph?.links && graph.links.length > 0 && (
-                <div className="bg-white dark:bg-[#181922] border border-slate-200 dark:border-[#262732] rounded-xl p-4 shadow-2xs space-y-3">
+                <div className="bg-white dark:bg-[#242424] border border-slate-200 dark:border-[#2d2d2d] rounded-xl p-4 shadow-2xs space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
                       <GitFork className="w-4 h-4 text-purple-500" />
@@ -656,7 +656,7 @@ export function RequirementDetailSheet({
                     </span>
                   </div>
 
-                  <div className="divide-y divide-slate-100 dark:divide-[#22232e]">
+                  <div className="divide-y divide-slate-100 dark:divide-[#2d2d2d]">
                     {graph.links.map((link) => (
                       <div
                         key={link.id}

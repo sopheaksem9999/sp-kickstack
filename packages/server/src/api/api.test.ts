@@ -13,6 +13,12 @@ import { StoneforgeAdapter } from '../adapters/stoneforgeAdapter.js';
 import { createApp } from './app.js';
 import { testRequest } from './testHelper.js';
 import { Express } from 'express';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const tempWorkspace = path.resolve(__dirname, '../../.temp/sp-test-workspace-api');
 
 describe('Bridge REST API Integration Tests', () => {
   let app: Express;
@@ -24,10 +30,11 @@ describe('Bridge REST API Integration Tests', () => {
   let mobileEngine: FakeEngineServer;
 
   beforeAll(() => {
+    fs.mkdirSync(tempWorkspace, { recursive: true });
     db = initDatabase(':memory:');
     workspaceService = new WorkspaceService(db);
     projectService = new ProjectService(db);
-    requirementService = new RequirementService(db, '/tmp/test-workspace');
+    requirementService = new RequirementService(db, tempWorkspace);
 
     backendEngine = new FakeEngineServer('http://127.0.0.1:3457');
     mobileEngine = new FakeEngineServer('http://127.0.0.1:3477');
@@ -68,6 +75,7 @@ describe('Bridge REST API Integration Tests', () => {
 
   afterAll(() => {
     db.close();
+    fs.rmSync(tempWorkspace, { recursive: true, force: true });
   });
 
   beforeEach(() => {
@@ -116,6 +124,33 @@ describe('Bridge REST API Integration Tests', () => {
     expect(res.status).toBe(200);
     expect(res.body.length).toBe(2);
     expect(res.body.map((p: any) => p.name)).toContain('backend');
+  });
+
+  it('GET, PUT, and DELETE /api/projects/:name manage individual projects', async () => {
+    // 1. GET single project
+    const getRes = await testRequest(app, 'GET', '/api/projects/backend');
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.name).toBe('backend');
+    expect(getRes.body.base_branch).toBe('main');
+
+    // 2. PUT update project
+    const updateRes = await testRequest(app, 'PUT', '/api/projects/backend', {
+      body: {
+        base_branch: 'develop',
+        kind: 'backend',
+      },
+    });
+    expect(updateRes.status).toBe(200);
+    expect(updateRes.body.base_branch).toBe('develop');
+
+    // 3. DELETE project
+    const deleteRes = await testRequest(app, 'DELETE', '/api/projects/backend');
+    expect(deleteRes.status).toBe(200);
+    expect(deleteRes.body.ok).toBe(true);
+
+    // 4. Verify project is deleted
+    const verifyRes = await testRequest(app, 'GET', '/api/projects/backend');
+    expect(verifyRes.status).toBe(404);
   });
 
   it('POST /api/requirements creates a requirement', async () => {
@@ -375,6 +410,238 @@ describe('Bridge REST API Integration Tests', () => {
 
     const getReqRes = await testRequest(app, 'GET', `/api/requirements/${reqId}`);
     expect(getReqRes.body.sprint_id).toBeNull();
+  });
+
+  it('Sprint Burndown API: calculates burndown points and rollover rate', async () => {
+    // Create sprint
+    const sprintRes = await testRequest(app, 'POST', '/api/sprints', {
+      body: {
+        workspace_id: 'default',
+        name: 'Sprint 2 - Metrics',
+        start_date: '2026-10-10',
+        end_date: '2026-10-24',
+      },
+    });
+    const sprintId = sprintRes.body.id;
+
+    // Create 2 requirements in sprint
+    const req1 = await testRequest(app, 'POST', '/api/requirements', {
+      body: {
+        workspace_id: 'default',
+        title: 'Task A',
+        goal: 'Goal A',
+        affected_projects: ['backend'],
+      },
+    });
+    await testRequest(app, 'PUT', `/api/requirements/${req1.body.id}/sprint`, {
+      body: { sprint_id: sprintId },
+    });
+
+    const req2 = await testRequest(app, 'POST', '/api/requirements', {
+      body: {
+        workspace_id: 'default',
+        title: 'Task B',
+        goal: 'Goal B',
+        affected_projects: ['backend'],
+      },
+    });
+    await testRequest(app, 'PUT', `/api/requirements/${req2.body.id}/sprint`, {
+      body: { sprint_id: sprintId },
+    });
+
+    // Mark req1 as done
+    db.prepare("UPDATE requirements SET status = 'done' WHERE id = ?").run(req1.body.id);
+
+    const burndownRes = await testRequest(app, 'GET', `/api/sprints/${sprintId}/burndown`);
+    expect(burndownRes.status).toBe(200);
+    expect(burndownRes.body.sprint_id).toBe(sprintId);
+    expect(burndownRes.body.total_requirements).toBe(2);
+    expect(burndownRes.body.completed_requirements).toBe(1);
+    expect(burndownRes.body.backlog_rollover_rate).toBe(50);
+    expect(burndownRes.body.points_ideal.length).toBeGreaterThan(0);
+    expect(burndownRes.body.points_actual.length).toBeGreaterThan(0);
+  });
+
+  it('Agent Telemetry API: returns task distribution and blockage latency', async () => {
+    const reqRes = await testRequest(app, 'POST', '/api/requirements', {
+      body: {
+        workspace_id: 'default',
+        title: 'Telemetry Test Req',
+        goal: 'Testing telemetry',
+        affected_projects: ['backend'],
+      },
+    });
+    const reqId = reqRes.body.id;
+
+    const now = new Date().toISOString();
+    const past = new Date(Date.now() - 60000).toISOString();
+
+    // Insert some bridge_tasks and links directly to verify telemetry aggregation
+    const t1 = db.prepare(`
+      INSERT INTO bridge_tasks (project, req_id, role, title, status, engine_task_id, created_at, updated_at)
+      VALUES ('backend', ?, 'goal', 'Auth Task', 'done', 'sf-1', ?, ?)
+    `).run(reqId, past, now);
+    const t2 = db.prepare(`
+      INSERT INTO bridge_tasks (project, req_id, role, title, status, engine_task_id, created_at, updated_at)
+      VALUES ('backend', ?, 'goal', 'DB Task', 'in_review', 'sf-2', ?, ?)
+    `).run(reqId, past, now);
+
+    db.prepare(`
+      INSERT INTO links (state, task_id, depends_on_id, created_at, released_at)
+      VALUES ('released', ?, ?, ?, ?)
+    `).run(Number(t1.lastInsertRowid), Number(t2.lastInsertRowid), past, now);
+
+    const telemetryRes = await testRequest(app, 'GET', '/api/telemetry');
+    expect(telemetryRes.status).toBe(200);
+    expect(telemetryRes.body.total_tasks).toBe(2);
+    expect(telemetryRes.body.status_distribution.done).toBe(1);
+    expect(telemetryRes.body.status_distribution.in_review).toBe(1);
+    expect(telemetryRes.body.total_links).toBe(1);
+    expect(telemetryRes.body.released_links).toBe(1);
+    expect(telemetryRes.body.avg_blockage_latency_ms).toBeGreaterThan(0);
+    expect(telemetryRes.body.engine_activity.length).toBeGreaterThan(0);
+  });
+
+  it('GitHub Webhook Sync: transitions task to in_review on open and done on merge', async () => {
+    const now = new Date().toISOString();
+
+    // Create a requirement and a task
+    const req = await testRequest(app, 'POST', '/api/requirements', {
+      body: {
+        workspace_id: 'default',
+        title: 'Feature Payment',
+        goal: 'Payment integration',
+        affected_projects: ['backend'],
+      },
+    });
+    const reqId = req.body.id;
+
+    // Create a bridge task linked to req
+    const insertTask = db.prepare(`
+      INSERT INTO bridge_tasks (project, req_id, role, title, status, engine_task_id, created_at, updated_at)
+      VALUES ('backend', ?, 'goal', 'Payment API Endpoint', 'in_progress', 'task-pay-1', ?, ?)
+    `).run(reqId, now, now);
+    const taskId = Number(insertTask.lastInsertRowid);
+
+    // 1. Simulate PR opened with matching branch
+    const openedRes = await testRequest(app, 'POST', '/api/webhooks/github', {
+      headers: { 'x-github-event': 'pull_request' },
+      body: {
+        action: 'opened',
+        pull_request: {
+          html_url: 'https://github.com/my-org/backend/pull/10',
+          number: 10,
+          title: `Implement payment endpoint [${reqId}]`,
+          body: 'Fixes payment API',
+          state: 'open',
+          merged: false,
+          head: { ref: 'feature/payment-api' },
+          base: { ref: 'main' },
+        },
+        repository: {
+          name: 'backend',
+          full_name: 'my-org/backend',
+        },
+      },
+    });
+
+    expect(openedRes.status).toBe(200);
+    expect(openedRes.body.processed).toBe(true);
+    expect(openedRes.body.action).toBe('task_in_review');
+    expect(openedRes.body.taskId).toBe(taskId);
+
+    // Verify task status in DB is now in_review
+    const taskAfterOpen = db.prepare('SELECT status, pr_url FROM bridge_tasks WHERE id = ?').get(taskId) as any;
+    expect(taskAfterOpen.status).toBe('in_review');
+    expect(taskAfterOpen.pr_url).toBe('https://github.com/my-org/backend/pull/10');
+
+    // 2. Simulate PR closed and merged
+    const mergedRes = await testRequest(app, 'POST', '/api/webhooks/github', {
+      headers: { 'x-github-event': 'pull_request' },
+      body: {
+        action: 'closed',
+        pull_request: {
+          html_url: 'https://github.com/my-org/backend/pull/10',
+          number: 10,
+          title: `Implement payment endpoint [${reqId}]`,
+          body: 'Fixes payment API',
+          state: 'closed',
+          merged: true,
+          head: { ref: 'feature/payment-api' },
+          base: { ref: 'main' },
+        },
+        repository: {
+          name: 'backend',
+          full_name: 'my-org/backend',
+        },
+      },
+    });
+
+    expect(mergedRes.status).toBe(200);
+    expect(mergedRes.body.processed).toBe(true);
+    expect(mergedRes.body.action).toBe('task_merged');
+    expect(mergedRes.body.taskId).toBe(taskId);
+
+    // Verify task status in DB is now done
+    const taskAfterMerge = db.prepare('SELECT status FROM bridge_tasks WHERE id = ?').get(taskId) as any;
+    expect(taskAfterMerge.status).toBe('done');
+  });
+
+  it('manages AI chat sessions and messages via /api/ai/chat/sessions', async () => {
+    // 1. Create a chat session
+    const createRes = await testRequest(app, 'POST', '/api/ai/chat/sessions', {
+      body: {
+        workspace_id: 'default',
+        title: 'Microservices Design',
+        provider: 'heuristic',
+      },
+    });
+    expect(createRes.status).toBe(201);
+    expect(createRes.body.id).toBeDefined();
+    expect(createRes.body.title).toBe('Microservices Design');
+    const sessionId = createRes.body.id;
+
+    // 2. List sessions
+    const listRes = await testRequest(app, 'GET', '/api/ai/chat/sessions?workspace_id=default');
+    expect(listRes.status).toBe(200);
+    expect(listRes.body.some((s: any) => s.id === sessionId)).toBe(true);
+
+    // 3. Post a message to the session
+    const msgRes = await testRequest(app, 'POST', `/api/ai/chat/sessions/${sessionId}/messages`, {
+      body: {
+        content: 'I want to propose a new payment webhook with stripe signature verification',
+        provider: 'heuristic',
+      },
+    });
+    expect(msgRes.status).toBe(200);
+    expect(msgRes.body.session.messages.length).toBeGreaterThanOrEqual(3);
+    expect(msgRes.body.message.role).toBe('assistant');
+
+    // 4. Get session by ID
+    const getRes = await testRequest(app, 'GET', `/api/ai/chat/sessions/${sessionId}`);
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.id).toBe(sessionId);
+    expect(getRes.body.messages.length).toBeGreaterThanOrEqual(3);
+
+    // 5. Update session provider and effort
+    const patchRes = await testRequest(app, 'PATCH', `/api/ai/chat/sessions/${sessionId}`, {
+      body: {
+        provider: 'claude-cli',
+        effort: 'high',
+      },
+    });
+    expect(patchRes.status).toBe(200);
+    expect(patchRes.body.provider).toBe('claude-cli');
+    expect(patchRes.body.effort).toBe('high');
+
+    // 6. Delete session
+    const delRes = await testRequest(app, 'DELETE', `/api/ai/chat/sessions/${sessionId}`);
+    expect(delRes.status).toBe(200);
+    expect(delRes.body.ok).toBe(true);
+
+    // 7. Verify 404 after delete
+    const notFoundRes = await testRequest(app, 'GET', `/api/ai/chat/sessions/${sessionId}`);
+    expect(notFoundRes.status).toBe(404);
   });
 });
 

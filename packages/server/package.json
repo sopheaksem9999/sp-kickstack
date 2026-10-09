@@ -1,0 +1,39 @@
+{
+  "name": "@sp-kickstack/server",
+  "version": "0.2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@sp-kickstack/shared": "*",
+    "better-sqlite3": "^11.5.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "execa": "^9.5.1",
+    "express": "^4.21.1",
+    "helmet": "^8.0.0",
+    "pino": "^9.5.0",
+    "pino-pretty": "^13.0.0",
+    "yaml": "^2.6.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/cookie-parser": "^1.4.7",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.8.7",
+    "@types/supertest": "^6.0.2",
+    "supertest": "^7.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.3"
+  }
+}

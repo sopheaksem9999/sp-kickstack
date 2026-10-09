@@ -1,0 +1,21 @@
+{
+  "name": "sp-kickstack",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Cross-repo agent orchestration bridge",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run --workspaces --if-present build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "npm run --workspaces --if-present typecheck",
+    "dev:server": "npm run --workspace=@sp-kickstack/server dev",
+    "dev:web": "npm run --workspace=@sp-kickstack/web dev"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.3"
+  }
+}

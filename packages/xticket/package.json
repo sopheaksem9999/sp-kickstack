@@ -1,0 +1,21 @@
+{
+  "name": "@sp-kickstack/xticket",
+  "version": "0.2.0",
+  "type": "module",
+  "bin": {
+    "xticket": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc && chmod +x dist/cli.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@sp-kickstack/shared": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.8.7",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.3"
+  }
+}

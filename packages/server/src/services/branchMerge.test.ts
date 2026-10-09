@@ -13,7 +13,8 @@ import { TaskReactor } from './taskReactor.js';
 import { EngineWatcher } from '../watcher/engineWatcher.js';
 import { FakeEngineServer } from '../adapters/fakeEngine.js';
 import { StoneforgeAdapter } from '../adapters/stoneforgeAdapter.js';
-import { makeRepo, headOf } from '../testing/gitFixture.js';
+import { makeRepo, headOf, commitOnBranch, sh } from '../testing/gitFixture.js';
+import { MergeGateService } from './mergeGate.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const tempRoot = path.resolve(__dirname, '../../.temp/sp-test-branch-merge');
@@ -58,9 +59,17 @@ function makeGitHarness(opts: { withOrigin?: boolean } = { withOrigin: true }) {
   const engineBody = (project: 'backend' | 'mobile', engineTaskId: string) =>
     (project === 'backend' ? backendEngine : mobileEngine).getTaskData(engineTaskId)!.notes[0];
 
+  const gate = new MergeGateService(db, projectService, requirementService, reactor, {
+    getAdapter,
+    testTimeoutMs: 20_000,
+    tmpRoot: path.join(ws, 'tmp'),
+  });
+  const repoOf = (project: string) => (project === 'backend' ? backendRepo : mobileRepo);
+
   return {
     ws, db, backendRepo, mobileRepo, projectService, requirementService, backendEngine, mobileEngine,
     adapters, linkService, ticketService, fanOutService, reactor, watcher, emitted, createRequirement, task, engineBody,
+    gate, repoOf,
   };
 }
 
@@ -188,5 +197,194 @@ describe('Branch-mode dependencies', () => {
     await h.watcher.scanOnce();
 
     expect(h.linkService.getLinksForTask(source.id)[0].state).toBe('waiting');
+  });
+});
+
+describe('Merge gate', () => {
+  let h: GitHarness;
+  afterEach(() => h.db.close());
+
+  /** Fan out, commit work on every task branch, and put everything in review. */
+  async function readyForGate(projects = ['backend', 'mobile'], files: Record<string, { file: string; content: string } | null> = {}) {
+    const req = h.createRequirement(projects);
+    const goals = await h.fanOutService.execute(req.id);
+    for (const g of goals) {
+      const row = h.task(g.id);
+      const change = files[g.project] === undefined ? { file: `${g.project}-${g.id}.txt`, content: `work ${g.id}\n` } : files[g.project];
+      if (change) commitOnBranch(h.repoOf(g.project).repo, row.branch, change.file, change.content);
+      h.db.prepare("UPDATE bridge_tasks SET status = 'in_review' WHERE id = ?").run(g.id);
+    }
+    h.requirementService.updateStatus(req.id, 'in_review');
+    return { req, goals };
+  }
+
+  const statusOf = (err: unknown) => (err as { status?: number }).status;
+  const reqRow = (id: string) => h.db.prepare('SELECT status, merge_state, merge_error FROM requirements WHERE id = ?').get(id) as any;
+
+  it('merges every task branch, pushes, fast-forwards local develop and moves the requirement to QA', async () => {
+    h = makeGitHarness();
+    const { req, goals } = await readyForGate();
+
+    const outcome = await h.gate.start(req.id, 'manual').done;
+
+    expect(outcome).toMatchObject({ ok: true, projects: ['backend', 'mobile'], warnings: [] });
+    for (const g of goals) {
+      const { repo, origin } = h.repoOf(g.project);
+      expect(sh(origin!, ['show', `develop:${g.project}-${g.id}.txt`])).toBe(`work ${g.id}`);
+      expect(headOf(repo, 'develop')).toBe(headOf(origin!, 'develop'));
+      const row = h.task(g.id);
+      expect(row.status).toBe('done');
+      expect(row.merged_at).toBeTruthy();
+      expect(sh(repo, ['rev-list', '--parents', '-n', '1', row.merge_sha]).split(' ')).toHaveLength(3);
+      const engine = g.project === 'backend' ? h.backendEngine : h.mobileEngine;
+      expect(engine.getTaskData(g.engine_task_id!)!.notes.join('\n')).toMatch(/Merged into `develop`/);
+    }
+    expect(reqRow(req.id)).toMatchObject({ status: 'qa', merge_state: 'idle' });
+  });
+
+  it('changes nothing anywhere when one project conflicts, and tells that task to rebase', async () => {
+    h = makeGitHarness();
+    const { req, goals } = await readyForGate(['backend', 'mobile'], { mobile: { file: 'README.md', content: 'task change\n' } });
+    commitOnBranch(h.mobileRepo.repo, 'develop', 'README.md', 'develop change\n');
+    sh(h.mobileRepo.repo, ['push', '-q', 'origin', 'develop']);
+    const before = ['backend', 'mobile'].map((p) => [headOf(h.repoOf(p).repo, 'develop'), headOf(h.repoOf(p).origin!, 'develop')]);
+
+    const outcome = await h.gate.start(req.id, 'manual').done;
+
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) {
+      expect(outcome.error).toContain('README.md');
+      expect(outcome.error).toContain(h.task(goals.find((g) => g.project === 'mobile')!.id).branch);
+      expect(outcome.mergedProjects).toEqual([]);
+    }
+    const after = ['backend', 'mobile'].map((p) => [headOf(h.repoOf(p).repo, 'develop'), headOf(h.repoOf(p).origin!, 'develop')]);
+    expect(after).toEqual(before);
+    expect(reqRow(req.id)).toMatchObject({ status: 'in_review', merge_state: 'failed' });
+    const mobileGoal = goals.find((g) => g.project === 'mobile')!;
+    expect(h.mobileEngine.getTaskData(mobileGoal.engine_task_id!)!.notes.join('\n')).toMatch(/rebase/i);
+  });
+
+  it('changes nothing when the project test command fails', async () => {
+    h = makeGitHarness();
+    h.projectService.updateProject('backend', { test_command: 'echo boom && exit 7' });
+    const { req } = await readyForGate();
+    const before = headOf(h.backendRepo.origin!, 'develop');
+
+    const outcome = await h.gate.start(req.id, 'manual').done;
+
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) {
+      expect(outcome.error).toMatch(/exit 7/);
+      expect(outcome.error).toContain('boom');
+    }
+    expect(headOf(h.backendRepo.origin!, 'develop')).toBe(before);
+    expect(headOf(h.mobileRepo.origin!, 'develop')).toBe(headOf(h.mobileRepo.repo, 'develop'));
+  });
+
+  it('pushes to origin but leaves a dirty checkout alone, with a warning', async () => {
+    h = makeGitHarness();
+    const { req, goals } = await readyForGate();
+    fs.writeFileSync(path.join(h.backendRepo.repo, 'README.md'), 'my unsaved work\n');
+    const localBefore = headOf(h.backendRepo.repo, 'develop');
+
+    const outcome = await h.gate.start(req.id, 'manual').done;
+
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) expect(outcome.warnings.join('\n')).toMatch(/uncommitted/);
+    const backendGoal = goals.find((g) => g.project === 'backend')!;
+    expect(sh(h.backendRepo.origin!, ['show', `develop:backend-${backendGoal.id}.txt`])).toBe(`work ${backendGoal.id}`);
+    expect(headOf(h.backendRepo.repo, 'develop')).toBe(localBefore);
+    expect(fs.readFileSync(path.join(h.backendRepo.repo, 'README.md'), 'utf8')).toBe('my unsaved work\n');
+  });
+
+  it('refuses before changing anything when a repo without origin has a dirty checkout', async () => {
+    h = makeGitHarness({ withOrigin: false });
+    const { req } = await readyForGate();
+    fs.writeFileSync(path.join(h.backendRepo.repo, 'README.md'), 'my unsaved work\n');
+    const before = ['backend', 'mobile'].map((p) => headOf(h.repoOf(p).repo, 'develop'));
+
+    const outcome = await h.gate.start(req.id, 'manual').done;
+
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.error).toMatch(/uncommitted/);
+    expect(['backend', 'mobile'].map((p) => headOf(h.repoOf(p).repo, 'develop'))).toEqual(before);
+  });
+
+  it('reports a partial merge when a later push is rejected, and a retry merges only the rest', async () => {
+    h = makeGitHarness();
+    const { req, goals } = await readyForGate();
+    const hook = path.join(h.mobileRepo.origin!, 'hooks', 'pre-receive');
+    fs.writeFileSync(hook, '#!/bin/sh\necho "protected branch" >&2\nexit 1\n', { mode: 0o755 });
+
+    const first = await h.gate.start(req.id, 'manual').done;
+
+    expect(first).toMatchObject({ ok: false, mergedProjects: ['backend'] });
+    const backendGoal = goals.find((g) => g.project === 'backend')!;
+    const mobileGoal = goals.find((g) => g.project === 'mobile')!;
+    expect(h.task(backendGoal.id).merge_sha).toBeTruthy();
+    expect(h.task(mobileGoal.id).merged_at).toBeNull();
+    expect(reqRow(req.id)).toMatchObject({ status: 'in_review', merge_state: 'failed' });
+
+    fs.rmSync(hook);
+    const second = await h.gate.start(req.id, 'manual').done;
+
+    expect(second).toMatchObject({ ok: true, projects: ['mobile'] });
+    expect(sh(h.backendRepo.origin!, ['rev-list', '--merges', '--count', 'develop'])).toBe('1');
+    expect(reqRow(req.id).status).toBe('qa');
+  });
+
+  it('refuses to start unless every task is in review, the requirement is in review, and no merge is running', async () => {
+    h = makeGitHarness();
+    const { req, goals } = await readyForGate();
+
+    h.db.prepare("UPDATE bridge_tasks SET status = 'running' WHERE id = ?").run(goals[0].id);
+    try { h.gate.start(req.id, 'manual'); expect.unreachable(); } catch (err) { expect(statusOf(err)).toBe(409); }
+    h.db.prepare("UPDATE bridge_tasks SET status = 'in_review' WHERE id = ?").run(goals[0].id);
+
+    h.requirementService.updateStatus(req.id, 'in_progress');
+    try { h.gate.start(req.id, 'manual'); expect.unreachable(); } catch (err) { expect(statusOf(err)).toBe(409); }
+    h.requirementService.updateStatus(req.id, 'in_review');
+
+    const run = h.gate.start(req.id, 'manual');
+    try { h.gate.start(req.id, 'manual'); expect.unreachable(); } catch (err) { expect(statusOf(err)).toBe(409); }
+    await run.done;
+  });
+
+  it('skips a branch with no commits and still succeeds', async () => {
+    h = makeGitHarness();
+    const { req, goals } = await readyForGate(['backend', 'mobile'], { mobile: null });
+
+    const outcome = await h.gate.start(req.id, 'manual').done;
+
+    expect(outcome.ok).toBe(true);
+    const mobile = h.task(goals.find((g) => g.project === 'mobile')!.id);
+    expect(mobile.merged_at).toBeTruthy();
+    expect(mobile.merge_sha).toBeNull();
+    expect(mobile.status).toBe('done');
+  });
+
+  it('marks a merge left running by a crash as failed on restart', async () => {
+    h = makeGitHarness();
+    const req = h.createRequirement();
+    h.db.prepare("UPDATE requirements SET merge_state = 'running' WHERE id = ?").run(req.id);
+
+    expect(h.gate.resetInterrupted()).toBe(1);
+    expect(reqRow(req.id)).toMatchObject({ merge_state: 'failed' });
+    expect(reqRow(req.id).merge_error).toMatch(/restart/i);
+  });
+
+  it('serializes two requirements merging into the same repository', async () => {
+    h = makeGitHarness();
+    const a = await readyForGate(['backend']);
+    const b = await readyForGate(['backend']);
+
+    const [ra, rb] = await Promise.all([h.gate.start(a.req.id, 'manual').done, h.gate.start(b.req.id, 'manual').done]);
+
+    expect(ra.ok).toBe(true);
+    expect(rb.ok).toBe(true);
+    for (const r of [a, b]) {
+      const goal = r.goals[0];
+      expect(sh(h.backendRepo.origin!, ['show', `develop:backend-${goal.id}.txt`])).toBe(`work ${goal.id}`);
+    }
   });
 });

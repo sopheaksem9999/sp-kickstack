@@ -1324,3 +1324,32 @@ describe('T12: one scheduler tick', () => {
     warn.mockRestore();
   });
 });
+
+describe('Verification follow-ups', () => {
+  let h: Harness;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => h.db.close());
+
+  it('B: a watcher built without an explicit reactor still releases dependents', async () => {
+    const { mobileGoal, tickets } = await blockMobileOn(h, ['GET /loc']);
+    const plainWatcher = new EngineWatcher(h.db, h.projectService, h.requirementService, (n) => h.adapters[n]);
+    h.backendEngine.setTaskStatus(taskRow(h, tickets[0].ticketId).engine_task_id, 'done', 'merged');
+
+    await plainWatcher.scanOnce();
+
+    expect(h.linkService.getLinksForTask(mobileGoal.id)[0].state).toBe('released');
+    expect(h.mobileEngine.getTaskData(mobileGoal.engine_task_id!)!.status).toBe('queued');
+  });
+
+  it('O: a cancelled requirement cannot be confirmed merged', async () => {
+    const req = h.createRequirement();
+    const [first] = await h.fanOutService.execute(req.id);
+    h.db.prepare("UPDATE bridge_tasks SET status = 'done' WHERE id = ?").run(first.id);
+    await h.fanOutService.cancel(req.id);
+
+    const res = await testRequest(h.app, 'POST', `/api/requirements/${req.id}/merge-to-main`);
+
+    expect(res.status).toBe(409);
+    expect(h.requirementService.getRequirement(req.id)!.status).toBe('cancelled');
+  });
+});

@@ -124,14 +124,14 @@ describe('MVP Acceptance Scenario (§16 Full End-to-End)', () => {
     backendEngine.setTaskStatus(backendTicketTask.engine_task_id, 'done', 'merged', 'https://github.com/pulls/101');
     backendEngine.setTaskStatus(backendGoal.engine_task_id!, 'done', 'merged');
 
-    // Watcher polls backend
+    // Watcher polls backend: the finished ticket releases the blocked mobile goal by itself
     await watcher.scanOnce();
 
-    // Check dependency link release
-    const releasedLinks = await linkService.evaluateDependencyResolved(ticketResp.ticketId);
+    const releasedLinks = linkService.getLinksForTask(mobileGoal.id);
     expect(releasedLinks.length).toBe(1);
     expect(releasedLinks[0].state).toBe('released');
     expect(releasedLinks[0].context_md).toContain('Contract file: openapi.yaml');
+    expect(mobileEngine.getTaskData(mobileGoal.engine_task_id!)!.status).toBe('queued');
 
     // Mobile goal resumes to queued
     const mobileResumed = db.prepare('SELECT status FROM bridge_tasks WHERE id = ?').get(mobileGoal.id) as any;

@@ -4,6 +4,7 @@ import { RequirementService } from '../services/requirementService.js';
 import { AdapterFactory } from '../services/fanOutService.js';
 import { BridgeTask, NormStatus } from '@sp-kickstack/shared';
 import { TaskReactor } from '../services/taskReactor.js';
+import { LinkService } from '../services/linkService.js';
 
 export type EventCallback = (event: {
   type: string;
@@ -40,8 +41,10 @@ export class EngineWatcher {
     private pollIntervalMs: number = 5000,
     reactor?: TaskReactor
   ) {
-    // Without an injected reactor (tests, scripts) links are not evaluated; index.ts injects one.
-    this.reactor = reactor ?? new TaskReactor(db, requirementService, undefined, onEvent);
+    // The watcher has everything a LinkService needs, so even without an injected reactor
+    // a finished dependency always releases its dependents.
+    this.reactor =
+      reactor ?? new TaskReactor(db, requirementService, new LinkService(db, projectService, getAdapter), onEvent);
   }
 
   public recordEvent(

@@ -267,6 +267,9 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
   public confirmMerged(id: string): { ok: boolean; status: string; merged_branch: null; git_operation: false } {
     const req = this.getRequirement(id);
     if (!req) throw new HttpError(404, `Requirement ${id} not found`);
+    if (req.status === 'cancelled' || req.status === 'done' || req.status === 'draft') {
+      throw conflict(`${id} is ${req.status}; only dispatched, open requirements can be confirmed merged`);
+    }
 
     const tasks = this.db
       .prepare("SELECT status FROM bridge_tasks WHERE req_id = ? AND role IN ('goal', 'ticket') AND status <> 'cancelled'")

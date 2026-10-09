@@ -8,6 +8,7 @@ import { HttpError, conflict } from '../lib/httpError.js';
 import { RequirementStatus, normalizeMergePolicy } from '@sp-kickstack/shared';
 import { cancelOrphan } from './orphans.js';
 import { MAX_DISPATCH_ATTEMPTS, shouldNotifyFailure } from '../lib/retryPolicy.js';
+import { BranchService, branchInstructions, taskBranchName } from './branchService.js';
 
 export type AdapterFactory = (projectName: string) => EngineAdapter;
 
@@ -15,12 +16,17 @@ export type AdapterFactory = (projectName: string) => EngineAdapter;
 const FANOUT_FROM: RequirementStatus[] = ['draft', 'ready', 'in_progress', 'qa'];
 
 export class FanOutService {
+  private branches: BranchService;
+
   constructor(
     private db: AppDatabase,
     private projectService: ProjectService,
     private requirementService: RequirementService,
-    private getAdapter: AdapterFactory
-  ) {}
+    private getAdapter: AdapterFactory,
+    branches?: BranchService
+  ) {
+    this.branches = branches ?? new BranchService(db, projectService);
+  }
 
   public formatGoalBody(
     reqId: string,
@@ -29,7 +35,8 @@ export class FanOutService {
     requirementMd: string,
     baseBranch: string = 'develop',
     mergePolicy: string = 'manual_review_merge',
-    sharedAssets: Array<{ name: string; notes?: string }> = []
+    sharedAssets: Array<{ name: string; notes?: string }> = [],
+    branch?: string
   ): string {
     const mergePolicyDesc =
       normalizeMergePolicy(mergePolicy) === 'auto_merge'
@@ -45,9 +52,13 @@ export class FanOutService {
 
     return `# ${reqId} — ${oneLine(title)}  (project: ${project})
 
-## Branch & Implementation Rules
+${
+      branch
+        ? branchInstructions(branch, baseBranch, normalizeMergePolicy(mergePolicy))
+        : `## Branch & Implementation Rules
 - Target Branch: All changes must be developed on the \`${baseBranch}\` branch.
-- Merge Strategy: ${mergePolicyDesc}
+- Merge Strategy: ${mergePolicyDesc}`
+    }
 ${assetsBlock}
 ## Execution Autonomy & Headless Protocol (Strategy A)
 - **Operate headlessly & autonomously**: Do NOT halt execution to ask user confirmation for running standard builds, package installations, tests, or mechanical file refactorings.
@@ -55,7 +66,7 @@ ${assetsBlock}
 - **Cross-Service Contracts**: Never pause to chat interactively with the human about other repositories; instead issue a blocking \`xticket\` so the dependency graph handles orchestration automatically.
 
 ## What to do
-1. Read the requirement below and inspect this codebase on the \`${baseBranch}\` branch.
+1. Read the requirement below and inspect this codebase on the \`${branch ?? baseBranch}\` branch.
 2. Write \`specs/${reqId}/spec.md\` (what THIS project must do, affected modules,
    data/API changes, edge cases, risks, test strategy) and \`specs/${reqId}/plan.md\`
    (ordered implementation steps).
@@ -134,6 +145,9 @@ ${wrapUntrusted('requirement', requirementMd)}
         AND status = 'failed' AND engine_task_id IS NULL AND attempts < ${MAX_DISPATCH_ATTEMPTS}
       RETURNING id, attempts
     `);
+    // Git checks happen before the transaction; branch names need the new row id.
+    const branching = new Map(projects.map((p) => [p.name, this.branches.usesBranches(p)]));
+    const nameBranch = this.db.prepare('UPDATE bridge_tasks SET branch = ?, body_md = ? WHERE id = ?');
     this.db.transaction(() => {
       for (const project of projects) {
         const baseBranch = project.base_branch || defaultBaseBranch;
@@ -141,7 +155,16 @@ ${wrapUntrusted('requirement', requirementMd)}
         const bodyMd = this.formatGoalBody(req.id, req.title, project.name, req.body_md, baseBranch, mergePolicy, sharedAssets);
         const inserted = reserve.run(req.id, project.name, title, bodyMd, req.revision, now, now);
         if (inserted.changes === 1) {
-          toDispatch.push({ id: Number(inserted.lastInsertRowid), attempts: 1 });
+          const id = Number(inserted.lastInsertRowid);
+          if (branching.get(project.name)) {
+            const branch = taskBranchName(req.id, id);
+            nameBranch.run(
+              branch,
+              this.formatGoalBody(req.id, req.title, project.name, req.body_md, baseBranch, mergePolicy, sharedAssets, branch),
+              id
+            );
+          }
+          toDispatch.push({ id, attempts: 1 });
           continue;
         }
         const reclaimed = reclaimFailed.get(now, req.id, project.name, req.revision) as
@@ -171,6 +194,8 @@ ${wrapUntrusted('requirement', requirementMd)}
     let lastError = 'Unknown adapter error';
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
+        // The work branch must exist before an agent is told to use it.
+        this.branches.ensureTaskBranch(taskId);
         const adapter = this.getAdapter(task.project);
         const engineTask = await adapter.createGoal({ title: task.title, bodyMd: task.body_md || '' });
         const stored = this.db

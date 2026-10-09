@@ -12,6 +12,7 @@ import { HttpError, badRequest } from '../lib/httpError.js';
 import crypto from 'node:crypto';
 import { cancelOrphan } from './orphans.js';
 import { MAX_DISPATCH_ATTEMPTS, shouldNotifyFailure } from '../lib/retryPolicy.js';
+import { BranchService, branchInstructions, taskBranchName } from './branchService.js';
 
 function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -22,24 +23,30 @@ export class TicketService {
   public static MAX_TICKETS_PER_REQ = 10;
   public static MAX_BODY_BYTES = 20480;
 
+  private branches: BranchService;
+
   constructor(
     private db: AppDatabase,
     private projectService: ProjectService,
     private linkService: LinkService,
-    private getAdapter: AdapterFactory
-  ) {}
+    private getAdapter: AdapterFactory,
+    branches?: BranchService
+  ) {
+    this.branches = branches ?? new BranchService(db, projectService);
+  }
 
   public formatTicketBody(
     sourceProject: string,
     reqId: string,
-    input: CreateTicketInput
+    input: CreateTicketInput,
+    branch?: { name: string; base: string; policy: 'manual_review_merge' | 'auto_merge' }
   ): string {
     return `# Ticket from ${oneLine(sourceProject)} — ${oneLine(input.title)}  (${reqId})
 
 Review feasibility against the current contract and tenant-isolation rules,
 write a short plan, implement, update the contract file, add tests.
 If the request is unclear or unsafe, say so instead of guessing.
-
+${branch ? `\n${branchInstructions(branch.name, branch.base, branch.policy)}\n` : ''}
 ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input.body}`)}
 `;
   }
@@ -129,6 +136,16 @@ ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input
           now
         );
       ownsEngineCall = reserved.changes === 1;
+      if (ownsEngineCall && this.branches.usesBranches(targetProject)) {
+        const id = Number(reserved.lastInsertRowid);
+        const name = taskBranchName(reqId, id);
+        const body = this.formatTicketBody(sourceProject, reqId, input, {
+          name,
+          base: this.branches.baseBranchFor(targetProject),
+          policy: this.branches.policyFor(reqId),
+        });
+        this.db.prepare('UPDATE bridge_tasks SET branch = ?, body_md = ? WHERE id = ?').run(name, body, id);
+      }
       ticket = this.findByKey(idempotencyKey)!;
     } else if (!ticket.engine_task_id) {
       // A previous attempt failed before the engine accepted it: claim the retry (capped;
@@ -177,6 +194,8 @@ ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input
     if (!ticket || ticket.status !== 'pending') return;
 
     try {
+      // The work branch must exist before an agent is told to use it.
+      this.branches.ensureTaskBranch(ticketId);
       const adapter = this.getAdapter(ticket.project);
       const engineTask = await adapter.createTask({
         title: ticket.title,

@@ -290,7 +290,7 @@ export function RequirementDetailPage() {
                   <option value="manual_review_merge" className="bg-white dark:bg-[#1a1b22] text-slate-800 dark:text-slate-200">
                     Manual Review & Merge
                   </option>
-                  <option value="auto_merge_main" className="bg-white dark:bg-[#1a1b22] text-slate-800 dark:text-slate-200">
+                  <option value="auto_merge" className="bg-white dark:bg-[#1a1b22] text-slate-800 dark:text-slate-200">
                     Auto-Merge to Main
                   </option>
                 </select>

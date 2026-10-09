@@ -303,7 +303,8 @@ describe('Bridge REST API Integration Tests', () => {
       },
     });
     expect(updatePolicyRes.status).toBe(200);
-    expect(updatePolicyRes.body.merge_policy).toBe('auto_merge_main');
+    // The legacy name is still accepted and stored as its new name.
+    expect(updatePolicyRes.body.merge_policy).toBe('auto_merge');
   });
 
   it('GET /api/assets, POST /api/assets/shared, and DELETE manage shared assets and ticket attachments', async () => {

@@ -1614,9 +1614,9 @@ export function SettingsPage() {
                   </div>
 
                   <div
-                    onClick={() => setMergePolicy('auto_merge_main')}
+                    onClick={() => setMergePolicy('auto_merge')}
                     className={`p-4 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${
-                      mergePolicy === 'auto_merge_main'
+                      mergePolicy === 'auto_merge'
                         ? 'bg-purple-50/70 dark:bg-purple-950/40 border-[#7b68ee] ring-2 ring-[#7b68ee]/30 shadow-sm'
                         : 'bg-slate-50 dark:bg-[#1a1a1a] border-slate-200 dark:border-[#2d2d2d] hover:border-slate-300'
                     }`}
@@ -1629,7 +1629,7 @@ export function SettingsPage() {
                         <h3 className="font-bold text-xs text-slate-900 dark:text-white">
                           Automatic Merge to Main
                         </h3>
-                        {mergePolicy === 'auto_merge_main' && (
+                        {mergePolicy === 'auto_merge' && (
                           <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                         )}
                       </div>

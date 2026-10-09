@@ -673,7 +673,7 @@ What feature, solution, or refactoring would you like to design today? You can s
                 >
                   <option value="inherit">⚙️ Workspace Default</option>
                   <option value="manual_review_merge">🛡️ Manual Review & Merge</option>
-                  <option value="auto_merge_main">🚀 Automatic Merge to Main</option>
+                  <option value="auto_merge">🚀 Automatic Merge to Main</option>
                 </select>
               </div>
             </div>

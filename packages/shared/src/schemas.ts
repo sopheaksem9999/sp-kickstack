@@ -56,10 +56,19 @@ export const EventTypeSchema = z.enum([
   'task_status_changed',
 ]);
 
-export const BranchMergePolicySchema = z.enum([
-  'manual_review_merge',
-  'auto_merge_main',
-]);
+/** 'auto_merge_main' is the pre-merge-gate name of 'auto_merge'; still accepted on input. */
+const LEGACY_MERGE_POLICY: Record<string, string> = { auto_merge_main: 'auto_merge' };
+
+export const BranchMergePolicySchema = z.preprocess(
+  (value) => (typeof value === 'string' && LEGACY_MERGE_POLICY[value]) || value,
+  z.enum(['manual_review_merge', 'auto_merge'])
+);
+
+/** Effective policy from any stored value (legacy names, null, unknown -> review first). */
+export function normalizeMergePolicy(value: unknown): 'manual_review_merge' | 'auto_merge' {
+  const parsed = BranchMergePolicySchema.safeParse(value);
+  return parsed.success ? parsed.data : 'manual_review_merge';
+}
 
 export const BranchMergeSettingsSchema = z.object({
   default_base_branch: z.string().default('develop'),
@@ -109,6 +118,8 @@ export const ProjectSchema = z.object({
   engine_meta: z.record(z.unknown()).default({}),
   base_branch: z.string().default('develop'),
   contract_path: z.string().optional().nullable(),
+  /** Shell command run in a fresh worktree of the merge result before the base branch advances. */
+  test_command: z.string().max(2000).optional().nullable(),
   done_means: DoneMeansSchema.default('merged'),
   high_risk_paths: z.array(z.string()).default([]),
   enabled: z.boolean().default(true),
@@ -274,6 +285,7 @@ export const DraftRequirementResultSchema = z.object({
   acceptance_criteria: z.array(z.string()).default([]),
   affected_projects: z.array(z.string()).default([]),
   api_hints: z.string().optional(),
+  notes: z.string().optional(),
   provider_used: z.string().default('local-ai'),
 });
 

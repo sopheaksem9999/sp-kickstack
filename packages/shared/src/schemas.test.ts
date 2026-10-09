@@ -4,11 +4,27 @@ import {
   CreateTicketInputSchema,
   CreateWorkspaceInputSchema,
   ProjectSchema,
+  BranchMergePolicySchema,
+  normalizeMergePolicy,
   AiChatMessageSchema,
   AiChatRequestSchema,
 } from './schemas.js';
 
 describe('Shared Schemas Validation', () => {
+  it('accepts the legacy auto_merge_main policy as auto_merge', () => {
+    expect(BranchMergePolicySchema.parse('auto_merge_main')).toBe('auto_merge');
+    expect(BranchMergePolicySchema.parse('auto_merge')).toBe('auto_merge');
+    expect(BranchMergePolicySchema.parse('manual_review_merge')).toBe('manual_review_merge');
+    expect(normalizeMergePolicy('auto_merge_main')).toBe('auto_merge');
+    expect(normalizeMergePolicy(undefined)).toBe('manual_review_merge');
+  });
+
+  it('keeps an optional project test command', () => {
+    const base = { name: 'backend', repo_path: '/r', engine_type: 'manual' as const };
+    expect(ProjectSchema.parse({ ...base, test_command: 'npm ci && npm test' }).test_command).toBe('npm ci && npm test');
+    expect(ProjectSchema.parse(base).test_command).toBeUndefined();
+  });
+
   it('validates a valid project schema', () => {
     const project = {
       name: 'backend',

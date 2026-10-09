@@ -11,6 +11,7 @@ import {
   AiChatSession,
   DraftRequirementResult,
   ChatAttachmentItem,
+  normalizeMergePolicy,
 } from '@sp-kickstack/shared';
 
 export class AiChatService {
@@ -278,7 +279,7 @@ What feature, solution, or refactoring would you like to design today? Tell me w
       const row = this.db.prepare("SELECT value FROM settings WHERE key = 'branch_merge_settings'").get() as any;
       if (row?.value) {
         const parsed = JSON.parse(row.value);
-        if (parsed.merge_policy === 'auto_merge_main') {
+        if (normalizeMergePolicy(parsed.merge_policy) === 'auto_merge') {
           branchPolicy = 'Target develop branch; auto-merge to main on task completion & green tests.';
         }
       }

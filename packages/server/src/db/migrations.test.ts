@@ -49,7 +49,33 @@ describe('Database migrations', () => {
   it('brings a fresh database to the latest version with the new columns', () => {
     const db = initDatabase(':memory:');
     expect(db.pragma('user_version', { simple: true })).toBe(LATEST_VERSION);
-    expect(columns(db, 'bridge_tasks')).toEqual(expect.arrayContaining(['attempts', 'idempotency_key']));
+    expect(LATEST_VERSION).toBe(3);
+    expect(columns(db, 'bridge_tasks')).toEqual(
+      expect.arrayContaining(['attempts', 'idempotency_key', 'branch', 'base_sha', 'merge_sha', 'merged_at'])
+    );
+    expect(columns(db, 'requirements')).toEqual(expect.arrayContaining(['merge_state', 'merge_error']));
+    expect(columns(db, 'projects')).toContain('test_command');
+    db.close();
+  });
+
+  it('migration 3 renames the auto_merge_main policy everywhere', () => {
+    const file = path.join(caseDir, 'bridge.db');
+    const seed = initDatabase(file);
+    seed.prepare("UPDATE settings SET value = ? WHERE key = 'branch_merge_settings'").run(
+      JSON.stringify({ default_base_branch: 'develop', merge_policy: 'auto_merge_main', auto_delete_branch: false })
+    );
+    seed.exec(`
+      INSERT INTO requirements (id, seq, title, status, body_md, file_path, merge_policy, created_at, updated_at)
+      VALUES ('REQ-001', 1, 'T', 'draft', '#', 'f', 'auto_merge_main', 'x', 'x');
+    `);
+    seed.pragma('user_version = 2');
+    seed.close();
+
+    const db = initDatabase(file);
+    const settings = JSON.parse((db.prepare("SELECT value FROM settings WHERE key = 'branch_merge_settings'").get() as any).value);
+    expect(settings.merge_policy).toBe('auto_merge');
+    expect((db.prepare("SELECT merge_policy FROM requirements WHERE id = 'REQ-001'").get() as any).merge_policy).toBe('auto_merge');
+    expect((db.prepare("SELECT merge_state FROM requirements WHERE id = 'REQ-001'").get() as any).merge_state).toBe('idle');
     db.close();
   });
 

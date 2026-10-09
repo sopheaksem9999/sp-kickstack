@@ -5,7 +5,7 @@ import { EngineAdapter } from '../adapters/types.js';
 import { BridgeTask } from '@sp-kickstack/shared';
 import { oneLine, wrapUntrusted } from '../lib/promptSafety.js';
 import { HttpError, conflict } from '../lib/httpError.js';
-import { RequirementStatus } from '@sp-kickstack/shared';
+import { RequirementStatus, normalizeMergePolicy } from '@sp-kickstack/shared';
 import { cancelOrphan } from './orphans.js';
 import { MAX_DISPATCH_ATTEMPTS, shouldNotifyFailure } from '../lib/retryPolicy.js';
 
@@ -32,7 +32,7 @@ export class FanOutService {
     sharedAssets: Array<{ name: string; notes?: string }> = []
   ): string {
     const mergePolicyDesc =
-      mergePolicy === 'auto_merge_main'
+      normalizeMergePolicy(mergePolicy) === 'auto_merge'
         ? 'Changes on develop branch will be automatically merged to main upon task completion & green tests.'
         : 'All changes remain on develop branch and require human operator review and manual approval before merging into main.';
 

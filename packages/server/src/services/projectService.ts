@@ -16,11 +16,11 @@ export class ProjectService {
     const stmt = this.db.prepare(`
       INSERT INTO projects (
         name, workspace_id, kind, repo_path, engine_type, engine_url, engine_meta,
-        base_branch, contract_path, done_means, high_risk_paths,
+        base_branch, contract_path, done_means, high_risk_paths, test_command,
         enabled, engine_status, created_at, updated_at
       ) VALUES (
         @name, @workspace_id, @kind, @repo_path, @engine_type, @engine_url, @engine_meta,
-        @base_branch, @contract_path, @done_means, @high_risk_paths,
+        @base_branch, @contract_path, @done_means, @high_risk_paths, @test_command,
         @enabled, @engine_status, @created_at, @updated_at
       )
       ON CONFLICT(name) DO UPDATE SET
@@ -34,6 +34,7 @@ export class ProjectService {
         contract_path = excluded.contract_path,
         done_means = excluded.done_means,
         high_risk_paths = excluded.high_risk_paths,
+        test_command = excluded.test_command,
         enabled = excluded.enabled,
         updated_at = excluded.updated_at
     `);
@@ -46,6 +47,7 @@ export class ProjectService {
       enabled: validated.enabled ? 1 : 0,
       engine_url: validated.engine_url || null,
       contract_path: validated.contract_path || null,
+      test_command: validated.test_command || null,
     });
 
     return this.getProject(validated.name)!;
@@ -112,6 +114,7 @@ export class ProjectService {
         contract_path = @contract_path,
         done_means = @done_means,
         high_risk_paths = @high_risk_paths,
+        test_command = @test_command,
         enabled = @enabled,
         updated_at = @updated_at
       WHERE name = @name
@@ -122,6 +125,7 @@ export class ProjectService {
       enabled: validated.enabled ? 1 : 0,
       engine_url: validated.engine_url || null,
       contract_path: validated.contract_path || null,
+      test_command: validated.test_command || null,
     });
 
     return this.getProject(name)!;

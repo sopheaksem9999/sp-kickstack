@@ -92,6 +92,35 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 3,
+    name: 'task branches, merge gate state, project test command, auto_merge policy',
+    up: (db) => {
+      addColumn(db, 'bridge_tasks', 'branch', 'TEXT');
+      addColumn(db, 'bridge_tasks', 'base_sha', 'TEXT');
+      addColumn(db, 'bridge_tasks', 'merge_sha', 'TEXT');
+      addColumn(db, 'bridge_tasks', 'merged_at', 'TEXT');
+      addColumn(db, 'requirements', 'merge_state', "TEXT NOT NULL DEFAULT 'idle'");
+      addColumn(db, 'requirements', 'merge_error', 'TEXT');
+      addColumn(db, 'projects', 'test_command', 'TEXT');
+
+      db.prepare("UPDATE requirements SET merge_policy = 'auto_merge' WHERE merge_policy = 'auto_merge_main'").run();
+      const row = db.prepare("SELECT value FROM settings WHERE key = 'branch_merge_settings'").get() as
+        | { value: string }
+        | undefined;
+      if (row) {
+        try {
+          const settings = JSON.parse(row.value);
+          if (settings.merge_policy === 'auto_merge_main') {
+            settings.merge_policy = 'auto_merge';
+            db.prepare("UPDATE settings SET value = ? WHERE key = 'branch_merge_settings'").run(JSON.stringify(settings));
+          }
+        } catch {
+          // Unparseable settings are left for SettingsService to fall back from.
+        }
+      }
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

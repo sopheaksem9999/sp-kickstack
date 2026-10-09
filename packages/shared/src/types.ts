@@ -49,7 +49,10 @@ export type EventType =
   | 'fanout_completed'
   | 'ticket_rejected'
   | 'webhook_ignored'
-  | 'merge_confirmed';
+  | 'merge_confirmed'
+  | 'merge_started'
+  | 'merge_succeeded'
+  | 'merge_failed';
 
 export interface HealthResponse {
   ok: boolean;
@@ -58,7 +61,9 @@ export interface HealthResponse {
   demo_mode: boolean;
 }
 
-export type BranchMergePolicy = 'manual_review_merge' | 'auto_merge_main';
+export type BranchMergePolicy = 'manual_review_merge' | 'auto_merge';
+
+export type MergeState = 'idle' | 'running' | 'failed';
 
 export interface BranchMergeSettings {
   default_base_branch: string;
@@ -95,6 +100,7 @@ export interface Project {
   contract_path?: string | null;
   done_means: DoneMeans;
   high_risk_paths: string[];
+  test_command?: string | null;
   enabled: boolean;
   engine_status: 'ok' | 'down' | 'unknown';
   created_at: string;
@@ -130,6 +136,8 @@ export interface Requirement {
   affected_projects: string[];
   attachments?: AttachmentItem[];
   merge_policy?: BranchMergePolicy | null;
+  merge_state?: MergeState;
+  merge_error?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -150,6 +158,12 @@ export interface BridgeTask {
   pr_url?: string | null;
   last_error?: string | null;
   revision: number;
+  /** Bridge-created work branch (req/<REQ-ID>/task-<id>); null for non-git projects. */
+  branch?: string | null;
+  base_sha?: string | null;
+  /** Merge commit on the base branch; null with merged_at set = nothing to merge. */
+  merge_sha?: string | null;
+  merged_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -223,6 +237,7 @@ export interface DraftRequirementResult {
   acceptance_criteria: string[];
   affected_projects: string[];
   api_hints?: string;
+  notes?: string;
   provider_used: string;
 }
 

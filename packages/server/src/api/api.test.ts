@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { initDatabase, AppDatabase } from '../db/index.js';
+import { WorkspaceService } from '../services/workspaceService.js';
 import { ProjectService } from '../services/projectService.js';
 import { RequirementService } from '../services/requirementService.js';
 import { FanOutService } from '../services/fanOutService.js';
@@ -16,13 +17,17 @@ import { Express } from 'express';
 describe('Bridge REST API Integration Tests', () => {
   let app: Express;
   let db: AppDatabase;
+  let workspaceService: WorkspaceService;
+  let projectService: ProjectService;
+  let requirementService: RequirementService;
   let backendEngine: FakeEngineServer;
   let mobileEngine: FakeEngineServer;
 
   beforeEach(() => {
     db = initDatabase(':memory:');
-    const projectService = new ProjectService(db);
-    const requirementService = new RequirementService(db, '/tmp/test-workspace');
+    workspaceService = new WorkspaceService(db);
+    projectService = new ProjectService(db);
+    requirementService = new RequirementService(db, '/tmp/test-workspace');
 
     backendEngine = new FakeEngineServer('http://127.0.0.1:3457');
     mobileEngine = new FakeEngineServer('http://127.0.0.1:3477');
@@ -50,6 +55,7 @@ describe('Bridge REST API Integration Tests', () => {
 
     app = createApp({
       db,
+      workspaceService,
       projectService,
       requirementService,
       fanOutService,
@@ -159,4 +165,59 @@ describe('Bridge REST API Integration Tests', () => {
     expect(ticketRes.body.ticketId).toBeDefined();
     expect(ticketRes.body.blocking).toBe(true);
   });
+
+  it('GET /api/workspaces and POST /api/workspaces manage workspaces and filter projects/requirements', async () => {
+    // 1. Check default workspace
+    const listRes = await testRequest(app, 'GET', '/api/workspaces');
+    expect(listRes.status).toBe(200);
+    expect(listRes.body.length).toBeGreaterThanOrEqual(1);
+    expect(listRes.body[0].id).toBe('default');
+
+    // 2. Create Workspace B
+    const createWsRes = await testRequest(app, 'POST', '/api/workspaces', {
+      body: {
+        id: 'workspace-b',
+        name: 'Workspace B',
+        description: 'Secondary workspace',
+        rules: 'Use clean architecture patterns.',
+        context: 'Golang microservices and Flutter client.',
+      },
+    });
+    expect(createWsRes.status).toBe(201);
+    expect(createWsRes.body.id).toBe('workspace-b');
+    expect(createWsRes.body.rules).toBe('Use clean architecture patterns.');
+
+    // 3. Register a project in Workspace B
+    const createProjRes = await testRequest(app, 'POST', '/api/projects', {
+      body: {
+        name: 'flutter-client',
+        workspace_id: 'workspace-b',
+        kind: 'mobile',
+        repo_path: '/tmp/flutter-client',
+        engine_type: 'manual',
+      },
+    });
+    expect(createProjRes.status).toBe(201);
+
+    // 4. Query projects with and without filter
+    const allProjectsRes = await testRequest(app, 'GET', '/api/projects');
+    expect(allProjectsRes.body.length).toBe(3); // backend, mobile, flutter-client
+
+    const wsBProjectsRes = await testRequest(app, 'GET', '/api/projects?workspace=workspace-b');
+    expect(wsBProjectsRes.body.length).toBe(1);
+    expect(wsBProjectsRes.body[0].name).toBe('flutter-client');
+
+    const defaultProjectsRes = await testRequest(app, 'GET', '/api/projects?workspace=default');
+    expect(defaultProjectsRes.body.length).toBe(2);
+
+    // 5. Update workspace rules
+    const updateRes = await testRequest(app, 'PUT', '/api/workspaces/workspace-b', {
+      body: {
+        rules: 'Updated rules: 100% test coverage mandatory.',
+      },
+    });
+    expect(updateRes.status).toBe(200);
+    expect(updateRes.body.rules).toBe('Updated rules: 100% test coverage mandatory.');
+  });
 });
+

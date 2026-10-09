@@ -15,15 +15,16 @@ export class ProjectService {
 
     const stmt = this.db.prepare(`
       INSERT INTO projects (
-        name, kind, repo_path, engine_type, engine_url, engine_meta,
+        name, workspace_id, kind, repo_path, engine_type, engine_url, engine_meta,
         base_branch, contract_path, done_means, high_risk_paths,
         enabled, engine_status, created_at, updated_at
       ) VALUES (
-        @name, @kind, @repo_path, @engine_type, @engine_url, @engine_meta,
+        @name, @workspace_id, @kind, @repo_path, @engine_type, @engine_url, @engine_meta,
         @base_branch, @contract_path, @done_means, @high_risk_paths,
         @enabled, @engine_status, @created_at, @updated_at
       )
       ON CONFLICT(name) DO UPDATE SET
+        workspace_id = excluded.workspace_id,
         kind = excluded.kind,
         repo_path = excluded.repo_path,
         engine_type = excluded.engine_type,
@@ -39,6 +40,7 @@ export class ProjectService {
 
     stmt.run({
       ...validated,
+      workspace_id: validated.workspace_id || 'default',
       engine_meta: JSON.stringify(validated.engine_meta || {}),
       high_risk_paths: JSON.stringify(validated.high_risk_paths || []),
       enabled: validated.enabled ? 1 : 0,
@@ -55,16 +57,23 @@ export class ProjectService {
 
     return {
       ...row,
+      workspace_id: row.workspace_id || 'default',
       enabled: Boolean(row.enabled),
       engine_meta: JSON.parse(row.engine_meta || '{}'),
       high_risk_paths: JSON.parse(row.high_risk_paths || '[]'),
     };
   }
 
-  public listProjects(): Project[] {
-    const rows = this.db.prepare('SELECT * FROM projects ORDER BY name ASC').all() as any[];
+  public listProjects(workspaceId?: string): Project[] {
+    const rows = (
+      workspaceId
+        ? this.db.prepare('SELECT * FROM projects WHERE workspace_id = ? ORDER BY name ASC').all(workspaceId)
+        : this.db.prepare('SELECT * FROM projects ORDER BY name ASC').all()
+    ) as any[];
+
     return rows.map((row) => ({
       ...row,
+      workspace_id: row.workspace_id || 'default',
       enabled: Boolean(row.enabled),
       engine_meta: JSON.parse(row.engine_meta || '{}'),
       high_risk_paths: JSON.parse(row.high_risk_paths || '[]'),

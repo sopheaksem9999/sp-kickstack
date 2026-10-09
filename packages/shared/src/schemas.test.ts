@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   CreateRequirementInputSchema,
   CreateTicketInputSchema,
+  CreateWorkspaceInputSchema,
   ProjectSchema,
 } from './schemas.js';
 
@@ -48,4 +49,22 @@ describe('Shared Schemas Validation', () => {
     const parsed = CreateTicketInputSchema.safeParse(ticket);
     expect(parsed.success).toBe(false);
   });
+
+  it('validates workspace creation input and rejects invalid id', () => {
+    const valid = {
+      id: 'workspace-a',
+      name: 'Workspace A',
+      description: 'Alpha team environment',
+      rules: 'All PRs must include tests.',
+      context: 'PostgreSQL 16 backend, React 18 web.',
+    };
+    expect(CreateWorkspaceInputSchema.safeParse(valid).success).toBe(true);
+
+    const invalid = {
+      id: 'workspace with space!',
+      name: 'Workspace Invalid',
+    };
+    expect(CreateWorkspaceInputSchema.safeParse(invalid).success).toBe(false);
+  });
 });
+

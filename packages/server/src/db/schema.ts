@@ -1,8 +1,22 @@
 export const INITIAL_SCHEMA = `
 PRAGMA foreign_keys = ON;
 
+CREATE TABLE IF NOT EXISTS workspaces (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  description TEXT,
+  rules       TEXT NOT NULL DEFAULT '',
+  context     TEXT NOT NULL DEFAULT '',
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO workspaces (id, name, description, rules, context, created_at, updated_at)
+VALUES ('default', 'Default Workspace', 'Default workspace for projects and requirements', '', '', datetime('now'), datetime('now'));
+
 CREATE TABLE IF NOT EXISTS projects (
   name          TEXT PRIMARY KEY,
+  workspace_id  TEXT NOT NULL DEFAULT 'default' REFERENCES workspaces(id) ON DELETE CASCADE,
   kind          TEXT NOT NULL DEFAULT 'other',
   repo_path     TEXT NOT NULL,
   engine_type   TEXT NOT NULL,
@@ -20,6 +34,7 @@ CREATE TABLE IF NOT EXISTS projects (
 
 CREATE TABLE IF NOT EXISTS requirements (
   id          TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL DEFAULT 'default' REFERENCES workspaces(id) ON DELETE CASCADE,
   seq         INTEGER NOT NULL UNIQUE,
   title       TEXT NOT NULL,
   status      TEXT NOT NULL,

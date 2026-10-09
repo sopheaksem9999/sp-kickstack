@@ -1,6 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { initDatabase } from './db/index.js';
+import { WorkspaceService } from './services/workspaceService.js';
 import { ProjectService } from './services/projectService.js';
 import { RequirementService } from './services/requirementService.js';
 import { FanOutService } from './services/fanOutService.js';
@@ -24,6 +25,7 @@ if (!fs.existsSync(WORKSPACE_DIR)) {
 const dbPath = path.join(WORKSPACE_DIR, 'bridge.db');
 const db = initDatabase(dbPath);
 
+const workspaceService = new WorkspaceService(db);
 const projectService = new ProjectService(db);
 const requirementService = new RequirementService(db, WORKSPACE_DIR);
 
@@ -58,6 +60,7 @@ if (fs.existsSync(yamlPath)) {
 
 const app = createApp({
   db,
+  workspaceService,
   projectService,
   requirementService,
   fanOutService,

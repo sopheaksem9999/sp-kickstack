@@ -1,13 +1,24 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchProjects, createRequirement, startRequirementFanOut } from '../lib/api.js';
+import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { toast } from 'sonner';
-import { Plus, Trash2, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, ArrowLeft, BookOpen } from 'lucide-react';
 
 export function NewRequirementPage() {
   const navigate = useNavigate();
-  const { data: projects } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects });
+  const { activeWorkspaceId, workspaces } = useWorkspace();
+  const [workspaceId, setWorkspaceId] = useState(
+    activeWorkspaceId !== 'all' ? activeWorkspaceId : 'default'
+  );
+
+  const { data: projects } = useQuery({
+    queryKey: ['projects', workspaceId],
+    queryFn: () => fetchProjects(workspaceId),
+  });
+
+  const currentWorkspace = workspaces.find((w) => w.id === workspaceId);
 
   const [title, setTitle] = useState('');
   const [goal, setGoal] = useState('');
@@ -16,6 +27,12 @@ export function NewRequirementPage() {
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [criteria, setCriteria] = useState<string[]>(['']);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (activeWorkspaceId !== 'all') {
+      setWorkspaceId(activeWorkspaceId);
+    }
+  }, [activeWorkspaceId]);
 
   const toggleProject = (name: string) => {
     setSelectedProjects((prev) =>
@@ -51,6 +68,7 @@ export function NewRequirementPage() {
     setIsSubmitting(true);
     try {
       const created = await createRequirement({
+        workspace_id: workspaceId,
         title,
         goal,
         user_story: userStory || undefined,
@@ -90,6 +108,42 @@ export function NewRequirementPage() {
       </div>
 
       <div className="border border-slate-800 rounded-xl p-6 bg-[#0d1322]/80 space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4 border-b border-slate-800/80">
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1.5 uppercase font-mono">
+              Target Workspace
+            </label>
+            <select
+              value={workspaceId}
+              onChange={(e) => {
+                setWorkspaceId(e.target.value);
+                setSelectedProjects([]);
+              }}
+              className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-blue-500 text-sm font-semibold"
+            >
+              {workspaces.map((ws) => (
+                <option key={ws.id} value={ws.id}>
+                  📁 {ws.name} ({ws.id})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {currentWorkspace && (currentWorkspace.rules || currentWorkspace.context) && (
+            <div className="bg-emerald-950/30 border border-emerald-800/40 rounded-lg p-3 text-xs space-y-1">
+              <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>Active Workspace Shared Rules:</span>
+              </div>
+              {currentWorkspace.rules && (
+                <p className="text-slate-300 font-mono text-[11px] line-clamp-2">
+                  {currentWorkspace.rules}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
         <div>
           <label className="block text-xs font-medium text-slate-300 mb-1.5 uppercase font-mono">Title</label>
           <input

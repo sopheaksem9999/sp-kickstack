@@ -69,10 +69,11 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}
 
     const insertTx = this.db.transaction(() => {
       this.db.prepare(`
-        INSERT INTO requirements (id, seq, title, status, priority, body_md, file_path, revision, created_at, updated_at)
-        VALUES (@id, @seq, @title, @status, @priority, @body_md, @file_path, @revision, @created_at, @updated_at)
+        INSERT INTO requirements (id, workspace_id, seq, title, status, priority, body_md, file_path, revision, created_at, updated_at)
+        VALUES (@id, @workspace_id, @seq, @title, @status, @priority, @body_md, @file_path, @revision, @created_at, @updated_at)
       `).run({
         id,
+        workspace_id: input.workspace_id || 'default',
         seq,
         title: input.title,
         status,
@@ -107,18 +108,25 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}
 
     return {
       ...row,
+      workspace_id: row.workspace_id || 'default',
       affected_projects: projRows.map((p) => p.project),
     };
   }
 
-  public listRequirements(): Requirement[] {
-    const rows = this.db.prepare('SELECT * FROM requirements ORDER BY seq DESC').all() as any[];
+  public listRequirements(workspaceId?: string): Requirement[] {
+    const rows = (
+      workspaceId
+        ? this.db.prepare('SELECT * FROM requirements WHERE workspace_id = ? ORDER BY seq DESC').all(workspaceId)
+        : this.db.prepare('SELECT * FROM requirements ORDER BY seq DESC').all()
+    ) as any[];
+
     return rows.map((row) => {
       const projRows = this.db
         .prepare('SELECT project FROM requirement_projects WHERE req_id = ?')
         .all(row.id) as any[];
       return {
         ...row,
+        workspace_id: row.workspace_id || 'default',
         affected_projects: projRows.map((p) => p.project),
       };
     });

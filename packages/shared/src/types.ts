@@ -43,8 +43,19 @@ export type EventType =
   | 'limit_hit'
   | 'task_status_changed';
 
+export interface Workspace {
+  id: string;
+  name: string;
+  description?: string;
+  rules?: string;
+  context?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Project {
   name: string;
+  workspace_id?: string;
   kind: 'backend' | 'frontend' | 'mobile' | 'other';
   repo_path: string;
   engine_type: EngineType;
@@ -62,6 +73,7 @@ export interface Project {
 
 export interface Requirement {
   id: string; // REQ-001
+  workspace_id?: string;
   seq: number;
   title: string;
   status: RequirementStatus;

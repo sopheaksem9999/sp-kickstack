@@ -18,6 +18,7 @@ describe('Database Initialization & Constraints', () => {
       .all()
       .map((row: any) => row.name);
 
+    expect(tables).toContain('workspaces');
     expect(tables).toContain('projects');
     expect(tables).toContain('requirements');
     expect(tables).toContain('requirement_projects');
@@ -25,6 +26,10 @@ describe('Database Initialization & Constraints', () => {
     expect(tables).toContain('links');
     expect(tables).toContain('events');
     expect(tables).toContain('settings');
+
+    const defaultWs = db.prepare("SELECT * FROM workspaces WHERE id = 'default'").get() as any;
+    expect(defaultWs).toBeDefined();
+    expect(defaultWs.name).toBe('Default Workspace');
   });
 
   it('enforces foreign key constraints', () => {

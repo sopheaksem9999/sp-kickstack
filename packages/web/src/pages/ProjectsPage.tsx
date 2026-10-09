@@ -1,18 +1,24 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchProjects, testProjectConnection } from '../lib/api.js';
 import { Project, EngineType } from '@sp-kickstack/shared';
+import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { toast } from 'sonner';
 import { RefreshCw, Plus, X } from 'lucide-react';
 
 export function ProjectsPage() {
   const queryClient = useQueryClient();
+  const { activeWorkspaceId, workspaces } = useWorkspace();
+
   const { data: projects, isLoading } = useQuery({
-    queryKey: ['projects'],
-    queryFn: fetchProjects,
+    queryKey: ['projects', activeWorkspaceId],
+    queryFn: () => fetchProjects(activeWorkspaceId),
   });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [workspaceId, setWorkspaceId] = useState(
+    activeWorkspaceId !== 'all' ? activeWorkspaceId : 'default'
+  );
   const [name, setName] = useState('');
   const [kind, setKind] = useState<'backend' | 'frontend' | 'mobile' | 'other'>('backend');
   const [repoPath, setRepoPath] = useState('');
@@ -20,6 +26,12 @@ export function ProjectsPage() {
   const [engineUrl, setEngineUrl] = useState('');
   const [baseBranch, setBaseBranch] = useState('main');
   const [contractPath, setContractPath] = useState('');
+
+  useEffect(() => {
+    if (activeWorkspaceId !== 'all') {
+      setWorkspaceId(activeWorkspaceId);
+    }
+  }, [activeWorkspaceId]);
 
   const testMutation = useMutation({
     mutationFn: (projName: string) => testProjectConnection(projName),
@@ -65,6 +77,7 @@ export function ProjectsPage() {
 
     createMutation.mutate({
       name: name.trim().toLowerCase(),
+      workspace_id: workspaceId || 'default',
       kind,
       repo_path: repoPath.trim(),
       engine_type: engineType,
@@ -113,6 +126,9 @@ export function ProjectsPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-white capitalize">{proj.name}</span>
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-blue-950/60 text-blue-300 border border-blue-800/40">
+                    📁 {proj.workspace_id || 'default'}
+                  </span>
                   <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
                     {proj.kind}
                   </span>
@@ -173,6 +189,21 @@ export function ProjectsPage() {
             </div>
 
             <form onSubmit={handleCreate} className="space-y-4 text-sm">
+              <div>
+                <label className="block text-xs font-mono text-slate-300 mb-1">Workspace</label>
+                <select
+                  value={workspaceId}
+                  onChange={(e) => setWorkspaceId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-blue-500"
+                >
+                  {workspaces.map((ws) => (
+                    <option key={ws.id} value={ws.id}>
+                      📁 {ws.name} ({ws.id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-mono text-slate-300 mb-1">Name</label>

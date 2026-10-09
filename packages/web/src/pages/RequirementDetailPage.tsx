@@ -103,6 +103,9 @@ export function RequirementDetailPage() {
           <div>
             <div className="flex items-center gap-2">
               <span className="font-mono text-sm text-blue-400 font-bold">{req.id}</span>
+              <span className="text-xs text-blue-300 font-mono bg-blue-950/60 border border-blue-800/40 px-2 py-0.5 rounded">
+                📁 {req.workspace_id || 'default'}
+              </span>
               <StatusBadge status={req.status} />
               <span className="text-xs text-slate-500 font-mono">rev.{req.revision}</span>
             </div>

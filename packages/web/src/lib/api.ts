@@ -1,16 +1,58 @@
 import {
+  Workspace,
   Project,
   Requirement,
   BridgeTask,
   Link,
   BridgeEvent,
   CreateRequirementInput,
+  CreateWorkspaceInput,
+  UpdateWorkspaceInput,
 } from '@sp-kickstack/shared';
 
 const BASE = '/api';
 
-export async function fetchProjects(): Promise<Project[]> {
-  const res = await fetch(`${BASE}/projects`);
+export async function fetchWorkspaces(): Promise<Workspace[]> {
+  const res = await fetch(`${BASE}/workspaces`);
+  return res.json();
+}
+
+export async function fetchWorkspace(id: string): Promise<Workspace> {
+  const res = await fetch(`${BASE}/workspaces/${id}`);
+  return res.json();
+}
+
+export async function createWorkspace(input: CreateWorkspaceInput): Promise<Workspace> {
+  const res = await fetch(`${BASE}/workspaces`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error((await res.json()).error || 'Failed to create workspace');
+  return res.json();
+}
+
+export async function updateWorkspace(id: string, input: UpdateWorkspaceInput): Promise<Workspace> {
+  const res = await fetch(`${BASE}/workspaces/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error((await res.json()).error || 'Failed to update workspace');
+  return res.json();
+}
+
+export async function deleteWorkspace(id: string): Promise<{ ok: boolean }> {
+  const res = await fetch(`${BASE}/workspaces/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error((await res.json()).error || 'Failed to delete workspace');
+  return res.json();
+}
+
+export async function fetchProjects(workspaceId?: string): Promise<Project[]> {
+  const url = workspaceId && workspaceId !== 'all'
+    ? `${BASE}/projects?workspace=${encodeURIComponent(workspaceId)}`
+    : `${BASE}/projects`;
+  const res = await fetch(url);
   return res.json();
 }
 
@@ -19,8 +61,11 @@ export async function testProjectConnection(name: string): Promise<{ ok: boolean
   return res.json();
 }
 
-export async function fetchRequirements(): Promise<Requirement[]> {
-  const res = await fetch(`${BASE}/requirements`);
+export async function fetchRequirements(workspaceId?: string): Promise<Requirement[]> {
+  const url = workspaceId && workspaceId !== 'all'
+    ? `${BASE}/requirements?workspace=${encodeURIComponent(workspaceId)}`
+    : `${BASE}/requirements`;
+  const res = await fetch(url);
   return res.json();
 }
 

@@ -54,8 +54,34 @@ export const EventTypeSchema = z.enum([
   'task_status_changed',
 ]);
 
+export const WorkspaceSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().optional().default(''),
+  rules: z.string().optional().default(''),
+  context: z.string().optional().default(''),
+  created_at: z.string().optional(),
+  updated_at: z.string().optional(),
+});
+
+export const CreateWorkspaceInputSchema = z.object({
+  id: z.string().min(1).regex(/^[a-z0-9_-]+$/i, 'Workspace ID must be alphanumeric, hyphen, or underscore'),
+  name: z.string().min(1),
+  description: z.string().optional().default(''),
+  rules: z.string().optional().default(''),
+  context: z.string().optional().default(''),
+});
+
+export const UpdateWorkspaceInputSchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().optional(),
+  rules: z.string().optional(),
+  context: z.string().optional(),
+});
+
 export const ProjectSchema = z.object({
   name: z.string().min(1),
+  workspace_id: z.string().default('default'),
   kind: z.enum(['backend', 'frontend', 'mobile', 'other']).default('other'),
   repo_path: z.string().min(1),
   engine_type: EngineTypeSchema,
@@ -72,6 +98,7 @@ export const ProjectSchema = z.object({
 });
 
 export const CreateRequirementInputSchema = z.object({
+  workspace_id: z.string().default('default'),
   title: z.string().min(3).max(200),
   goal: z.string().min(5),
   user_story: z.string().optional(),
@@ -97,6 +124,9 @@ export const TicketResponseSchema = z.object({
   status: z.string(),
 });
 
+export type CreateWorkspaceInput = z.input<typeof CreateWorkspaceInputSchema>;
+export type UpdateWorkspaceInput = z.input<typeof UpdateWorkspaceInputSchema>;
 export type CreateRequirementInput = z.input<typeof CreateRequirementInputSchema>;
 export type CreateTicketInput = z.input<typeof CreateTicketInputSchema>;
 export type TicketResponse = z.infer<typeof TicketResponseSchema>;
+

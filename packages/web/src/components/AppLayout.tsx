@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Layers,
@@ -6,11 +6,19 @@ import {
   Settings,
   PlusCircle,
   Bell,
+  Building2,
+  BookOpen,
+  Plus,
 } from 'lucide-react';
 import { Toaster } from 'sonner';
+import { useWorkspace } from '../lib/WorkspaceContext.js';
+import { CreateWorkspaceModal, WorkspaceRulesModal } from './WorkspaceModals.js';
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
+  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, activeWorkspace } = useWorkspace();
+  const [isCreateWsOpen, setIsCreateWsOpen] = useState(false);
+  const [isRulesOpen, setIsRulesOpen] = useState(false);
 
   const navItems = [
     { label: 'Requirements', path: '/requirements', icon: Layers },
@@ -23,6 +31,16 @@ export function AppLayout({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen bg-[#090d16] text-slate-100 font-sans">
       <Toaster richColors position="bottom-right" theme="dark" />
       
+      <CreateWorkspaceModal
+        isOpen={isCreateWsOpen}
+        onClose={() => setIsCreateWsOpen(false)}
+      />
+
+      <WorkspaceRulesModal
+        isOpen={isRulesOpen}
+        onClose={() => setIsRulesOpen(false)}
+      />
+
       {/* Sidebar */}
       <aside className="w-64 border-r border-slate-800 bg-[#0d1322] flex flex-col">
         <div className="p-4 border-b border-slate-800 flex items-center gap-3">
@@ -67,12 +85,53 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col">
-        <header className="h-14 border-b border-slate-800 bg-[#0d1322]/60 backdrop-blur px-6 flex items-center justify-between">
-          <div className="text-xs text-slate-400 font-mono">
-            127.0.0.1:4100
+        <header className="h-14 border-b border-slate-800 bg-[#0d1322]/80 backdrop-blur px-6 flex items-center justify-between">
+          {/* Workspace Switcher */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-700/80 rounded-lg px-2.5 py-1 text-xs">
+              <Building2 className="w-3.5 h-3.5 text-blue-400" />
+              <span className="text-slate-400 font-medium">Workspace:</span>
+              <select
+                value={activeWorkspaceId}
+                onChange={(e) => setActiveWorkspaceId(e.target.value)}
+                className="bg-transparent text-slate-200 font-semibold focus:outline-none cursor-pointer pr-1"
+              >
+                <option value="all" className="bg-slate-900 text-slate-200">
+                  🌐 All Workspaces
+                </option>
+                {workspaces.map((ws) => (
+                  <option key={ws.id} value={ws.id} className="bg-slate-900 text-slate-200">
+                    📁 {ws.name} ({ws.id})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              onClick={() => setIsCreateWsOpen(true)}
+              className="flex items-center gap-1 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-medium border border-slate-700/60 transition"
+              title="Create New Workspace"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>New Workspace</span>
+            </button>
+
+            {activeWorkspace && (
+              <button
+                onClick={() => setIsRulesOpen(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-400 rounded-lg text-xs font-medium border border-emerald-800/50 transition"
+                title="View and Edit Shared Rules & Architecture Context"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>Shared Rules & Context</span>
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-4">
+            <div className="text-xs text-slate-500 font-mono hidden md:block">
+              127.0.0.1:4100
+            </div>
             <button
               title="Notifications"
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors relative"

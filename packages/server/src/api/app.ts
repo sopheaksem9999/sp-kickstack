@@ -3,6 +3,7 @@ import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { AppDatabase } from '../db/index.js';
+import { WorkspaceService } from '../services/workspaceService.js';
 import { ProjectService } from '../services/projectService.js';
 import { RequirementService } from '../services/requirementService.js';
 import { FanOutService } from '../services/fanOutService.js';
@@ -13,11 +14,14 @@ import { Notifier } from '../notify/notifier.js';
 import {
   CreateRequirementInputSchema,
   CreateTicketInputSchema,
+  CreateWorkspaceInputSchema,
+  UpdateWorkspaceInputSchema,
   ProjectSchema,
 } from '@sp-kickstack/shared';
 
 export interface AppDependencies {
   db: AppDatabase;
+  workspaceService: WorkspaceService;
   projectService: ProjectService;
   requirementService: RequirementService;
   fanOutService: FanOutService;
@@ -41,9 +45,52 @@ export function createApp(deps: AppDependencies): Express {
     res.json({ ok: true, version: '0.2.0' });
   });
 
+  // Workspaces
+  app.get('/api/workspaces', (_req, res) => {
+    res.json(deps.workspaceService.listWorkspaces());
+  });
+
+  app.post('/api/workspaces', (req, res, next) => {
+    try {
+      const validated = CreateWorkspaceInputSchema.parse(req.body);
+      const created = deps.workspaceService.createWorkspace(validated);
+      res.status(201).json(created);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.get('/api/workspaces/:id', (req, res) => {
+    const ws = deps.workspaceService.getWorkspace(req.params.id);
+    if (!ws) {
+      return res.status(404).json({ error: 'Workspace not found' });
+    }
+    res.json(ws);
+  });
+
+  app.put('/api/workspaces/:id', (req, res, next) => {
+    try {
+      const validated = UpdateWorkspaceInputSchema.parse(req.body);
+      const updated = deps.workspaceService.updateWorkspace(req.params.id, validated);
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.delete('/api/workspaces/:id', (req, res, next) => {
+    try {
+      deps.workspaceService.deleteWorkspace(req.params.id);
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // Projects
-  app.get('/api/projects', (_req, res) => {
-    res.json(deps.projectService.listProjects());
+  app.get('/api/projects', (req, res) => {
+    const ws = req.query.workspace as string | undefined;
+    res.json(deps.projectService.listProjects(ws && ws !== 'all' ? ws : undefined));
   });
 
   app.post('/api/projects', (req, res, next) => {
@@ -69,8 +116,9 @@ export function createApp(deps: AppDependencies): Express {
   });
 
   // Requirements
-  app.get('/api/requirements', (_req, res) => {
-    res.json(deps.requirementService.listRequirements());
+  app.get('/api/requirements', (req, res) => {
+    const ws = req.query.workspace as string | undefined;
+    res.json(deps.requirementService.listRequirements(ws && ws !== 'all' ? ws : undefined));
   });
 
   app.post('/api/requirements', (req, res, next) => {

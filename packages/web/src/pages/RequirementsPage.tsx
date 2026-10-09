@@ -2,12 +2,14 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { fetchRequirements } from '../lib/api.js';
 import { StatusBadge } from '../components/StatusBadge.js';
+import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { Plus, ArrowRight, Clock } from 'lucide-react';
 
 export function RequirementsPage() {
+  const { activeWorkspaceId } = useWorkspace();
   const { data: requirements, isLoading } = useQuery({
-    queryKey: ['requirements'],
-    queryFn: fetchRequirements,
+    queryKey: ['requirements', activeWorkspaceId],
+    queryFn: () => fetchRequirements(activeWorkspaceId),
   });
 
   return (
@@ -30,12 +32,12 @@ export function RequirementsPage() {
         <div className="p-12 text-center text-slate-500">Loading requirements...</div>
       ) : requirements?.length === 0 ? (
         <div className="p-12 text-center border border-dashed border-slate-800 rounded-xl bg-slate-900/30">
-          <p className="text-slate-400 mb-3">No requirements created yet.</p>
+          <p className="text-slate-400 mb-3">No requirements found in this workspace view.</p>
           <Link
             to="/requirements/new"
             className="text-sm text-blue-400 hover:underline inline-flex items-center gap-1"
           >
-            Create your first requirement <ArrowRight className="w-3.5 h-3.5" />
+            Create a requirement <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
       ) : (
@@ -44,6 +46,7 @@ export function RequirementsPage() {
             <thead className="bg-slate-900/80 border-b border-slate-800 text-slate-400 text-xs uppercase font-mono">
               <tr>
                 <th className="px-4 py-3">ID</th>
+                <th className="px-4 py-3">Workspace</th>
                 <th className="px-4 py-3">Title</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Priority</th>
@@ -59,6 +62,11 @@ export function RequirementsPage() {
                     <Link to={`/requirements/${req.id}`} className="hover:underline">
                       {req.id}
                     </Link>
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-blue-300">
+                    <span className="bg-blue-950/60 border border-blue-800/40 px-2 py-0.5 rounded">
+                      📁 {req.workspace_id || 'default'}
+                    </span>
                   </td>
                   <td className="px-4 py-3 font-medium text-slate-200">
                     <Link to={`/requirements/${req.id}`} className="hover:text-blue-400">

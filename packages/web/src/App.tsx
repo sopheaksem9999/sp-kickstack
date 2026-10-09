@@ -33,12 +33,16 @@ function AppRoutes() {
   );
 }
 
+import { WorkspaceProvider } from './lib/WorkspaceContext.js';
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      <WorkspaceProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </WorkspaceProvider>
     </QueryClientProvider>
   );
 }

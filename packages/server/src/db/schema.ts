@@ -44,9 +44,25 @@ CREATE TABLE IF NOT EXISTS requirements (
   revision    INTEGER NOT NULL DEFAULT 1,
   attachments TEXT NOT NULL DEFAULT '[]',
   merge_policy TEXT DEFAULT NULL,
+  sprint_id   TEXT DEFAULT NULL REFERENCES sprints(id) ON DELETE SET NULL,
   created_at  TEXT NOT NULL,
   updated_at  TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS sprints (
+  id           TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  name         TEXT NOT NULL,
+  goal         TEXT,
+  start_date   TEXT,
+  end_date     TEXT,
+  status       TEXT NOT NULL DEFAULT 'planned',
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sprints_workspace ON sprints(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_sprints_status ON sprints(status);
 
 CREATE TABLE IF NOT EXISTS shared_assets (
   id           TEXT PRIMARY KEY,

@@ -4,6 +4,7 @@ import { initDatabase } from './db/index.js';
 import { WorkspaceService } from './services/workspaceService.js';
 import { ProjectService } from './services/projectService.js';
 import { RequirementService } from './services/requirementService.js';
+import { SprintService } from './services/sprintService.js';
 import { FanOutService } from './services/fanOutService.js';
 import { LinkService } from './services/linkService.js';
 import { TicketService } from './services/ticketService.js';
@@ -28,6 +29,7 @@ const db = initDatabase(dbPath);
 const workspaceService = new WorkspaceService(db);
 const projectService = new ProjectService(db);
 const requirementService = new RequirementService(db, WORKSPACE_DIR);
+const sprintService = new SprintService(db);
 
 const getAdapter = (projectName: string) => {
   const proj = projectService.getProject(projectName);
@@ -63,6 +65,7 @@ const app = createApp({
   workspaceService,
   projectService,
   requirementService,
+  sprintService,
   fanOutService,
   linkService,
   ticketService,

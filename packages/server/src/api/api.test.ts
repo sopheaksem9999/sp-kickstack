@@ -78,6 +78,7 @@ describe('Bridge REST API Integration Tests', () => {
       DELETE FROM bridge_tasks;
       DELETE FROM requirement_projects;
       DELETE FROM requirements;
+      DELETE FROM sprints;
       DELETE FROM projects;
     `);
 
@@ -317,6 +318,63 @@ describe('Bridge REST API Integration Tests', () => {
     // 6. Verify deleted
     const finalAssets = await testRequest(app, 'GET', '/api/assets?workspace=default');
     expect(finalAssets.body.shared_assets.some((a: any) => a.id === assetId)).toBe(false);
+  });
+
+  it('Sprint API: creates, lists, starts, assigns requirement, and completes with rollover', async () => {
+    // 1. Create a planned sprint
+    const createSprintRes = await testRequest(app, 'POST', '/api/sprints', {
+      body: {
+        workspace_id: 'default',
+        name: 'Sprint 1 - Launch',
+        goal: 'Complete launch tasks',
+        start_date: '2026-10-10',
+        end_date: '2026-10-24',
+      },
+    });
+    expect(createSprintRes.status).toBe(201);
+    expect(createSprintRes.body.id).toBeDefined();
+    expect(createSprintRes.body.status).toBe('planned');
+    const sprintId = createSprintRes.body.id;
+
+    // 2. List sprints
+    const listRes = await testRequest(app, 'GET', '/api/sprints?workspace=default');
+    expect(listRes.status).toBe(200);
+    expect(listRes.body.length).toBe(1);
+    expect(listRes.body[0].id).toBe(sprintId);
+
+    // 3. Start sprint
+    const startRes = await testRequest(app, 'POST', `/api/sprints/${sprintId}/start`);
+    expect(startRes.status).toBe(200);
+    expect(startRes.body.status).toBe('active');
+
+    // 4. Create requirement in backlog and assign to sprint
+    const createReqRes = await testRequest(app, 'POST', '/api/requirements', {
+      body: {
+        workspace_id: 'default',
+        title: 'User Login Screen',
+        goal: 'Allow users to log in',
+        affected_projects: ['backend'],
+      },
+    });
+    expect(createReqRes.status).toBe(201);
+    const reqId = createReqRes.body.id;
+    expect(createReqRes.body.sprint_id).toBeNull();
+
+    // Assign to sprint via PUT /api/requirements/:id/sprint
+    const assignRes = await testRequest(app, 'PUT', `/api/requirements/${reqId}/sprint`, {
+      body: { sprint_id: sprintId },
+    });
+    expect(assignRes.status).toBe(200);
+    expect(assignRes.body.sprint_id).toBe(sprintId);
+
+    // 5. Complete sprint -> incomplete requirement rolls back to backlog (sprint_id = null)
+    const completeRes = await testRequest(app, 'POST', `/api/sprints/${sprintId}/complete`);
+    expect(completeRes.status).toBe(200);
+    expect(completeRes.body.sprint.status).toBe('completed');
+    expect(completeRes.body.rolledOverCount).toBe(1);
+
+    const getReqRes = await testRequest(app, 'GET', `/api/requirements/${reqId}`);
+    expect(getReqRes.body.sprint_id).toBeNull();
   });
 });
 

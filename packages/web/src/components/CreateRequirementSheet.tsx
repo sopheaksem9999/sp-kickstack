@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchProjects, createRequirement, startRequirementFanOut } from '../lib/api.js';
+import { fetchProjects, fetchSprints, createRequirement, startRequirementFanOut } from '../lib/api.js';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { useCreateRequirement } from '../lib/CreateRequirementContext.js';
 import { toast } from 'sonner';
@@ -49,6 +49,11 @@ export function CreateRequirementSheet() {
     queryFn: () => fetchProjects(workspaceId),
   });
 
+  const { data: sprints = [] } = useQuery({
+    queryKey: ['sprints', workspaceId],
+    queryFn: () => fetchSprints(workspaceId),
+  });
+
   const currentWorkspace = workspaces.find((w) => w.id === workspaceId);
 
   // Form Fields
@@ -57,6 +62,7 @@ export function CreateRequirementSheet() {
   const [userStory, setUserStory] = useState('');
   const [priority, setPriority] = useState<Priority>('normal');
   const [status, setStatus] = useState<RequirementStatus>('draft');
+  const [sprintId, setSprintId] = useState<string | null>(null);
   const [mergePolicy, setMergePolicy] = useState<'inherit' | BranchMergePolicy>('inherit');
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [criteria, setCriteria] = useState<string[]>(['']);
@@ -95,6 +101,7 @@ export function CreateRequirementSheet() {
     setUserStory('');
     setPriority('normal');
     setStatus('draft');
+    setSprintId(null);
     setMergePolicy('inherit');
     setSelectedProjects([]);
     setCriteria(['']);
@@ -202,6 +209,7 @@ export function CreateRequirementSheet() {
         user_story: userStory || undefined,
         priority,
         status: andStart ? 'ready' : status,
+        sprint_id: sprintId || undefined,
         merge_policy: mergePolicy !== 'inherit' ? mergePolicy : undefined,
         affected_projects: selectedProjects,
         acceptance_criteria: filteredCriteria,
@@ -309,8 +317,8 @@ export function CreateRequirementSheet() {
               />
             </div>
 
-            {/* Input State, Priority & Merge Policy Select Controls */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Input State, Priority, Sprint & Merge Policy Select Controls */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {/* State Select */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -342,6 +350,26 @@ export function CreateRequirementSheet() {
                   <option value="high">🟠 High</option>
                   <option value="normal">🔵 Normal</option>
                   <option value="low">⚪ Low</option>
+                </select>
+              </div>
+
+              {/* Sprint Select */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Sprint
+                </label>
+                <select
+                  value={sprintId || ''}
+                  onChange={(e) => setSprintId(e.target.value ? e.target.value : null)}
+                  className="w-full px-3 py-2.5 rounded-lg border border-slate-200 dark:border-[#2a2b36] bg-slate-50 dark:bg-[#1a1b22] text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] cursor-pointer"
+                >
+                  <option value="">📋 Product Backlog</option>
+                  {sprints.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.status === 'active' ? '🏃 Active: ' : s.status === 'completed' ? '🏁 ' : '⏳ Planned: '}
+                      {s.name}
+                    </option>
+                  ))}
                 </select>
               </div>
 

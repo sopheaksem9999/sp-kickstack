@@ -86,8 +86,8 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
 
     const insertTx = this.db.transaction(() => {
       this.db.prepare(`
-        INSERT INTO requirements (id, workspace_id, seq, title, status, priority, body_md, file_path, revision, attachments, merge_policy, created_at, updated_at)
-        VALUES (@id, @workspace_id, @seq, @title, @status, @priority, @body_md, @file_path, @revision, @attachments, @merge_policy, @created_at, @updated_at)
+        INSERT INTO requirements (id, workspace_id, seq, title, status, priority, body_md, file_path, revision, attachments, merge_policy, sprint_id, created_at, updated_at)
+        VALUES (@id, @workspace_id, @seq, @title, @status, @priority, @body_md, @file_path, @revision, @attachments, @merge_policy, @sprint_id, @created_at, @updated_at)
       `).run({
         id,
         workspace_id: input.workspace_id || 'default',
@@ -100,6 +100,7 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
         revision,
         attachments: JSON.stringify(attachments),
         merge_policy: input.merge_policy || null,
+        sprint_id: input.sprint_id || null,
         created_at: now,
         updated_at: now,
       });
@@ -140,6 +141,7 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
       affected_projects: projRows.map((p) => p.project),
       attachments: this.parseAttachments(row.attachments),
       merge_policy: row.merge_policy || null,
+      sprint_id: row.sprint_id || null,
     };
   }
 
@@ -160,8 +162,18 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
         affected_projects: projRows.map((p) => p.project),
         attachments: this.parseAttachments(row.attachments),
         merge_policy: row.merge_policy || null,
+        sprint_id: row.sprint_id || null,
       };
     });
+  }
+
+  public updateRequirementSprint(id: string, sprintId: string | null): Requirement {
+    this.db
+      .prepare("UPDATE requirements SET sprint_id = ?, updated_at = datetime('now') WHERE id = ?")
+      .run(sprintId, id);
+    const req = this.getRequirement(id);
+    if (!req) throw new Error(`Requirement ${id} not found`);
+    return req;
   }
 
   public updateRequirementProjects(id: string, projects: string[]): Requirement | null {

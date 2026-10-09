@@ -13,6 +13,9 @@ import {
   RequirementStatus,
   SharedAsset,
   CreateSharedAssetInput,
+  Sprint,
+  CreateSprintInput,
+  UpdateSprintInput,
 } from '@sp-kickstack/shared';
 
 const BASE = '/api';
@@ -210,5 +213,58 @@ export async function deleteSharedAsset(id: string): Promise<{ ok: boolean }> {
     method: 'DELETE',
   });
   if (!res.ok) throw new Error('Failed to delete shared asset');
+  return res.json();
+}
+
+export async function fetchSprints(workspaceId?: string): Promise<Sprint[]> {
+  const qs = workspaceId && workspaceId !== 'all' ? `?workspace=${encodeURIComponent(workspaceId)}` : '';
+  const res = await fetch(`${BASE}/sprints${qs}`);
+  if (!res.ok) throw new Error('Failed to fetch sprints');
+  return res.json();
+}
+
+export async function createSprint(input: CreateSprintInput): Promise<Sprint> {
+  const res = await fetch(`${BASE}/sprints`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error((await res.json()).error || 'Failed to create sprint');
+  return res.json();
+}
+
+export async function updateSprint(id: string, input: UpdateSprintInput): Promise<Sprint> {
+  const res = await fetch(`${BASE}/sprints/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error((await res.json()).error || 'Failed to update sprint');
+  return res.json();
+}
+
+export async function startSprint(id: string): Promise<Sprint> {
+  const res = await fetch(`${BASE}/sprints/${id}/start`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error((await res.json()).error || 'Failed to start sprint');
+  return res.json();
+}
+
+export async function completeSprint(id: string): Promise<{ sprint: Sprint; rolledOverCount: number }> {
+  const res = await fetch(`${BASE}/sprints/${id}/complete`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error((await res.json()).error || 'Failed to complete sprint');
+  return res.json();
+}
+
+export async function assignRequirementSprint(reqId: string, sprintId: string | null): Promise<Requirement> {
+  const res = await fetch(`${BASE}/requirements/${reqId}/sprint`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sprint_id: sprintId }),
+  });
+  if (!res.ok) throw new Error((await res.json()).error || 'Failed to assign requirement sprint');
   return res.json();
 }

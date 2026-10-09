@@ -1,13 +1,21 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { fetchRequirements, fetchProjects } from '../lib/api.js';
+import {
+  fetchRequirements,
+  fetchProjects,
+  fetchSprints,
+  startSprint,
+  completeSprint,
+  assignRequirementSprint,
+} from '../lib/api.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { useCreateRequirement } from '../lib/CreateRequirementContext.js';
+import { CreateSprintModal } from '../components/CreateSprintModal.js';
+import { toast } from 'sonner';
 import {
   Plus,
-  ArrowRight,
   List,
   Kanban,
   Search,
@@ -18,11 +26,11 @@ import {
   SlidersHorizontal,
   ArrowUpDown,
   X,
-  FolderGit2,
-  Check,
   RotateCcw,
-  EyeOff,
-  Eye,
+  Zap,
+  CheckCircle2,
+  Calendar,
+  Play,
 } from 'lucide-react';
 import { Priority, RequirementStatus } from '@sp-kickstack/shared';
 
@@ -37,8 +45,13 @@ type GroupByOption = 'status' | 'priority' | 'project';
 type SortByOption = 'newest' | 'oldest' | 'title' | 'priority';
 
 export function RequirementsPage() {
+  const queryClient = useQueryClient();
   const { activeWorkspaceId } = useWorkspace();
   const { openSheet } = useCreateRequirement();
+
+  // Scrum Tab & Sprint Modal State
+  const [scrumTab, setScrumTab] = useState<'sprint' | 'backlog' | 'all'>('sprint');
+  const [isCreateSprintOpen, setIsCreateSprintOpen] = useState(false);
   
   // View states
   const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
@@ -57,7 +70,7 @@ export function RequirementsPage() {
   const [sortBy, setSortBy] = useState<SortByOption>('newest');
 
   // Queries
-  const { data: requirements = [], isLoading } = useQuery({
+  const { data: requirements = [], isLoading: reqsLoading } = useQuery({
     queryKey: ['requirements', activeWorkspaceId],
     queryFn: () => fetchRequirements(activeWorkspaceId),
   });
@@ -66,6 +79,73 @@ export function RequirementsPage() {
     queryKey: ['projects', activeWorkspaceId],
     queryFn: () => fetchProjects(activeWorkspaceId),
   });
+
+  const { data: sprints = [], isLoading: sprintsLoading } = useQuery({
+    queryKey: ['sprints', activeWorkspaceId],
+    queryFn: () => fetchSprints(activeWorkspaceId),
+  });
+
+  const isLoading = reqsLoading || sprintsLoading;
+
+  const activeSprint = useMemo(
+    () => sprints.find((s) => s.status === 'active'),
+    [sprints]
+  );
+  const plannedSprints = useMemo(
+    () => sprints.filter((s) => s.status === 'planned'),
+    [sprints]
+  );
+
+  // Sprint Mutations
+  const startSprintMutation = useMutation({
+    mutationFn: (sprintId: string) => startSprint(sprintId),
+    onSuccess: (s) => {
+      toast.success(`Sprint "${s.name}" is now active!`);
+      queryClient.invalidateQueries({ queryKey: ['sprints'] });
+      queryClient.invalidateQueries({ queryKey: ['requirements'] });
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to start sprint'),
+  });
+
+  const completeSprintMutation = useMutation({
+    mutationFn: (sprintId: string) => completeSprint(sprintId),
+    onSuccess: (res) => {
+      toast.success(
+        `Sprint completed! ${res.rolledOverCount} unfinished item(s) rolled over to Backlog.`
+      );
+      queryClient.invalidateQueries({ queryKey: ['sprints'] });
+      queryClient.invalidateQueries({ queryKey: ['requirements'] });
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to complete sprint'),
+  });
+
+  const assignSprintMutation = useMutation({
+    mutationFn: ({ reqId, sprintId }: { reqId: string; sprintId: string | null }) =>
+      assignRequirementSprint(reqId, sprintId),
+    onSuccess: (req, vars) => {
+      const targetSprint = sprints.find((s) => s.id === vars.sprintId);
+      toast.success(
+        targetSprint
+          ? `Moved "${req.title}" to ${targetSprint.name}`
+          : `Moved "${req.title}" to Product Backlog`
+      );
+      queryClient.invalidateQueries({ queryKey: ['requirements'] });
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to move requirement'),
+  });
+
+  // Sprint metrics
+  const activeSprintReqs = useMemo(
+    () => (activeSprint ? requirements.filter((r) => r.sprint_id === activeSprint.id) : []),
+    [requirements, activeSprint]
+  );
+  const activeSprintDoneCount = activeSprintReqs.filter((r) => r.status === 'done').length;
+  const activeSprintTotalCount = activeSprintReqs.length;
+
+  const backlogRequirements = useMemo(
+    () => requirements.filter((r) => !r.sprint_id),
+    [requirements]
+  );
 
   // Available project names for filtering
   const allProjectNames = useMemo(() => {
@@ -84,6 +164,13 @@ export function RequirementsPage() {
   // Filter and Sort requirements
   const filteredRequirements = useMemo(() => {
     let list = [...requirements];
+
+    // Filter by Scrum Tab first
+    if (scrumTab === 'sprint') {
+      list = activeSprint ? list.filter((r) => r.sprint_id === activeSprint.id) : [];
+    } else if (scrumTab === 'backlog') {
+      list = list.filter((r) => !r.sprint_id);
+    }
 
     // Search query
     if (searchQuery.trim()) {
@@ -139,6 +226,8 @@ export function RequirementsPage() {
     return list;
   }, [
     requirements,
+    scrumTab,
+    activeSprint,
     searchQuery,
     hideDone,
     selectedStatuses,
@@ -266,17 +355,25 @@ export function RequirementsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold text-purple-600 dark:text-purple-400 uppercase tracking-wider">
-            <span>Tasks & Specs</span>
+            <span>Agile Scrum & DevFlow</span>
           </div>
           <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-            Cross-Repo Requirements
+            Requirements & Sprints
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Centrally authored specs fanning out to per-repo agent engines
+            Centrally authored specs fanning out to per-repo agent engines with Scrum governance
           </p>
         </div>
 
         <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setIsCreateSprintOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-[#20212a] dark:hover:bg-[#2a2c38] text-slate-800 dark:text-slate-200 rounded-lg text-xs font-bold border border-slate-300 dark:border-[#2e303d] active:scale-[0.98] transition-all shadow-sm"
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-500" />
+            <span>Plan Sprint</span>
+          </button>
           <button
             type="button"
             onClick={openSheet}
@@ -288,300 +385,481 @@ export function RequirementsPage() {
         </div>
       </div>
 
-      {/* ClickUp View & Filter Bar */}
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2.5 p-1.5 rounded-xl bg-white dark:bg-[#16171d] border border-slate-200 dark:border-[#262732] shadow-sm">
-          {/* Left: View Switchers (List / Board) */}
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setViewMode('list')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'list'
-                  ? 'bg-purple-100 dark:bg-purple-950/60 text-[#7b68ee] dark:text-purple-300 shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#20212c]'
-              }`}
-            >
-              <List className="w-3.5 h-3.5" />
-              <span>List</span>
-            </button>
+      {/* Scrum Navigation Tabs */}
+      <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100/80 dark:bg-[#16171d] rounded-xl border border-slate-200 dark:border-[#262732] w-fit shadow-inner">
+        <button
+          onClick={() => setScrumTab('sprint')}
+          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            scrumTab === 'sprint'
+              ? 'bg-white dark:bg-[#23242e] text-indigo-600 dark:text-indigo-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Zap className="w-3.5 h-3.5 text-amber-500" />
+          <span>Active Sprint</span>
+          {activeSprint ? (
+            <span className="flex h-2 w-2 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+            </span>
+          ) : (
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-500 font-mono">
+              idle
+            </span>
+          )}
+        </button>
 
-            <button
-              onClick={() => setViewMode('board')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'board'
-                  ? 'bg-purple-100 dark:bg-purple-950/60 text-[#7b68ee] dark:text-purple-300 shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#20212c]'
-              }`}
-            >
-              <Kanban className="w-3.5 h-3.5" />
-              <span>Board</span>
-            </button>
+        <button
+          onClick={() => setScrumTab('backlog')}
+          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            scrumTab === 'backlog'
+              ? 'bg-white dark:bg-[#23242e] text-indigo-600 dark:text-indigo-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <span>📋 Product Backlog</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono font-bold">
+            {backlogRequirements.length}
+          </span>
+        </button>
 
-            <div className="h-4 w-[1px] bg-slate-200 dark:bg-[#2d2f3d] mx-1" />
+        <button
+          onClick={() => setScrumTab('all')}
+          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            scrumTab === 'all'
+              ? 'bg-white dark:bg-[#23242e] text-indigo-600 dark:text-indigo-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <span>All Requirements</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono font-bold">
+            {requirements.length}
+          </span>
+        </button>
+      </div>
 
-            {/* Filter Toggle Button */}
-            <button
-              onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                isFilterPanelOpen || activeFilterCount > 0
-                  ? 'bg-purple-50 dark:bg-purple-950/40 text-[#7b68ee] dark:text-purple-300 border border-purple-200 dark:border-purple-800/60'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#20212c] border border-transparent'
-              }`}
-            >
-              <Filter className="w-3.5 h-3.5" />
-              <span>Filters</span>
-              {activeFilterCount > 0 && (
-                <span className="w-4 h-4 rounded-full bg-[#7b68ee] text-white text-[10px] font-bold flex items-center justify-center">
-                  {activeFilterCount}
+      {/* Active Sprint Header Banner Card (when on Sprint tab) */}
+      {scrumTab === 'sprint' && activeSprint && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-indigo-50/70 via-white to-purple-50/40 dark:from-[#1c1d27] dark:via-[#16171d] dark:to-[#1a1b24] border border-indigo-200/80 dark:border-indigo-900/40 shadow-sm space-y-3 animate-in fade-in duration-150">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800/40 uppercase tracking-wide flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Active Sprint
                 </span>
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
+                  {activeSprint.name}
+                </h2>
+              </div>
+              {activeSprint.goal && (
+                <p className="text-xs text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                  <span className="font-bold text-indigo-600 dark:text-indigo-400">Goal:</span>
+                  {activeSprint.goal}
+                </p>
               )}
-            </button>
-
-            {/* Hide Done Quick Toggle */}
-            <button
-              onClick={() => setHideDone(!hideDone)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                hideDone
-                  ? 'bg-slate-100 dark:bg-[#242531] text-slate-800 dark:text-slate-200 font-semibold'
-                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#20212c]'
-              }`}
-              title="Toggle completed requirements"
-            >
-              {hideDone ? (
-                <EyeOff className="w-3.5 h-3.5 text-purple-500" />
-              ) : (
-                <Eye className="w-3.5 h-3.5" />
+              {(activeSprint.start_date || activeSprint.end_date) && (
+                <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono">
+                  <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>
+                    {activeSprint.start_date || 'Start'} &rarr; {activeSprint.end_date || 'Ongoing'}
+                  </span>
+                </div>
               )}
-              <span>{hideDone ? 'Done Hidden' : 'Show Done'}</span>
-            </button>
-          </div>
-
-          {/* Right: Group, Sort & Search */}
-          <div className="flex items-center gap-2">
-            {/* Group By Select */}
-            <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-              <SlidersHorizontal className="w-3 h-3 text-slate-400" />
-              <select
-                value={groupBy}
-                onChange={(e) => setGroupBy(e.target.value as GroupByOption)}
-                className="bg-transparent font-medium text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer pr-1"
-              >
-                <option value="status" className="bg-white dark:bg-[#1e1f26]">Group: Status</option>
-                <option value="priority" className="bg-white dark:bg-[#1e1f26]">Group: Priority</option>
-                <option value="project" className="bg-white dark:bg-[#1e1f26]">Group: Repo</option>
-              </select>
             </div>
 
-            {/* Sort By Select */}
-            <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-              <ArrowUpDown className="w-3 h-3 text-slate-400" />
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as SortByOption)}
-                className="bg-transparent font-medium text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer pr-1"
-              >
-                <option value="newest" className="bg-white dark:bg-[#1e1f26]">Sort: Newest</option>
-                <option value="oldest" className="bg-white dark:bg-[#1e1f26]">Sort: Oldest</option>
-                <option value="title" className="bg-white dark:bg-[#1e1f26]">Sort: Name (A-Z)</option>
-                <option value="priority" className="bg-white dark:bg-[#1e1f26]">Sort: Priority</option>
-              </select>
-            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              {/* Progress Bar */}
+              <div className="text-right">
+                <div className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  {activeSprintDoneCount} of {activeSprintTotalCount} Tasks Done
+                </div>
+                <div className="w-36 h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden mt-1 shadow-inner">
+                  <div
+                    className="h-full bg-emerald-500 transition-all duration-300"
+                    style={{
+                      width: `${
+                        activeSprintTotalCount > 0
+                          ? Math.round((activeSprintDoneCount / activeSprintTotalCount) * 100)
+                          : 0
+                      }%`,
+                    }}
+                  />
+                </div>
+              </div>
 
-            {/* Search Input */}
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 pr-7 py-1 bg-slate-100 dark:bg-[#20212c] border border-slate-200 dark:border-[#2e303d] rounded-lg text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-[#7b68ee] w-36 sm:w-52"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  if (
+                    confirm(
+                      `Complete sprint "${activeSprint.name}"? Unfinished tasks will automatically roll over to Product Backlog.`
+                    )
+                  ) {
+                    completeSprintMutation.mutate(activeSprint.id);
+                  }
+                }}
+                disabled={completeSprintMutation.isPending}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>
+                  {completeSprintMutation.isPending ? 'Completing...' : 'Complete Sprint'}
+                </span>
+              </button>
             </div>
           </div>
         </div>
+      )}
 
-        {/* ClickUp Dedicated Filter Options Drawer / Popover Panel */}
-        {(isFilterPanelOpen || activeFilterCount > 0) && (
-          <div className="p-3.5 rounded-xl bg-white dark:bg-[#16171d] border border-purple-100 dark:border-[#262732] shadow-sm space-y-3 animate-in fade-in duration-150">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#22232e] pb-2">
-              <div className="flex items-center gap-2">
-                <Filter className="w-3.5 h-3.5 text-[#7b68ee]" />
-                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
-                  Filter Options
-                </span>
+      {/* When on Sprint tab but no active sprint */}
+      {scrumTab === 'sprint' && !activeSprint && !isLoading && (
+        <div className="p-8 rounded-2xl bg-white dark:bg-[#16171d] border border-dashed border-slate-300 dark:border-[#2e303d] text-center space-y-4 shadow-sm animate-in fade-in duration-150">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 mx-auto flex items-center justify-center font-bold text-xl shadow-inner">
+            <Zap className="w-6 h-6" />
+          </div>
+          <div className="max-w-md mx-auto space-y-1">
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+              No Active Sprint in This Workspace
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Start an existing planned sprint below, or plan a new iteration for this workspace.
+            </p>
+          </div>
+
+          {plannedSprints.length > 0 && (
+            <div className="max-w-xl mx-auto space-y-2 text-left pt-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                Planned Sprints Ready to Start ({plannedSprints.length})
+              </span>
+              <div className="divide-y divide-slate-100 dark:divide-[#252632] border border-slate-200 dark:border-[#282a36] rounded-xl overflow-hidden bg-slate-50/50 dark:bg-[#1b1c24]">
+                {plannedSprints.map((s) => (
+                  <div key={s.id} className="p-3.5 flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                        {s.name}
+                      </h4>
+                      {s.goal && <p className="text-[11px] text-slate-500 line-clamp-1">{s.goal}</p>}
+                      {(s.start_date || s.end_date) && (
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {s.start_date || 'TBD'} &rarr; {s.end_date || 'TBD'}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => startSprintMutation.mutate(s.id)}
+                      disabled={startSprintMutation.isPending}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-all flex items-center gap-1.5 shrink-0"
+                    >
+                      <Play className="w-3 h-3 fill-white" />
+                      <span>Start Sprint</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="pt-2 flex items-center justify-center gap-3">
+            <button
+              onClick={() => setIsCreateSprintOpen(true)}
+              className="px-4 py-2 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded-xl transition-all"
+            >
+              + Plan New Sprint
+            </button>
+            <button
+              onClick={() => setScrumTab('backlog')}
+              className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition-all"
+            >
+              View Product Backlog &rarr;
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ClickUp View & Filter Bar (shown if not in empty sprint launcher) */}
+      {(scrumTab !== 'sprint' || activeSprint) && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2.5 p-1.5 rounded-xl bg-white dark:bg-[#16171d] border border-slate-200 dark:border-[#262732] shadow-sm">
+            {/* Left: View Switchers (List / Board) */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setViewMode('list')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  viewMode === 'list'
+                    ? 'bg-purple-100 dark:bg-purple-950/60 text-[#7b68ee] dark:text-purple-300 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#20212c]'
+                }`}
+              >
+                <List className="w-3.5 h-3.5" />
+                <span>List</span>
+              </button>
+
+              <button
+                onClick={() => setViewMode('board')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  viewMode === 'board'
+                    ? 'bg-purple-100 dark:bg-purple-950/60 text-[#7b68ee] dark:text-purple-300 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#20212c]'
+                }`}
+              >
+                <Kanban className="w-3.5 h-3.5" />
+                <span>Board</span>
+              </button>
+            </div>
+
+            {/* Right: Group, Filter, Sort & Search Controls */}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              {/* Filter Drawer Toggle Button */}
+              <button
+                onClick={() => setIsFilterPanelOpen((prev) => !prev)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all ${
+                  activeFilterCount > 0 || isFilterPanelOpen
+                    ? 'bg-purple-50 dark:bg-purple-950/50 border-[#7b68ee] text-[#7b68ee] dark:text-purple-300 font-bold'
+                    : 'border-slate-200 dark:border-[#2a2b36] text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-[#20212a]'
+                }`}
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span>Filter</span>
                 {activeFilterCount > 0 && (
-                  <span className="text-[11px] text-slate-400">
-                    ({activeFilterCount} active)
+                  <span className="w-4 h-4 rounded-full bg-[#7b68ee] text-white text-[10px] font-mono flex items-center justify-center font-bold">
+                    {activeFilterCount}
                   </span>
+                )}
+              </button>
+
+              {/* Group By Selector */}
+              <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-[#2a2b36] bg-slate-50 dark:bg-[#1a1b22]">
+                <span className="text-[10px] uppercase font-bold text-slate-400">Group:</span>
+                <select
+                  value={groupBy}
+                  onChange={(e) => setGroupBy(e.target.value as GroupByOption)}
+                  className="bg-transparent font-medium text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer pr-1"
+                >
+                  <option value="status" className="bg-white dark:bg-[#1e1f26]">Status</option>
+                  <option value="priority" className="bg-white dark:bg-[#1e1f26]">Priority</option>
+                  <option value="project" className="bg-white dark:bg-[#1e1f26]">Project</option>
+                </select>
+              </div>
+
+              {/* Sort By Selector */}
+              <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-[#2a2b36] bg-slate-50 dark:bg-[#1a1b22]">
+                <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as SortByOption)}
+                  className="bg-transparent font-medium text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer pr-1"
+                >
+                  <option value="newest" className="bg-white dark:bg-[#1e1f26]">Sort: Newest</option>
+                  <option value="oldest" className="bg-white dark:bg-[#1e1f26]">Sort: Oldest</option>
+                  <option value="title" className="bg-white dark:bg-[#1e1f26]">Sort: Name (A-Z)</option>
+                  <option value="priority" className="bg-white dark:bg-[#1e1f26]">Sort: Priority</option>
+                </select>
+              </div>
+
+              {/* Search Input */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 pr-7 py-1 bg-slate-100 dark:bg-[#20212c] border border-slate-200 dark:border-[#2e303d] rounded-lg text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-[#7b68ee] w-36 sm:w-52"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ClickUp Dedicated Filter Options Drawer / Popover Panel */}
+          {(isFilterPanelOpen || activeFilterCount > 0) && (
+            <div className="p-3.5 rounded-xl bg-white dark:bg-[#16171d] border border-purple-100 dark:border-[#262732] shadow-sm space-y-3 animate-in fade-in duration-150">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#22232e] pb-2">
+                <div className="flex items-center gap-2">
+                  <Filter className="w-3.5 h-3.5 text-[#7b68ee]" />
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+                    Filter Options
+                  </span>
+                  {activeFilterCount > 0 && (
+                    <span className="text-[11px] text-slate-400">
+                      ({activeFilterCount} active)
+                    </span>
+                  )}
+                </div>
+
+                {activeFilterCount > 0 && (
+                  <button
+                    onClick={clearAllFilters}
+                    className="flex items-center gap-1 text-[11px] font-semibold text-purple-600 dark:text-purple-400 hover:underline"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Clear All Filters</span>
+                  </button>
                 )}
               </div>
 
-              {activeFilterCount > 0 && (
-                <button
-                  onClick={clearAllFilters}
-                  className="flex items-center gap-1 text-[11px] font-semibold text-purple-600 dark:text-purple-400 hover:underline"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  <span>Clear All Filters</span>
-                </button>
-              )}
-            </div>
-
-            {/* Filter Criteria Rows */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {/* Status Multi-Filter */}
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                  Status
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {(['draft', 'ready', 'in_progress', 'in_review', 'qa', 'done'] as RequirementStatus[]).map((st) => {
-                    const active = selectedStatuses.includes(st);
-                    return (
-                      <button
-                        key={st}
-                        onClick={() => toggleStatusFilter(st)}
-                        className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${
-                          active
-                            ? 'bg-[#7b68ee] text-white shadow-sm'
-                            : 'bg-slate-100 dark:bg-[#20212c] text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-[#282937]'
-                        }`}
-                      >
-                        {active && <Check className="w-3 h-3" />}
-                        <span className="uppercase">{st.replace('_', ' ')}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Priority Multi-Filter */}
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                  Priority
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {(['urgent', 'high', 'normal', 'low'] as Priority[]).map((pr) => {
-                    const active = selectedPriorities.includes(pr);
-                    const prio = priorityConfig[pr];
-                    return (
-                      <button
-                        key={pr}
-                        onClick={() => togglePriorityFilter(pr)}
-                        className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${
-                          active
-                            ? 'bg-[#7b68ee] text-white shadow-sm'
-                            : 'bg-slate-100 dark:bg-[#20212c] text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-[#282937]'
-                        }`}
-                      >
-                        <Flag className={`w-3 h-3 ${active ? 'fill-white text-white' : prio.color}`} />
-                        <span>{prio.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Affected Repositories Multi-Filter */}
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                  Affected Repositories
-                </span>
-                {allProjectNames.length === 0 ? (
-                  <p className="text-[11px] text-slate-400">No repos registered</p>
-                ) : (
+              {/* Filter Criteria Rows */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* Status Multi-Filter */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                    Status
+                  </span>
                   <div className="flex flex-wrap gap-1.5">
-                    {allProjectNames.map((proj) => {
-                      const active = selectedProjects.includes(proj);
+                    {(['draft', 'ready', 'in_progress', 'in_review', 'qa', 'done'] as RequirementStatus[]).map((st) => {
+                      const active = selectedStatuses.includes(st);
                       return (
                         <button
-                          key={proj}
-                          onClick={() => toggleProjectFilter(proj)}
-                          className={`flex items-center gap-1 px-2.5 py-1 rounded-md font-mono text-[11px] font-semibold transition-all ${
+                          key={st}
+                          onClick={() => toggleStatusFilter(st)}
+                          className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-all uppercase ${
                             active
-                              ? 'bg-[#7b68ee] text-white shadow-sm'
-                              : 'bg-slate-100 dark:bg-[#20212c] text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-[#282937]'
+                              ? 'bg-purple-600 text-white shadow-sm'
+                              : 'bg-slate-100 dark:bg-[#20212b] text-slate-600 dark:text-slate-400 hover:bg-slate-200'
                           }`}
                         >
-                          <FolderGit2 className="w-3 h-3" />
-                          <span>{proj}</span>
+                          {st}
                         </button>
                       );
                     })}
                   </div>
+                </div>
+
+                {/* Priority Multi-Filter */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                    Priority
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(['urgent', 'high', 'normal', 'low'] as Priority[]).map((pr) => {
+                      const active = selectedPriorities.includes(pr);
+                      return (
+                        <button
+                          key={pr}
+                          onClick={() => togglePriorityFilter(pr)}
+                          className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-all capitalize ${
+                            active
+                              ? 'bg-purple-600 text-white shadow-sm'
+                              : 'bg-slate-100 dark:bg-[#20212b] text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                          }`}
+                        >
+                          {pr}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Project Multi-Filter */}
+                {allProjectNames.length > 0 && (
+                  <div className="space-y-1.5">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                      Affected Projects
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {allProjectNames.map((proj) => {
+                        const active = selectedProjects.includes(proj);
+                        return (
+                          <button
+                            key={proj}
+                            onClick={() => toggleProjectFilter(proj)}
+                            className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-all font-mono ${
+                              active
+                                ? 'bg-purple-600 text-white shadow-sm'
+                                : 'bg-slate-100 dark:bg-[#20212b] text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                            }`}
+                          >
+                            {proj}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 )}
               </div>
+
+              {/* Active Filter Chips Summary */}
+              {activeFilterCount > 0 && (
+                <div className="pt-2 border-t border-slate-100 dark:border-[#22232e] flex flex-wrap items-center gap-1.5 text-xs">
+                  <span className="text-[10px] font-bold uppercase text-slate-400">Active:</span>
+
+                  {hideDone && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 text-[11px] font-medium">
+                      Hide Done
+                      <X className="w-3 h-3 cursor-pointer" onClick={() => setHideDone(false)} />
+                    </span>
+                  )}
+
+                  {selectedStatuses.map((st) => (
+                    <span
+                      key={st}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 text-[11px] font-medium uppercase"
+                    >
+                      Status: {st}
+                      <X className="w-3 h-3 cursor-pointer" onClick={() => toggleStatusFilter(st)} />
+                    </span>
+                  ))}
+
+                  {selectedPriorities.map((pr) => (
+                    <span
+                      key={pr}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 text-[11px] font-medium capitalize"
+                    >
+                      Priority: {pr}
+                      <X className="w-3 h-3 cursor-pointer" onClick={() => togglePriorityFilter(pr)} />
+                    </span>
+                  ))}
+
+                  {selectedProjects.map((proj) => (
+                    <span
+                      key={proj}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 text-[11px] font-medium"
+                    >
+                      Repo: {proj}
+                      <X className="w-3 h-3 cursor-pointer" onClick={() => toggleProjectFilter(proj)} />
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
-
-            {/* Active Filter Chips Summary */}
-            {activeFilterCount > 0 && (
-              <div className="pt-2 border-t border-slate-100 dark:border-[#22232e] flex flex-wrap items-center gap-1.5 text-xs">
-                <span className="text-[10px] font-bold uppercase text-slate-400">Active:</span>
-
-                {hideDone && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 text-[11px] font-medium">
-                    Hide Done
-                    <X className="w-3 h-3 cursor-pointer" onClick={() => setHideDone(false)} />
-                  </span>
-                )}
-
-                {selectedStatuses.map((st) => (
-                  <span
-                    key={st}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 text-[11px] font-medium uppercase"
-                  >
-                    Status: {st}
-                    <X className="w-3 h-3 cursor-pointer" onClick={() => toggleStatusFilter(st)} />
-                  </span>
-                ))}
-
-                {selectedPriorities.map((pr) => (
-                  <span
-                    key={pr}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 text-[11px] font-medium capitalize"
-                  >
-                    Priority: {pr}
-                    <X className="w-3 h-3 cursor-pointer" onClick={() => togglePriorityFilter(pr)} />
-                  </span>
-                ))}
-
-                {selectedProjects.map((proj) => (
-                  <span
-                    key={proj}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 text-[11px] font-medium"
-                  >
-                    Repo: {proj}
-                    <X className="w-3 h-3 cursor-pointer" onClick={() => toggleProjectFilter(proj)} />
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* Main Content Area */}
       {isLoading ? (
         <div className="p-16 text-center text-slate-400 dark:text-slate-500 text-sm">
-          Loading requirements...
+          Loading requirements & sprint board...
         </div>
-      ) : filteredRequirements.length === 0 ? (
-        <div className="p-12 text-center border border-dashed border-slate-300 dark:border-[#2c2d38] rounded-2xl bg-white dark:bg-[#16171d]/60 shadow-sm">
-          <p className="text-slate-500 dark:text-slate-400 mb-3 text-sm font-medium">
+      ) : filteredRequirements.length === 0 && (scrumTab !== 'sprint' || activeSprint) ? (
+        <div className="p-12 text-center border border-dashed border-slate-300 dark:border-[#2c2d38] rounded-2xl bg-white dark:bg-[#16171d]/60 shadow-sm space-y-3">
+          <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">
             {activeFilterCount > 0
               ? 'No requirements match your active filter options.'
+              : scrumTab === 'sprint'
+              ? 'No tasks assigned to this active sprint yet.'
+              : scrumTab === 'backlog'
+              ? 'Product Backlog is clear! All items are assigned to sprints.'
               : 'No cross-repo requirements found in this workspace.'}
           </p>
-          {activeFilterCount > 0 ? (
+          {scrumTab === 'sprint' && (
+            <div className="flex items-center justify-center gap-3">
+              <button
+                onClick={() => setScrumTab('backlog')}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 transition-all"
+              >
+                Move Tasks from Product Backlog &rarr;
+              </button>
+            </div>
+          )}
+          {activeFilterCount > 0 && (
             <button
               onClick={clearAllFilters}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 dark:bg-[#20212a] text-slate-700 dark:text-slate-300 hover:bg-slate-200"
@@ -589,18 +867,9 @@ export function RequirementsPage() {
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Clear Filter Options</span>
             </button>
-          ) : (
-            <button
-              type="button"
-              onClick={openSheet}
-              className="inline-flex items-center gap-2 text-xs font-bold text-[#7b68ee] hover:text-[#6c5ce7]"
-            >
-              <span>Create your first requirement</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
           )}
         </div>
-      ) : viewMode === 'list' ? (
+      ) : (scrumTab !== 'sprint' || activeSprint) && viewMode === 'list' ? (
         /* ClickUp High-Density List View */
         <div className="space-y-4">
           {groups.map((group) => {
@@ -645,12 +914,15 @@ export function RequirementsPage() {
                           <th className="px-4 py-2 font-semibold">Priority</th>
                           <th className="px-4 py-2 font-semibold">Affected Projects</th>
                           <th className="px-4 py-2 font-semibold">Status</th>
+                          <th className="px-4 py-2 font-semibold">Sprint</th>
                           <th className="px-4 py-2 font-semibold text-right">Created</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-[#242531]">
                         {groupReqs.map((req) => {
                           const prio = priorityConfig[req.priority] || priorityConfig.normal;
+                          const reqSprint = req.sprint_id ? sprints.find((s) => s.id === req.sprint_id) : null;
+
                           return (
                             <tr
                               key={req.id}
@@ -700,6 +972,48 @@ export function RequirementsPage() {
                               <td className="px-4 py-3">
                                 <StatusBadge status={req.status} size="xs" />
                               </td>
+                              <td className="px-4 py-3">
+                                {scrumTab === 'backlog' ? (
+                                  <select
+                                    value=""
+                                    onChange={(e) => {
+                                      if (e.target.value) {
+                                        assignSprintMutation.mutate({
+                                          reqId: req.id,
+                                          sprintId: e.target.value,
+                                        });
+                                      }
+                                    }}
+                                    className="bg-slate-100 dark:bg-[#20212a] border border-slate-200 dark:border-[#2f313d] text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 rounded-lg px-2 py-1 focus:outline-none cursor-pointer max-w-[130px]"
+                                  >
+                                    <option value="" disabled>
+                                      Move to...
+                                    </option>
+                                    {activeSprint && (
+                                      <option value={activeSprint.id}>
+                                        🏃 Active: {activeSprint.name}
+                                      </option>
+                                    )}
+                                    {plannedSprints.map((s) => (
+                                      <option key={s.id} value={s.id}>
+                                        ⏳ {s.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[10px] font-semibold border ${
+                                      reqSprint?.status === 'active'
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/40'
+                                        : reqSprint
+                                        ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800/40'
+                                        : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-[#20212a] dark:text-slate-400 dark:border-[#2c2d38]'
+                                    }`}
+                                  >
+                                    {reqSprint ? (reqSprint.status === 'active' ? `🏃 ${reqSprint.name}` : `⏳ ${reqSprint.name}`) : '📋 Backlog'}
+                                  </span>
+                                )}
+                              </td>
                               <td className="px-4 py-3 font-mono text-[11px] text-slate-400 text-right">
                                 {new Date(req.created_at).toLocaleDateString()}
                               </td>
@@ -726,7 +1040,7 @@ export function RequirementsPage() {
             );
           })}
         </div>
-      ) : (
+      ) : (scrumTab !== 'sprint' || activeSprint) ? (
         /* ClickUp Kanban Board View */
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 items-start">
           {groups.map((group) => {
@@ -753,6 +1067,8 @@ export function RequirementsPage() {
                 <div className="p-2 space-y-2 overflow-y-auto flex-1">
                   {groupReqs.map((req) => {
                     const prio = priorityConfig[req.priority] || priorityConfig.normal;
+                    const reqSprint = req.sprint_id ? sprints.find((s) => s.id === req.sprint_id) : null;
+
                     return (
                       <Link
                         key={req.id}
@@ -771,15 +1087,20 @@ export function RequirementsPage() {
                           {req.title}
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-1 pt-1 border-t border-slate-200 dark:border-[#2b2c3a]">
-                          {req.affected_projects.map((proj) => (
-                            <span
-                              key={proj}
-                              className="px-1.5 py-0.2 rounded font-mono text-[9px] bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300"
-                            >
-                              {proj}
-                            </span>
-                          ))}
+                        <div className="flex items-center justify-between pt-1 border-t border-slate-200 dark:border-[#2b2c3a]">
+                          <div className="flex flex-wrap items-center gap-1">
+                            {req.affected_projects.map((proj) => (
+                              <span
+                                key={proj}
+                                className="px-1.5 py-0.2 rounded font-mono text-[9px] bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300"
+                              >
+                                {proj}
+                              </span>
+                            ))}
+                          </div>
+                          <span className="text-[9px] font-bold font-mono text-indigo-500 dark:text-indigo-400">
+                            {reqSprint ? reqSprint.name : 'Backlog'}
+                          </span>
                         </div>
                       </Link>
                     );
@@ -801,7 +1122,21 @@ export function RequirementsPage() {
             );
           })}
         </div>
-      )}
+      ) : null}
+
+      {/* Create Sprint Modal */}
+      <CreateSprintModal
+        isOpen={isCreateSprintOpen}
+        onClose={() => setIsCreateSprintOpen(false)}
+        workspaceId={activeWorkspaceId}
+        onSprintCreated={() => {
+          queryClient.invalidateQueries({ queryKey: ['sprints'] });
+          // If no active sprint, switch to sprint tab
+          if (!activeSprint) {
+            setScrumTab('sprint');
+          }
+        }}
+      />
     </div>
   );
 }

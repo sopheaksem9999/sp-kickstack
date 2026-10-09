@@ -88,9 +88,24 @@ export interface Project {
   updated_at: string;
 }
 
+export type SprintStatus = 'planned' | 'active' | 'completed';
+
+export interface Sprint {
+  id: string;
+  workspace_id: string;
+  name: string;
+  goal?: string;
+  start_date?: string;
+  end_date?: string;
+  status: SprintStatus;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface Requirement {
   id: string; // REQ-001
   workspace_id?: string;
+  sprint_id?: string | null;
   seq: number;
   title: string;
   status: RequirementStatus;

@@ -5,6 +5,8 @@ import {
   fetchRequirement,
   fetchRequirementGraph,
   fetchProjects,
+  fetchSprints,
+  assignRequirementSprint,
   startRequirementFanOut,
   cancelRequirement,
   markTaskDone,
@@ -142,6 +144,21 @@ export function RequirementDetailPage() {
     onError: (err: any) => toast.error(err.message || 'Failed to update merge policy'),
   });
 
+  const { data: sprints = [] } = useQuery({
+    queryKey: ['sprints', req?.workspace_id || 'default'],
+    queryFn: () => fetchSprints(req?.workspace_id || 'default'),
+    enabled: Boolean(req),
+  });
+
+  const sprintMutation = useMutation({
+    mutationFn: (newSprintId: string | null) => assignRequirementSprint(id!, newSprintId),
+    onSuccess: (updated) => {
+      toast.success(updated.sprint_id ? 'Assigned to sprint' : 'Moved to Product Backlog');
+      queryClient.invalidateQueries();
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to update sprint assignment'),
+  });
+
   if (reqLoading || graphLoading) {
     return <div className="p-16 text-center text-slate-400 text-sm">Loading requirement board...</div>;
   }
@@ -193,6 +210,29 @@ export function RequirementDetailPage() {
               <span className="text-[11px] text-purple-700 dark:text-purple-300 font-mono bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800/40 px-2 py-0.5 rounded font-semibold">
                 📁 {req.workspace_id || 'default'}
               </span>
+
+              {/* Sprint Badge & Interactive Switcher */}
+              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-[#1f202b] px-2 py-0.5 rounded-lg border border-slate-200 dark:border-[#2d2f3d]">
+                <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
+                  {req.sprint_id ? '🏃 Sprint:' : '📋'}
+                </span>
+                <select
+                  value={req.sprint_id || ''}
+                  onChange={(e) => sprintMutation.mutate(e.target.value ? e.target.value : null)}
+                  className="bg-transparent text-[11px] font-bold text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer max-w-[150px] truncate"
+                  title="Assign to Sprint or Backlog"
+                >
+                  <option value="" className="bg-white dark:bg-[#1a1b22] text-slate-800 dark:text-slate-200">
+                    Product Backlog
+                  </option>
+                  {sprints.map((s) => (
+                    <option key={s.id} value={s.id} className="bg-white dark:bg-[#1a1b22] text-slate-800 dark:text-slate-200">
+                      {s.status === 'active' ? '🏃 Active: ' : s.status === 'completed' ? '🏁 ' : '⏳ Planned: '}
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               {/* Status Badge & Interactive State Switcher */}
               <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-[#1f202b] px-2 py-0.5 rounded-lg border border-slate-200 dark:border-[#2d2f3d]">

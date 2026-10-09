@@ -13,6 +13,7 @@ import { SseBroadcaster } from '../sse/broadcaster.js';
 import { Notifier } from '../notify/notifier.js';
 import { SettingsService } from '../services/settingsService.js';
 import { AssetService } from '../services/assetService.js';
+import { SprintService } from '../services/sprintService.js';
 import {
   CreateRequirementInputSchema,
   CreateTicketInputSchema,
@@ -21,6 +22,9 @@ import {
   UpdateRequirementProjectsInputSchema,
   UpdateRequirementMergePolicyInputSchema,
   CreateSharedAssetInputSchema,
+  CreateSprintInputSchema,
+  UpdateSprintInputSchema,
+  AssignRequirementSprintInputSchema,
   ProjectSchema,
   RequirementStatusSchema,
 } from '@sp-kickstack/shared';
@@ -30,6 +34,7 @@ export interface AppDependencies {
   workspaceService: WorkspaceService;
   projectService: ProjectService;
   requirementService: RequirementService;
+  sprintService?: SprintService;
   fanOutService: FanOutService;
   linkService: LinkService;
   ticketService: TicketService;
@@ -218,6 +223,74 @@ export function createApp(deps: AppDependencies): Express {
       if (!updated) return res.status(404).json({ error: 'Requirement not found' });
       deps.broadcaster.broadcast({ type: 'requirement_created', payload: updated });
       res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.put('/api/requirements/:id/sprint', (req, res, next) => {
+    try {
+      const validated = AssignRequirementSprintInputSchema.parse(req.body);
+      const updated = deps.requirementService.updateRequirementSprint(req.params.id, validated.sprint_id ?? null);
+      if (!updated) return res.status(404).json({ error: 'Requirement not found' });
+      deps.broadcaster.broadcast({ type: 'requirement_created', payload: updated });
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Sprints (Scrum Management)
+  const sprintService = deps.sprintService || new SprintService(deps.db);
+
+  app.get('/api/sprints', (req, res) => {
+    const ws = req.query.workspace as string | undefined;
+    res.json(sprintService.listSprints(ws && ws !== 'all' ? ws : undefined));
+  });
+
+  app.post('/api/sprints', (req, res, next) => {
+    try {
+      const validated = CreateSprintInputSchema.parse(req.body);
+      const created = sprintService.createSprint(validated);
+      deps.broadcaster.broadcast({ type: 'sprint_created', payload: created });
+      res.status(201).json(created);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.get('/api/sprints/:id', (req, res) => {
+    const sprint = sprintService.getSprint(req.params.id);
+    if (!sprint) return res.status(404).json({ error: 'Sprint not found' });
+    res.json(sprint);
+  });
+
+  app.put('/api/sprints/:id', (req, res, next) => {
+    try {
+      const validated = UpdateSprintInputSchema.parse(req.body);
+      const updated = sprintService.updateSprint(req.params.id, validated);
+      deps.broadcaster.broadcast({ type: 'sprint_updated', payload: updated });
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post('/api/sprints/:id/start', (req, res, next) => {
+    try {
+      const started = sprintService.startSprint(req.params.id);
+      deps.broadcaster.broadcast({ type: 'sprint_started', payload: started });
+      res.json(started);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post('/api/sprints/:id/complete', (req, res, next) => {
+    try {
+      const result = sprintService.completeSprint(req.params.id);
+      deps.broadcaster.broadcast({ type: 'sprint_completed', payload: result });
+      res.json(result);
     } catch (err) {
       next(err);
     }

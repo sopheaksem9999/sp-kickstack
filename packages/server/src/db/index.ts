@@ -38,6 +38,9 @@ export function initDatabase(dbPath: string = ':memory:'): AppDatabase {
     if (reqCols.length > 0 && !reqCols.some((col) => col.name === 'merge_policy')) {
       db.exec("ALTER TABLE requirements ADD COLUMN merge_policy TEXT DEFAULT NULL;");
     }
+    if (reqCols.length > 0 && !reqCols.some((col) => col.name === 'sprint_id')) {
+      db.exec("ALTER TABLE requirements ADD COLUMN sprint_id TEXT DEFAULT NULL REFERENCES sprints(id) ON DELETE SET NULL;");
+    }
   } catch (err) {
     // Already migrated or in-memory
   }

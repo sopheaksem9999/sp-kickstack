@@ -127,6 +127,7 @@ export const CreateRequirementInputSchema = z.object({
   priority: PrioritySchema.default('normal'),
   status: RequirementStatusSchema.optional().default('draft'),
   merge_policy: BranchMergePolicySchema.optional(),
+  sprint_id: z.string().nullable().optional(),
   attachments: z.array(AttachmentItemSchema).optional().default([]),
   api_hints: z.string().optional(),
   notes: z.string().optional(),
@@ -138,6 +139,39 @@ export const UpdateRequirementProjectsInputSchema = z.object({
 
 export const UpdateRequirementMergePolicyInputSchema = z.object({
   merge_policy: BranchMergePolicySchema.nullable().optional(),
+});
+
+export const SprintStatusSchema = z.enum(['planned', 'active', 'completed']);
+
+export const SprintSchema = z.object({
+  id: z.string(),
+  workspace_id: z.string().default('default'),
+  name: z.string().min(1),
+  goal: z.string().optional(),
+  start_date: z.string().optional(),
+  end_date: z.string().optional(),
+  status: SprintStatusSchema.default('planned'),
+  created_at: z.string().optional(),
+  updated_at: z.string().optional(),
+});
+
+export const CreateSprintInputSchema = z.object({
+  workspace_id: z.string().default('default'),
+  name: z.string().min(1),
+  goal: z.string().optional(),
+  start_date: z.string().optional(),
+  end_date: z.string().optional(),
+});
+
+export const UpdateSprintInputSchema = z.object({
+  name: z.string().min(1).optional(),
+  goal: z.string().optional(),
+  start_date: z.string().optional(),
+  end_date: z.string().optional(),
+});
+
+export const AssignRequirementSprintInputSchema = z.object({
+  sprint_id: z.string().nullable(),
 });
 
 export const SharedAssetSchema = z.object({
@@ -180,6 +214,10 @@ export type UpdateWorkspaceInput = z.input<typeof UpdateWorkspaceInputSchema>;
 export type CreateRequirementInput = z.input<typeof CreateRequirementInputSchema>;
 export type UpdateRequirementProjectsInput = z.input<typeof UpdateRequirementProjectsInputSchema>;
 export type UpdateRequirementMergePolicyInput = z.input<typeof UpdateRequirementMergePolicyInputSchema>;
+export type CreateSprintInput = z.input<typeof CreateSprintInputSchema>;
+export type UpdateSprintInput = z.input<typeof UpdateSprintInputSchema>;
+export type AssignRequirementSprintInput = z.input<typeof AssignRequirementSprintInputSchema>;
+export type SprintItem = z.infer<typeof SprintSchema>;
 export type CreateSharedAssetInput = z.input<typeof CreateSharedAssetInputSchema>;
 export type SharedAssetItem = z.infer<typeof SharedAssetSchema>;
 export type CreateTicketInput = z.input<typeof CreateTicketInputSchema>;

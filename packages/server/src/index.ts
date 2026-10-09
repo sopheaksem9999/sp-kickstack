@@ -17,6 +17,8 @@ import { VcsSyncService } from './services/vcsSyncService.js';
 import { MetricsService } from './services/metricsService.js';
 import { createApp } from './api/app.js';
 import { TaskReactor } from './services/taskReactor.js';
+import { BranchService } from './services/branchService.js';
+import { MergeGateService } from './services/mergeGate.js';
 import { RetrySweeper } from './services/retrySweeper.js';
 import { startScheduler } from './services/scheduler.js';
 
@@ -42,12 +44,17 @@ const getAdapter = (projectName: string) => {
   return createAdapter(proj);
 };
 
+const branchService = new BranchService(db, projectService);
 const linkService = new LinkService(db, projectService, getAdapter);
-const ticketService = new TicketService(db, projectService, linkService, getAdapter);
-const fanOutService = new FanOutService(db, projectService, requirementService, getAdapter);
+const ticketService = new TicketService(db, projectService, linkService, getAdapter, branchService);
+const fanOutService = new FanOutService(db, projectService, requirementService, getAdapter, branchService);
 const broadcaster = new SseBroadcaster();
 const notifier = new Notifier();
 const reactor = new TaskReactor(db, requirementService, linkService, (evt) => broadcaster.broadcast(evt));
+const mergeGate = new MergeGateService(db, projectService, requirementService, reactor, { getAdapter });
+// Auto-merge policy: start the merge gate when all of a requirement's work is in review.
+reactor.setHooks({ onRequirementInReview: (id) => mergeGate.autoStart(id) });
+mergeGate.resetInterrupted();
 const vcsSyncService = new VcsSyncService(
   db,
   projectService,
@@ -93,6 +100,7 @@ const app = createApp({
   broadcaster,
   notifier,
   reactor,
+  mergeGate,
   demoMode: process.env.DEMO_MODE === '1',
   agentToken: process.env.AGENT_TOKEN || undefined,
   webhookSecret: process.env.GITHUB_WEBHOOK_SECRET || undefined,

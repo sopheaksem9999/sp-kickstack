@@ -14,18 +14,30 @@ export type ReactorEmit = (event: ReactorEvent) => void;
 
 export type StatusChangeSource = 'watcher' | 'webhook' | 'manual';
 
+export interface ReactorHooks {
+  /** The requirement's derived status just became in_review (all remaining work is in review). */
+  onRequirementInReview?: (reqId: string) => void;
+}
+
 /**
  * The single reaction path for a bridge task changing status, whoever observed it
  * (engine watcher, VCS webhook, operator). Callers persist the new status first, then
  * call onTaskStatusChanged once.
  */
 export class TaskReactor {
+  private hooks: ReactorHooks = {};
+
   constructor(
     private db: AppDatabase,
     private requirementService: RequirementService,
     private linkService?: LinkService,
     private emit?: ReactorEmit
   ) {}
+
+  /** Wired after construction because the merge gate itself depends on the reactor. */
+  public setHooks(hooks: ReactorHooks) {
+    this.hooks = hooks;
+  }
 
   public recordEvent(type: string, req_id?: string, task_id?: number, payload: Record<string, unknown> = {}) {
     this.db
@@ -89,6 +101,7 @@ export class TaskReactor {
         req_id: task.req_id,
         payload: { id: task.req_id, status: after },
       });
+      if (after === 'in_review') this.hooks.onRequirementInReview?.(task.req_id);
     }
 
     return { releasedLinks };

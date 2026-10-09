@@ -388,3 +388,102 @@ describe('Merge gate', () => {
     }
   });
 });
+
+describe('Merge gate triggers and API', () => {
+  let h: GitHarness;
+  let app: any;
+  beforeEach(async () => {
+    h = makeGitHarness();
+    const { createApp } = await import('../api/app.js');
+    const { WorkspaceService } = await import('./workspaceService.js');
+    const { SseBroadcaster } = await import('../sse/broadcaster.js');
+    const { Notifier } = await import('../notify/notifier.js');
+    app = createApp({
+      db: h.db, workspaceService: new WorkspaceService(h.db), projectService: h.projectService,
+      requirementService: h.requirementService, fanOutService: h.fanOutService, linkService: h.linkService,
+      ticketService: h.ticketService, broadcaster: new SseBroadcaster(), notifier: new Notifier(),
+      reactor: h.reactor, mergeGate: h.gate,
+    });
+  });
+  afterEach(() => h.db.close());
+
+  async function inReview() {
+    const req = h.createRequirement();
+    const goals = await h.fanOutService.execute(req.id);
+    for (const g of goals) {
+      commitOnBranch(h.repoOf(g.project).repo, h.task(g.id).branch, `${g.project}-${g.id}.txt`, `work ${g.id}\n`);
+      h.db.prepare("UPDATE bridge_tasks SET status = 'in_review' WHERE id = ?").run(g.id);
+    }
+    h.requirementService.updateStatus(req.id, 'in_review');
+    return { req, goals };
+  }
+
+  async function settled(reqId: string) {
+    for (let i = 0; i < 200; i++) {
+      const row = h.requirementService.getRequirement(reqId)!;
+      if (row.merge_state !== 'running') return row;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    throw new Error('merge did not finish');
+  }
+
+  it('moving the requirement to QA starts the merge (202) and lands in QA', async () => {
+    const { testRequest } = await import('../api/testHelper.js');
+    const { req } = await inReview();
+
+    const res = await testRequest(app, 'PUT', `/api/requirements/${req.id}/status`, { body: { status: 'qa' } });
+
+    expect(res.status).toBe(202);
+    expect(res.body.merge_state).toBe('running');
+    expect((await settled(req.id)).status).toBe('qa');
+  });
+
+  it('merge-to-qa starts the merge, and explains why when tasks are still running', async () => {
+    const { testRequest } = await import('../api/testHelper.js');
+    const { req, goals } = await inReview();
+    h.db.prepare("UPDATE bridge_tasks SET status = 'running' WHERE id = ?").run(goals[0].id);
+
+    const refused = await testRequest(app, 'POST', `/api/requirements/${req.id}/merge-to-qa`);
+    expect(refused.status).toBe(409);
+    expect(refused.body.error).toMatch(/not in review/);
+
+    h.db.prepare("UPDATE bridge_tasks SET status = 'in_review' WHERE id = ?").run(goals[0].id);
+    const started = await testRequest(app, 'POST', `/api/requirements/${req.id}/merge-to-qa`);
+    expect(started.status).toBe(202);
+    expect((await settled(req.id)).status).toBe('qa');
+  });
+
+  it('cannot skip the merge by setting QA or confirming the merge directly', async () => {
+    const { req } = await inReview();
+    expect(() => h.requirementService.updateRequirementStatus(req.id, 'qa')).toThrow(/Merge & move to QA/);
+    expect(() => h.requirementService.confirmMerged(req.id)).toThrow(/Merge & move to QA/);
+  });
+
+  it('auto-merge policy merges as soon as the last task reaches review', async () => {
+    h.reactor.setHooks({ onRequirementInReview: (id) => h.gate.autoStart(id) });
+    const req = h.createRequirement();
+    h.requirementService.updateRequirementMergePolicy(req.id, 'auto_merge');
+    const goals = await h.fanOutService.execute(req.id);
+    for (const g of goals) {
+      commitOnBranch(h.repoOf(g.project).repo, h.task(g.id).branch, `${g.project}-${g.id}.txt`, `work ${g.id}\n`);
+      (g.project === 'backend' ? h.backendEngine : h.mobileEngine).setTaskStatus(g.engine_task_id!, 'in_review', 'needs_review');
+    }
+
+    await h.watcher.scanOnce();
+
+    expect((await settled(req.id)).status).toBe('qa');
+  });
+
+  it('review-first policy waits for a person', async () => {
+    h.reactor.setHooks({ onRequirementInReview: (id) => h.gate.autoStart(id) });
+    const req = h.createRequirement();
+    const goals = await h.fanOutService.execute(req.id);
+    for (const g of goals) {
+      (g.project === 'backend' ? h.backendEngine : h.mobileEngine).setTaskStatus(g.engine_task_id!, 'in_review', 'needs_review');
+    }
+
+    await h.watcher.scanOnce();
+
+    expect(h.requirementService.getRequirement(req.id)).toMatchObject({ status: 'in_review', merge_state: 'idle' });
+  });
+});

@@ -45,6 +45,7 @@ import { IdeService } from '../services/ideService.js';
 import { GitReviewService } from '../services/gitReviewService.js';
 import { requestGuard, resolveAllowedHosts, resolveWebOrigins } from './requestGuard.js';
 import { TaskReactor } from '../services/taskReactor.js';
+import { MergeGateService } from '../services/mergeGate.js';
 import { DEDUPE_NOTE } from '../db/migrations.js';
 
 export interface AppDependencies {
@@ -65,6 +66,7 @@ export interface AppDependencies {
   broadcaster: SseBroadcaster;
   notifier: Notifier;
   reactor?: TaskReactor;
+  mergeGate?: MergeGateService;
   /** DEMO_MODE=1: enables the simulated CLI runner, seeded logs and the demo "merge to main". */
   demoMode?: boolean;
   agentToken?: string;
@@ -93,6 +95,20 @@ export function createApp(deps: AppDependencies): Express {
   const reactor =
     deps.reactor ||
     new TaskReactor(deps.db, deps.requirementService, deps.linkService, (evt) => deps.broadcaster.broadcast(evt));
+
+  const mergeGate =
+    deps.mergeGate || new MergeGateService(deps.db, deps.projectService, deps.requirementService, reactor, { settingsService });
+  if (!deps.reactor) {
+    // createApp built the reactor, so it also wires the auto-merge policy to it.
+    reactor.setHooks({ onRequirementInReview: (id) => mergeGate.autoStart(id) });
+  }
+
+  /** Start the merge gate in the background and answer 202 with the requirement (merge_state running). */
+  const startMerge = (res: Response, id: string) => {
+    const { done } = mergeGate.start(id, 'manual');
+    done.catch(() => {});
+    return res.status(202).json(deps.requirementService.getRequirement(id));
+  };
 
   const vcsSyncService =
     deps.vcsSyncService ||
@@ -315,6 +331,10 @@ export function createApp(deps: AppDependencies): Express {
   app.put('/api/requirements/:id/status', async (req, res, next) => {
     try {
       const status = RequirementStatusSchema.parse(req.body.status);
+      if (status === 'qa' && mergeGate.needsMerge(req.params.id)) {
+        // Moving to QA is the merge trigger for branched work.
+        return startMerge(res, req.params.id);
+      }
       if (status === 'cancelled') {
         // Cancelling must also stop the engine agents, not just relabel the card.
         await cancelRequirement(req.params.id);
@@ -324,6 +344,14 @@ export function createApp(deps: AppDependencies): Express {
       if (!updated) return res.status(404).json({ error: 'Requirement not found' });
       deps.broadcaster.broadcast({ type: 'requirement_status_changed', payload: { id: req.params.id, status } });
       res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post('/api/requirements/:id/merge-to-qa', (req, res, next) => {
+    try {
+      startMerge(res, req.params.id);
     } catch (err) {
       next(err);
     }

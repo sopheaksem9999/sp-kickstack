@@ -256,6 +256,9 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
         this.recalculateDerivedStatus(id);
         return this.getRequirement(id);
       }
+      if (status === 'qa' && this.hasUnmergedBranches(id)) {
+        throw conflict(`${id} has unmerged task branches; use "Merge & move to QA" so they are merged first`);
+      }
       const active = tasks.filter((t) => !TERMINAL_TASK_STATUSES.includes(t.status));
       if (status === 'done' && active.length > 0) {
         throw conflict(`${active.length} task(s) are still active; finish or cancel them before marking ${id} done`);
@@ -278,6 +281,9 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
     if (!req) throw new HttpError(404, `Requirement ${id} not found`);
     if (req.status === 'cancelled' || req.status === 'done' || req.status === 'draft') {
       throw conflict(`${id} is ${req.status}; only dispatched, open requirements can be confirmed merged`);
+    }
+    if (this.hasUnmergedBranches(id)) {
+      throw conflict(`${id} has unmerged task branches; use "Merge & move to QA" instead of confirming`);
     }
 
     const tasks = this.db
@@ -326,6 +332,20 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
       status: 'done',
       merged_branch: 'main',
     };
+  }
+
+  /** Branched goal/ticket work that the merge gate has not handled yet. */
+  public hasUnmergedBranches(id: string): boolean {
+    return Boolean(
+      this.db
+        .prepare(`
+          SELECT 1 FROM bridge_tasks
+          WHERE req_id = ? AND role IN ('goal', 'ticket') AND status <> 'cancelled'
+            AND branch IS NOT NULL AND merged_at IS NULL
+          LIMIT 1
+        `)
+        .get(id)
+    );
   }
 
   public recalculateDerivedStatus(reqId: string): RequirementStatus {

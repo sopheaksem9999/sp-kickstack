@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "npm run --workspaces --if-present typecheck",
+    "demo": "npx tsx scripts/demo-flow.ts",
     "dev:server": "npm run --workspace=@sp-kickstack/server dev",
     "dev:web": "npm run --workspace=@sp-kickstack/web dev"
   },

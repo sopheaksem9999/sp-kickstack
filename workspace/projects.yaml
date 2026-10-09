@@ -1,0 +1,25 @@
+projects:
+  - name: backend
+    kind: backend
+    repo_path: ./repos/backend
+    engine_type: manual
+    base_branch: main
+    contract_path: api/openapi.yaml
+    done_means: merged
+    enabled: true
+
+  - name: mobile
+    kind: mobile
+    repo_path: ./repos/mobile
+    engine_type: manual
+    base_branch: main
+    done_means: merged
+    enabled: true
+
+  - name: admin
+    kind: frontend
+    repo_path: ./repos/admin
+    engine_type: manual
+    base_branch: main
+    done_means: merged
+    enabled: true

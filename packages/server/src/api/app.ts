@@ -44,6 +44,7 @@ import { AiChatService } from '../services/aiChatService.js';
 import { IdeService } from '../services/ideService.js';
 import { GitReviewService } from '../services/gitReviewService.js';
 import { requestGuard, resolveAllowedHosts, resolveWebOrigins } from './requestGuard.js';
+import { TaskReactor } from '../services/taskReactor.js';
 
 export interface AppDependencies {
   db: AppDatabase;
@@ -62,6 +63,7 @@ export interface AppDependencies {
   ticketService: TicketService;
   broadcaster: SseBroadcaster;
   notifier: Notifier;
+  reactor?: TaskReactor;
   agentToken?: string;
   webhookSecret?: string;
   webOrigins?: string[];
@@ -85,6 +87,10 @@ export function createApp(deps: AppDependencies): Express {
 
   const gitReviewService = new GitReviewService(deps.projectService);
 
+  const reactor =
+    deps.reactor ||
+    new TaskReactor(deps.db, deps.requirementService, deps.linkService, (evt) => deps.broadcaster.broadcast(evt));
+
   const vcsSyncService =
     deps.vcsSyncService ||
     new VcsSyncService(
@@ -92,7 +98,8 @@ export function createApp(deps: AppDependencies): Express {
       deps.projectService,
       deps.requirementService,
       deps.linkService,
-      deps.broadcaster
+      deps.broadcaster,
+      reactor
     );
 
   const metricsService =
@@ -493,22 +500,20 @@ export function createApp(deps: AppDependencies): Express {
   app.post('/api/tasks/:id/mark-done', async (req, res, next) => {
     try {
       const taskId = Number(req.params.id);
+      const task = deps.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(taskId) as any;
+      if (!task) return res.status(404).json({ error: 'Task not found' });
+      if (task.status === 'done') return res.json({ ok: true, releasedLinks: [] });
+
       const now = new Date().toISOString();
-      deps.db.prepare('UPDATE bridge_tasks SET status = ?, updated_at = ? WHERE id = ?').run('done', now, taskId);
-
-      // Release any dependent links
-      const releasedLinks = await deps.linkService.evaluateDependencyResolved(taskId);
-
-      // Recalculate requirement status
-      const task = deps.db.prepare('SELECT req_id FROM bridge_tasks WHERE id = ?').get(taskId) as any;
-      if (task) {
-        deps.requirementService.recalculateDerivedStatus(task.req_id);
+      const updated = deps.db
+        .prepare('UPDATE bridge_tasks SET status = ?, updated_at = ? WHERE id = ? AND status = ?')
+        .run('done', now, taskId, task.status);
+      if (updated.changes !== 1) {
+        return res.status(409).json({ error: 'Task changed while marking it done; refresh and retry' });
       }
 
-      deps.broadcaster.broadcast({
-        type: 'task_done',
-        payload: { taskId, releasedLinks },
-      });
+      // Releases dependents and re-derives the requirement status (same path as the watcher)
+      const { releasedLinks } = await reactor.onTaskStatusChanged(task, task.status, 'done', 'manual');
 
       res.json({ ok: true, releasedLinks });
     } catch (err) {

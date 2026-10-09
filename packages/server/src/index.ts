@@ -16,6 +16,7 @@ import { createAdapter } from './adapters/index.js';
 import { VcsSyncService } from './services/vcsSyncService.js';
 import { MetricsService } from './services/metricsService.js';
 import { createApp } from './api/app.js';
+import { TaskReactor } from './services/taskReactor.js';
 
 const PORT = Number(process.env.PORT || 4100);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -44,12 +45,14 @@ const ticketService = new TicketService(db, projectService, linkService, getAdap
 const fanOutService = new FanOutService(db, projectService, requirementService, getAdapter);
 const broadcaster = new SseBroadcaster();
 const notifier = new Notifier();
+const reactor = new TaskReactor(db, requirementService, linkService, (evt) => broadcaster.broadcast(evt));
 const vcsSyncService = new VcsSyncService(
   db,
   projectService,
   requirementService,
   linkService,
-  broadcaster
+  broadcaster,
+  reactor
 );
 const metricsService = new MetricsService(db, sprintService);
 
@@ -58,7 +61,9 @@ const watcher = new EngineWatcher(
   projectService,
   requirementService,
   getAdapter,
-  (evt) => broadcaster.broadcast(evt)
+  (evt) => broadcaster.broadcast(evt),
+  5000,
+  reactor
 );
 
 const outboxScanner = new OutboxScanner(projectService, ticketService);
@@ -83,6 +88,7 @@ const app = createApp({
   ticketService,
   broadcaster,
   notifier,
+  reactor,
   agentToken: process.env.AGENT_TOKEN || undefined,
   webhookSecret: process.env.GITHUB_WEBHOOK_SECRET || undefined,
 });

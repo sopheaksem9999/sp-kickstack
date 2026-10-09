@@ -8,7 +8,8 @@ export class StoneforgeAdapter implements EngineAdapter {
     private baseUrl: string,
     private repoPath: string,
     private token?: string,
-    private customFetch: typeof fetch = globalThis.fetch
+    private customFetch: typeof fetch = globalThis.fetch,
+    private timeoutMs: number = Number(process.env.ENGINE_TIMEOUT_MS) || 10000
   ) {}
 
   private async fetchJson<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -19,7 +20,12 @@ export class StoneforgeAdapter implements EngineAdapter {
       ...((options.headers as Record<string, string>) || {}),
     };
 
-    const res = await this.customFetch(url, { ...options, headers });
+    // A hung engine must not stall the watcher or a request forever.
+    const res = await this.customFetch(url, {
+      ...options,
+      headers,
+      signal: options.signal ?? AbortSignal.timeout(this.timeoutMs),
+    });
     if (!res.ok) {
       const errorText = await res.text().catch(() => res.statusText);
       throw new Error(`Engine request failed (${res.status}): ${errorText}`);

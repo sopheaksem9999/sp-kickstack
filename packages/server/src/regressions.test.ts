@@ -15,6 +15,8 @@ import { WorkspaceService } from './services/workspaceService.js';
 import { FakeEngineServer } from './adapters/fakeEngine.js';
 import { StoneforgeAdapter } from './adapters/stoneforgeAdapter.js';
 import { SseBroadcaster } from './sse/broadcaster.js';
+import { TaskReactor } from './services/taskReactor.js';
+import { EngineWatcher } from './watcher/engineWatcher.js';
 import { Notifier } from './notify/notifier.js';
 import { createApp, AppDependencies } from './api/app.js';
 import { testRequest } from './api/testHelper.js';
@@ -45,6 +47,10 @@ function makeHarness(appOverrides: Partial<AppDependencies> = {}) {
   const ticketService = new TicketService(db, projectService, linkService, getAdapter);
   const fanOutService = new FanOutService(db, projectService, requirementService, getAdapter);
   const broadcaster = new SseBroadcaster();
+  const emitted: any[] = [];
+  const emit = (evt: any) => { emitted.push(evt); };
+  const reactor = new TaskReactor(db, requirementService, linkService, emit);
+  const watcher = new EngineWatcher(db, projectService, requirementService, getAdapter, emit, 5000, reactor);
 
   projectService.registerProject({
     name: 'backend', kind: 'backend', repo_path: repoBackend, engine_type: 'stoneforge',
@@ -80,10 +86,30 @@ function makeHarness(appOverrides: Partial<AppDependencies> = {}) {
   return {
     ws, repoBackend, repoMobile, db, projectService, requirementService, backendEngine, mobileEngine,
     adapters, linkService, ticketService, fanOutService, broadcaster, app, createRequirement,
+    emitted, reactor, watcher,
   };
 }
 
 type Harness = ReturnType<typeof makeHarness>;
+
+async function blockMobileOn(h: Harness, titles: string[]) {
+  const req = h.createRequirement();
+  const tasks = await h.fanOutService.execute(req.id);
+  const mobileGoal = tasks.find((t) => t.project === 'mobile')!;
+  const tickets = [];
+  for (const title of titles) {
+    tickets.push(
+      await h.ticketService.createTicket(
+        { to: 'backend', type: 'api_request', title, body: 'Provide the endpoint please', blocking: true },
+        'mobile',
+        mobileGoal.engine_task_id!
+      )
+    );
+  }
+  return { req, mobileGoal, tickets };
+}
+
+const taskRow = (h: Harness, id: number) => h.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(id) as any;
 
 function initGitRepo(repo: string) {
   execSync('git init -q -b main && git config user.email t@e.st && git config user.name T', { cwd: repo });
@@ -409,5 +435,111 @@ describe('A: resolving a blocking ticket releases the held source engine task', 
       h.linkService.evaluateDependencyResolved(tickets[0].ticketId),
     ]);
     expect(calls).toBe(1);
+  });
+});
+
+describe('T6: engine calls time out instead of hanging', () => {
+  const hanging: typeof fetch = (_url, init) =>
+    new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+    });
+
+  it('rejects a call to an engine that never answers', async () => {
+    const adapter = new StoneforgeAdapter('http://127.0.0.1:1', '/r', undefined, hanging, 50);
+    const started = Date.now();
+    await expect(adapter.createGoal({ title: 't', bodyMd: 'b' })).rejects.toThrow();
+    expect(Date.now() - started).toBeLessThan(1000);
+  }, 3000);
+
+  it('reports a hung engine as unhealthy', async () => {
+    const adapter = new StoneforgeAdapter('http://127.0.0.1:1', '/r', undefined, hanging, 50);
+    expect((await adapter.health()).ok).toBe(false);
+  }, 3000);
+});
+
+describe('B: every status source goes through one reaction path', () => {
+  let h: Harness;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => h.db.close());
+
+  it('watcher releases the blocked source when the ticket finishes in its engine', async () => {
+    const { mobileGoal, tickets } = await blockMobileOn(h, ['GET /loc']);
+    const ticket = taskRow(h, tickets[0].ticketId);
+    h.backendEngine.setTaskStatus(ticket.engine_task_id, 'done', 'merged', 'https://pr/1');
+
+    await h.watcher.scanOnce();
+
+    expect(h.linkService.getLinksForTask(mobileGoal.id)[0].state).toBe('released');
+    expect(h.mobileEngine.getTaskData(mobileGoal.engine_task_id!)!.status).toBe('queued');
+
+    await h.watcher.scanOnce();
+    expect(taskRow(h, mobileGoal.id).status).toBe('queued');
+  });
+
+  it('watcher does not overwrite a status changed while it was polling', async () => {
+    const req = h.createRequirement(['backend']);
+    const [task] = await h.fanOutService.execute(req.id);
+    h.backendEngine.setTaskStatus(task.engine_task_id!, 'running', 'in_progress');
+    const original = h.adapters.backend.getTask.bind(h.adapters.backend);
+    h.adapters.backend.getTask = async (id: string) => {
+      const result = await original(id);
+      h.db.prepare("UPDATE bridge_tasks SET status = 'cancelled' WHERE id = ?").run(task.id);
+      return result;
+    };
+
+    await h.watcher.scanOnce();
+
+    expect(taskRow(h, task.id).status).toBe('cancelled');
+  });
+
+  it('emits one task_status_changed per change with a stable payload', async () => {
+    const req = h.createRequirement(['backend']);
+    const [task] = await h.fanOutService.execute(req.id);
+    h.emitted.length = 0;
+    h.backendEngine.setTaskStatus(task.engine_task_id!, 'running', 'in_progress');
+
+    await h.watcher.scanOnce();
+
+    const changes = h.emitted.filter((e) => e.type === 'task_status_changed');
+    expect(changes).toHaveLength(1);
+    expect(changes[0].payload).toMatchObject({
+      taskId: task.id, reqId: req.id, project: 'backend', oldStatus: 'queued', newStatus: 'running',
+    });
+  });
+
+  it('webhook merge releases dependents and broadcasts the same payload shape', async () => {
+    const { mobileGoal, tickets } = await blockMobileOn(h, ['GET /loc']);
+    const ticket = taskRow(h, tickets[0].ticketId);
+    const broadcasts: any[] = [];
+    h.broadcaster.broadcast = (e: any) => { broadcasts.push(e); };
+
+    await testRequest(h.app, 'POST', '/api/webhooks/github', {
+      headers: { 'x-github-event': 'pull_request' },
+      body: {
+        action: 'closed',
+        pull_request: {
+          html_url: 'https://gh/pr/7', number: 7, title: `[${ticket.req_id}] GET /loc`, body: null,
+          state: 'closed', merged: true, head: { ref: `req/${ticket.req_id}-loc` }, base: { ref: 'main' },
+        },
+        repository: { name: 'backend', full_name: 'o/backend' },
+      },
+    });
+
+    expect(h.mobileEngine.getTaskData(mobileGoal.engine_task_id!)!.status).toBe('queued');
+    const change = broadcasts.find((e) => e.type === 'task_status_changed' && e.payload.taskId === ticket.id);
+    expect(change.payload).toMatchObject({ project: 'backend', newStatus: 'done' });
+  });
+
+  it('mark-done releases dependents and broadcasts the same payload shape', async () => {
+    const { mobileGoal, tickets } = await blockMobileOn(h, ['GET /loc']);
+    const broadcasts: any[] = [];
+    h.broadcaster.broadcast = (e: any) => { broadcasts.push(e); };
+
+    const res = await testRequest(h.app, 'POST', `/api/tasks/${tickets[0].ticketId}/mark-done`);
+
+    expect(res.status).toBe(200);
+    expect(h.mobileEngine.getTaskData(mobileGoal.engine_task_id!)!.status).toBe('queued');
+    const change = broadcasts.find((e) => e.type === 'task_status_changed');
+    expect(change.payload).toMatchObject({ taskId: tickets[0].ticketId, project: 'backend', newStatus: 'done' });
   });
 });

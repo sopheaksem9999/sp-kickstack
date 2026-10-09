@@ -4,6 +4,7 @@ import { RequirementService } from './requirementService.js';
 import { LinkService } from './linkService.js';
 import { SseBroadcaster } from '../sse/broadcaster.js';
 import { BridgeTask } from '@sp-kickstack/shared';
+import { TaskReactor } from './taskReactor.js';
 
 export interface GitHubWebhookPayload {
   action: string;
@@ -36,13 +37,19 @@ export interface VcsSyncResult {
 }
 
 export class VcsSyncService {
+  private reactor: TaskReactor;
+
   constructor(
     private db: AppDatabase,
     private projectService: ProjectService,
     private requirementService: RequirementService,
     private linkService: LinkService,
-    private broadcaster: SseBroadcaster
-  ) {}
+    private broadcaster: SseBroadcaster,
+    reactor?: TaskReactor
+  ) {
+    this.reactor =
+      reactor ?? new TaskReactor(db, requirementService, linkService, (evt) => broadcaster.broadcast(evt));
+  }
 
   public async handleGitHubWebhook(
     event: string,
@@ -93,14 +100,9 @@ export class VcsSyncService {
           now
         );
 
-      this.broadcaster.broadcast({
-        type: 'task_status_changed',
-        payload: {
-          taskId: task.id,
-          reqId: task.req_id,
-          status: 'in_review',
-          prUrl: pr.html_url,
-        },
+      await this.reactor.onTaskStatusChanged(task, task.status, 'in_review', 'webhook', {
+        rawStatus: 'needs_review',
+        prUrl: pr.html_url,
       });
 
       return {
@@ -133,21 +135,10 @@ export class VcsSyncService {
           now
         );
 
-      // Evaluate and release downstream dependents waiting on this task
-      const releasedLinks = await this.linkService.evaluateDependencyResolved(task.id);
-
-      // Check if all tasks for the requirement are done
-      this.checkAndUpdateRequirementCompletion(task.req_id);
-
-      this.broadcaster.broadcast({
-        type: 'task_status_changed',
-        payload: {
-          taskId: task.id,
-          reqId: task.req_id,
-          status: 'done',
-          prUrl: pr.html_url,
-          releasedLinksCount: releasedLinks.length,
-        },
+      // Releases dependents and re-derives the requirement status (same path as the watcher)
+      await this.reactor.onTaskStatusChanged(task, task.status, 'done', 'webhook', {
+        rawStatus: 'merged',
+        prUrl: pr.html_url,
       });
 
       return {
@@ -196,19 +187,5 @@ export class VcsSyncService {
     }
 
     return [];
-  }
-
-  private checkAndUpdateRequirementCompletion(reqId: string): void {
-    const activeTasks = this.db
-      .prepare("SELECT COUNT(*) as count FROM bridge_tasks WHERE req_id = ? AND role = 'goal' AND status != 'done'")
-      .get(reqId) as { count: number };
-
-    if (activeTasks && activeTasks.count === 0) {
-      this.requirementService.updateStatus(reqId, 'done');
-      this.broadcaster.broadcast({
-        type: 'requirement_status_changed',
-        payload: { id: reqId, status: 'done' },
-      });
-    }
   }
 }

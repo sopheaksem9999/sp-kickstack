@@ -3,6 +3,7 @@ import { ProjectService } from '../services/projectService.js';
 import { RequirementService } from '../services/requirementService.js';
 import { AdapterFactory } from '../services/fanOutService.js';
 import { BridgeTask, NormStatus } from '@sp-kickstack/shared';
+import { TaskReactor } from '../services/taskReactor.js';
 
 export type EventCallback = (event: {
   type: string;
@@ -14,6 +15,7 @@ export type EventCallback = (event: {
 export class EngineWatcher {
   private timer: NodeJS.Timeout | null = null;
   private isScanning = false;
+  private reactor: TaskReactor;
 
   constructor(
     private db: AppDatabase,
@@ -21,8 +23,12 @@ export class EngineWatcher {
     private requirementService: RequirementService,
     private getAdapter: AdapterFactory,
     private onEvent?: EventCallback,
-    private pollIntervalMs: number = 5000
-  ) {}
+    private pollIntervalMs: number = 5000,
+    reactor?: TaskReactor
+  ) {
+    // Without an injected reactor (tests, scripts) links are not evaluated; index.ts injects one.
+    this.reactor = reactor ?? new TaskReactor(db, requirementService, undefined, onEvent);
+  }
 
   public recordEvent(
     type: string,
@@ -30,17 +36,7 @@ export class EngineWatcher {
     task_id?: number,
     payload: Record<string, unknown> = {}
   ) {
-    const now = new Date().toISOString();
-    this.db
-      .prepare(`
-        INSERT INTO events (req_id, task_id, type, payload, read, at)
-        VALUES (?, ?, ?, ?, 0, ?)
-      `)
-      .run(req_id || null, task_id || null, type, JSON.stringify(payload), now);
-
-    if (this.onEvent) {
-      this.onEvent({ type, req_id, task_id, payload });
-    }
+    this.reactor.recordEvent(type, req_id, task_id, payload);
   }
 
   public async scanOnce(): Promise<number> {
@@ -99,34 +95,45 @@ export class EngineWatcher {
             const prChanged = (engineTask.prUrl || null) !== (task.pr_url || null);
 
             if (statusChanged || rawChanged || prChanged) {
-              changesCount++;
               const oldStatus = task.status;
               const now = new Date().toISOString();
 
-              this.db
+              // Guarded on the status we read before awaiting the engine: if someone else
+              // (webhook, operator, link release) changed it meanwhile, theirs wins.
+              const updated = this.db
                 .prepare(`
                   UPDATE bridge_tasks
                   SET status = ?, engine_status_raw = ?, pr_url = COALESCE(?, pr_url), updated_at = ?
-                  WHERE id = ?
+                  WHERE id = ? AND status = ?
                 `)
                 .run(
                   engineTask.status,
                   engineTask.rawStatus,
                   engineTask.prUrl || null,
                   now,
-                  task.id
+                  task.id,
+                  oldStatus
                 );
+              if (updated.changes !== 1) continue;
+              changesCount++;
 
-              this.recordEvent('task_status_changed', task.req_id, task.id, {
-                project: projectName,
-                oldStatus,
-                newStatus: engineTask.status,
-                rawStatus: engineTask.rawStatus,
-                prUrl: engineTask.prUrl,
-              });
-
-              // Recalculate derived requirement status
-              this.requirementService.recalculateDerivedStatus(task.req_id);
+              if (statusChanged) {
+                await this.reactor.onTaskStatusChanged(
+                  { ...task, pr_url: engineTask.prUrl || task.pr_url },
+                  oldStatus,
+                  engineTask.status,
+                  'watcher',
+                  { rawStatus: engineTask.rawStatus, prUrl: engineTask.prUrl || null }
+                );
+              } else {
+                // Raw status / PR link only: refresh clients without a notification row.
+                this.onEvent?.({
+                  type: 'task_updated',
+                  req_id: task.req_id,
+                  task_id: task.id,
+                  payload: { taskId: task.id, rawStatus: engineTask.rawStatus, prUrl: engineTask.prUrl || null },
+                });
+              }
             }
           } catch (err: any) {
             // Task query error; keep old state

@@ -83,8 +83,8 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
 
     const insertTx = this.db.transaction(() => {
       this.db.prepare(`
-        INSERT INTO requirements (id, workspace_id, seq, title, status, priority, body_md, file_path, revision, attachments, created_at, updated_at)
-        VALUES (@id, @workspace_id, @seq, @title, @status, @priority, @body_md, @file_path, @revision, @attachments, @created_at, @updated_at)
+        INSERT INTO requirements (id, workspace_id, seq, title, status, priority, body_md, file_path, revision, attachments, merge_policy, created_at, updated_at)
+        VALUES (@id, @workspace_id, @seq, @title, @status, @priority, @body_md, @file_path, @revision, @attachments, @merge_policy, @created_at, @updated_at)
       `).run({
         id,
         workspace_id: input.workspace_id || 'default',
@@ -96,6 +96,7 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
         file_path: filePath,
         revision,
         attachments: JSON.stringify(attachments),
+        merge_policy: input.merge_policy || null,
         created_at: now,
         updated_at: now,
       });
@@ -135,6 +136,7 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
       workspace_id: row.workspace_id || 'default',
       affected_projects: projRows.map((p) => p.project),
       attachments: this.parseAttachments(row.attachments),
+      merge_policy: row.merge_policy || null,
     };
   }
 
@@ -154,8 +156,34 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
         workspace_id: row.workspace_id || 'default',
         affected_projects: projRows.map((p) => p.project),
         attachments: this.parseAttachments(row.attachments),
+        merge_policy: row.merge_policy || null,
       };
     });
+  }
+
+  public updateRequirementProjects(id: string, projects: string[]): Requirement | null {
+    const req = this.getRequirement(id);
+    if (!req) throw new Error(`Requirement ${id} not found`);
+
+    const updateTx = this.db.transaction(() => {
+      this.db.prepare('DELETE FROM requirement_projects WHERE req_id = ?').run(id);
+      const insertProj = this.db.prepare('INSERT INTO requirement_projects (req_id, project) VALUES (?, ?)');
+      for (const proj of projects) {
+        insertProj.run(id, proj);
+      }
+      this.db.prepare("UPDATE requirements SET updated_at = datetime('now') WHERE id = ?").run(id);
+    });
+    updateTx();
+
+    return this.getRequirement(id);
+  }
+
+  public updateRequirementMergePolicy(id: string, mergePolicy: any): Requirement | null {
+    const req = this.getRequirement(id);
+    if (!req) throw new Error(`Requirement ${id} not found`);
+
+    this.db.prepare("UPDATE requirements SET merge_policy = ?, updated_at = datetime('now') WHERE id = ?").run(mergePolicy || null, id);
+    return this.getRequirement(id);
   }
 
   public updateStatus(id: string, status: RequirementStatus) {

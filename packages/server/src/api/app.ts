@@ -12,11 +12,15 @@ import { TicketService } from '../services/ticketService.js';
 import { SseBroadcaster } from '../sse/broadcaster.js';
 import { Notifier } from '../notify/notifier.js';
 import { SettingsService } from '../services/settingsService.js';
+import { AssetService } from '../services/assetService.js';
 import {
   CreateRequirementInputSchema,
   CreateTicketInputSchema,
   CreateWorkspaceInputSchema,
   UpdateWorkspaceInputSchema,
+  UpdateRequirementProjectsInputSchema,
+  UpdateRequirementMergePolicyInputSchema,
+  CreateSharedAssetInputSchema,
   ProjectSchema,
   RequirementStatusSchema,
 } from '@sp-kickstack/shared';
@@ -192,6 +196,53 @@ export function createApp(deps: AppDependencies): Express {
       `)
       .all(req.params.id);
     res.json({ tasks, links });
+  });
+
+  app.put('/api/requirements/:id/projects', (req, res, next) => {
+    try {
+      const validated = UpdateRequirementProjectsInputSchema.parse(req.body);
+      const updated = deps.requirementService.updateRequirementProjects(req.params.id, validated.affected_projects);
+      if (!updated) return res.status(404).json({ error: 'Requirement not found' });
+      deps.broadcaster.broadcast({ type: 'requirement_created', payload: updated });
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.put('/api/requirements/:id/merge-policy', (req, res, next) => {
+    try {
+      const validated = UpdateRequirementMergePolicyInputSchema.parse(req.body);
+      const updated = deps.requirementService.updateRequirementMergePolicy(req.params.id, validated.merge_policy || null);
+      if (!updated) return res.status(404).json({ error: 'Requirement not found' });
+      deps.broadcaster.broadcast({ type: 'requirement_created', payload: updated });
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Attachments & Shared Assets Hub
+  const assetService = new AssetService(deps.db);
+
+  app.get('/api/assets', (req, res) => {
+    const ws = req.query.workspace as string | undefined;
+    res.json(assetService.getAssets(ws && ws !== 'all' ? ws : undefined));
+  });
+
+  app.post('/api/assets/shared', (req, res, next) => {
+    try {
+      const validated = CreateSharedAssetInputSchema.parse(req.body);
+      const created = assetService.createSharedAsset(validated);
+      res.status(201).json(created);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.delete('/api/assets/shared/:id', (req, res) => {
+    const result = assetService.deleteSharedAsset(req.params.id);
+    res.json(result);
   });
 
   // Settings & Branch Merge Rules

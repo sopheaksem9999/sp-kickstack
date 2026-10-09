@@ -43,9 +43,23 @@ CREATE TABLE IF NOT EXISTS requirements (
   file_path   TEXT NOT NULL,
   revision    INTEGER NOT NULL DEFAULT 1,
   attachments TEXT NOT NULL DEFAULT '[]',
+  merge_policy TEXT DEFAULT NULL,
   created_at  TEXT NOT NULL,
   updated_at  TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS shared_assets (
+  id           TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL DEFAULT 'default' REFERENCES workspaces(id) ON DELETE CASCADE,
+  name         TEXT NOT NULL,
+  type         TEXT NOT NULL,
+  size         INTEGER NOT NULL DEFAULT 0,
+  data_url     TEXT NOT NULL,
+  notes        TEXT,
+  created_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_shared_assets_workspace ON shared_assets(workspace_id);
 
 CREATE TABLE IF NOT EXISTS requirement_projects (
   req_id  TEXT NOT NULL REFERENCES requirements(id) ON DELETE CASCADE,

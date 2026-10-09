@@ -100,6 +100,7 @@ export interface Requirement {
   revision: number;
   affected_projects: string[];
   attachments?: AttachmentItem[];
+  merge_policy?: BranchMergePolicy | null;
   created_at: string;
   updated_at: string;
 }
@@ -153,4 +154,15 @@ export interface EngineTask {
   url?: string;
   prUrl?: string;
   summary?: string;
+}
+
+export interface SharedAsset {
+  id: string;
+  workspace_id: string;
+  name: string;
+  type: string;
+  size: number;
+  data_url: string;
+  notes?: string;
+  created_at: string;
 }

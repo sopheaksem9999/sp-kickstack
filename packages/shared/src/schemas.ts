@@ -126,8 +126,37 @@ export const CreateRequirementInputSchema = z.object({
   affected_projects: z.array(z.string().min(1)).min(1),
   priority: PrioritySchema.default('normal'),
   status: RequirementStatusSchema.optional().default('draft'),
+  merge_policy: BranchMergePolicySchema.optional(),
   attachments: z.array(AttachmentItemSchema).optional().default([]),
   api_hints: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const UpdateRequirementProjectsInputSchema = z.object({
+  affected_projects: z.array(z.string().min(1)).min(1),
+});
+
+export const UpdateRequirementMergePolicyInputSchema = z.object({
+  merge_policy: BranchMergePolicySchema.nullable().optional(),
+});
+
+export const SharedAssetSchema = z.object({
+  id: z.string(),
+  workspace_id: z.string().default('default'),
+  name: z.string().min(1),
+  type: z.string(),
+  size: z.number(),
+  data_url: z.string(),
+  notes: z.string().optional(),
+  created_at: z.string().optional(),
+});
+
+export const CreateSharedAssetInputSchema = z.object({
+  workspace_id: z.string().default('default'),
+  name: z.string().min(1),
+  type: z.string().default('application/octet-stream'),
+  size: z.number().default(0),
+  data_url: z.string().min(1),
   notes: z.string().optional(),
 });
 
@@ -149,5 +178,9 @@ export const TicketResponseSchema = z.object({
 export type CreateWorkspaceInput = z.input<typeof CreateWorkspaceInputSchema>;
 export type UpdateWorkspaceInput = z.input<typeof UpdateWorkspaceInputSchema>;
 export type CreateRequirementInput = z.input<typeof CreateRequirementInputSchema>;
+export type UpdateRequirementProjectsInput = z.input<typeof UpdateRequirementProjectsInputSchema>;
+export type UpdateRequirementMergePolicyInput = z.input<typeof UpdateRequirementMergePolicyInputSchema>;
+export type CreateSharedAssetInput = z.input<typeof CreateSharedAssetInputSchema>;
+export type SharedAssetItem = z.infer<typeof SharedAssetSchema>;
 export type CreateTicketInput = z.input<typeof CreateTicketInputSchema>;
 export type TicketResponse = z.infer<typeof TicketResponseSchema>;

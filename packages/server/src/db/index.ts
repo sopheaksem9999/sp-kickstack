@@ -35,6 +35,9 @@ export function initDatabase(dbPath: string = ':memory:'): AppDatabase {
     if (reqCols.length > 0 && !reqCols.some((col) => col.name === 'attachments')) {
       db.exec("ALTER TABLE requirements ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]';");
     }
+    if (reqCols.length > 0 && !reqCols.some((col) => col.name === 'merge_policy')) {
+      db.exec("ALTER TABLE requirements ADD COLUMN merge_policy TEXT DEFAULT NULL;");
+    }
   } catch (err) {
     // Already migrated or in-memory
   }

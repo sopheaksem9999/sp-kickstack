@@ -20,19 +20,27 @@ export class FanOutService {
     project: string,
     requirementMd: string,
     baseBranch: string = 'develop',
-    mergePolicy: string = 'manual_review_merge'
+    mergePolicy: string = 'manual_review_merge',
+    sharedAssets: Array<{ name: string; notes?: string }> = []
   ): string {
     const mergePolicyDesc =
       mergePolicy === 'auto_merge_main'
         ? 'Changes on develop branch will be automatically merged to main upon task completion & green tests.'
         : 'All changes remain on develop branch and require human operator review and manual approval before merging into main.';
 
+    const assetsBlock =
+      sharedAssets.length > 0
+        ? `\n## Shared Workspace Assets & Contracts\n` +
+          sharedAssets.map((a) => `- **${a.name}**${a.notes ? `: ${a.notes}` : ''}`).join('\n') +
+          '\n'
+        : '';
+
     return `# ${reqId} — ${title}  (project: ${project})
 
 ## Branch & Implementation Rules
 - Target Branch: All changes must be developed on the \`${baseBranch}\` branch.
 - Merge Strategy: ${mergePolicyDesc}
-
+${assetsBlock}
 ## What to do
 1. Read the requirement below and inspect this codebase on the \`${baseBranch}\` branch.
 2. Write \`specs/${reqId}/spec.md\` (what THIS project must do, affected modules,
@@ -73,6 +81,17 @@ ${requirementMd}
       // Use fallback
     }
 
+    // Per-ticket override takes precedence if defined
+    if (req.merge_policy) {
+      mergePolicy = req.merge_policy;
+    }
+
+    // Retrieve shared assets for workspace
+    const workspaceId = req.workspace_id || 'default';
+    const sharedAssets = this.db
+      .prepare('SELECT name, type, size, notes FROM shared_assets WHERE workspace_id = ?')
+      .all(workspaceId) as any[];
+
     const createdTasks: BridgeTask[] = [];
 
     for (const projectName of req.affected_projects) {
@@ -96,7 +115,7 @@ ${requirementMd}
 
       const baseBranch = project.base_branch || defaultBaseBranch;
       const title = `${req.id}: ${req.title}`;
-      const bodyMd = this.formatGoalBody(req.id, req.title, projectName, req.body_md, baseBranch, mergePolicy);
+      const bodyMd = this.formatGoalBody(req.id, req.title, projectName, req.body_md, baseBranch, mergePolicy, sharedAssets);
       const adapter = this.getAdapter(projectName);
 
       let engineTaskId: string | null = null;

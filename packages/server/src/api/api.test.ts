@@ -66,12 +66,13 @@ describe('Bridge REST API Integration Tests', () => {
     });
   });
 
-  afterAll(() => {
-    db.close();
-  });
+  // afterAll(() => {
+  //   db.close();
+  // });
 
   beforeEach(() => {
     db.exec(`
+      DELETE FROM shared_assets;
       DELETE FROM events;
       DELETE FROM links;
       DELETE FROM bridge_tasks;
@@ -233,6 +234,89 @@ describe('Bridge REST API Integration Tests', () => {
     });
     expect(updateRes.status).toBe(200);
     expect(updateRes.body.rules).toBe('Updated rules: 100% test coverage mandatory.');
+  });
+
+  it('PUT /api/requirements/:id/projects and merge-policy update requirement', async () => {
+    const createRes = await testRequest(app, 'POST', '/api/requirements', {
+      body: {
+        title: 'Project update test',
+        goal: 'Testing editing projects and merge policy',
+        acceptance_criteria: ['Saved'],
+        affected_projects: ['backend'],
+        merge_policy: 'manual_review_merge',
+      },
+    });
+    expect(createRes.status).toBe(201);
+    const reqId = createRes.body.id;
+    expect(createRes.body.affected_projects).toEqual(['backend']);
+    expect(createRes.body.merge_policy).toBe('manual_review_merge');
+
+    // Update projects
+    const updateProjRes = await testRequest(app, 'PUT', `/api/requirements/${reqId}/projects`, {
+      body: {
+        affected_projects: ['backend', 'mobile'],
+      },
+    });
+    expect(updateProjRes.status).toBe(200);
+    expect(updateProjRes.body.affected_projects.sort()).toEqual(['backend', 'mobile']);
+
+    // Update merge policy to auto_merge_main
+    const updatePolicyRes = await testRequest(app, 'PUT', `/api/requirements/${reqId}/merge-policy`, {
+      body: {
+        merge_policy: 'auto_merge_main',
+      },
+    });
+    expect(updatePolicyRes.status).toBe(200);
+    expect(updatePolicyRes.body.merge_policy).toBe('auto_merge_main');
+  });
+
+  it('GET /api/assets, POST /api/assets/shared, and DELETE manage shared assets and ticket attachments', async () => {
+    // 1. Create a requirement with attachments
+    await testRequest(app, 'POST', '/api/requirements', {
+      body: {
+        title: 'Requirement with attachment',
+        goal: 'Testing asset hub aggregation',
+        acceptance_criteria: ['Attached'],
+        affected_projects: ['backend'],
+        attachments: [
+          { name: 'schema.sql', size: 1024, type: 'text/plain', data_url: 'data:text/plain;base64,Zm9v' },
+        ],
+      },
+    });
+
+    // 2. Query assets
+    const initialAssets = await testRequest(app, 'GET', '/api/assets');
+    expect(initialAssets.status).toBe(200);
+    expect(initialAssets.body.ticket_attachments.length).toBeGreaterThan(0);
+    expect(initialAssets.body.ticket_attachments.some((a: any) => a.name === 'schema.sql')).toBe(true);
+
+    // 3. Create a shared asset
+    const createSharedRes = await testRequest(app, 'POST', '/api/assets/shared', {
+      body: {
+        workspace_id: 'default',
+        name: 'openapi-contract.yaml',
+        type: 'application/x-yaml',
+        size: 2048,
+        data_url: 'data:text/yaml;base64,YXBpOiB2MQ==',
+        notes: 'Shared API contract for all microservices',
+      },
+    });
+    expect(createSharedRes.status).toBe(201);
+    expect(createSharedRes.body.id).toBeDefined();
+    const assetId = createSharedRes.body.id;
+
+    // 4. Verify asset appears in GET
+    const afterAssets = await testRequest(app, 'GET', '/api/assets?workspace=default');
+    expect(afterAssets.body.shared_assets.some((a: any) => a.id === assetId)).toBe(true);
+
+    // 5. Delete shared asset
+    const deleteRes = await testRequest(app, 'DELETE', `/api/assets/shared/${assetId}`);
+    expect(deleteRes.status).toBe(200);
+    expect(deleteRes.body.ok).toBe(true);
+
+    // 6. Verify deleted
+    const finalAssets = await testRequest(app, 'GET', '/api/assets?workspace=default');
+    expect(finalAssets.body.shared_assets.some((a: any) => a.id === assetId)).toBe(false);
   });
 });
 

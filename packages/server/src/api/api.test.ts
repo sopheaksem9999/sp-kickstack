@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { initDatabase, AppDatabase } from '../db/index.js';
 import { WorkspaceService } from '../services/workspaceService.js';
 import { ProjectService } from '../services/projectService.js';
@@ -85,6 +85,10 @@ describe('Bridge REST API Integration Tests', () => {
       base_branch: 'main',
       enabled: true,
     });
+  });
+
+  afterEach(() => {
+    db.close();
   });
 
   it('GET /api/health returns ok', async () => {

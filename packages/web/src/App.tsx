@@ -34,15 +34,18 @@ function AppRoutes() {
 }
 
 import { WorkspaceProvider } from './lib/WorkspaceContext.js';
+import { ThemeProvider } from './lib/ThemeContext.js';
 
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <WorkspaceProvider>
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
-      </WorkspaceProvider>
+      <ThemeProvider>
+        <WorkspaceProvider>
+          <BrowserRouter>
+            <AppRoutes />
+          </BrowserRouter>
+        </WorkspaceProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

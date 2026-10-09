@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { initDatabase, AppDatabase } from '../db/index.js';
 import { ProjectService } from './projectService.js';
 import { RequirementService } from './requirementService.js';
@@ -88,6 +88,10 @@ describe('Phase 4: Cross-Repo Tickets, Links, and Outbox Scanner', () => {
       INSERT INTO requirements (id, seq, title, status, body_md, file_path, created_at, updated_at)
       VALUES ('REQ-001', 1, 'Default Req', 'ready', '# Req', '/tmp/req.md', datetime('now'), datetime('now'))
     `).run();
+  });
+
+  afterEach(() => {
+    db.close();
   });
 
   it('detects and rejects dependency cycles', () => {

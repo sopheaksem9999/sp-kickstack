@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { createWorkspace, updateWorkspace } from '../lib/api.js';
 import { toast } from 'sonner';
@@ -53,27 +53,30 @@ export function CreateWorkspaceModal({ isOpen, onClose }: CreateWorkspaceModalPr
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-[#0f172a] border border-slate-700/80 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/60">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center font-bold text-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+      <div className="bg-white dark:bg-[#1e1f26] border border-slate-200 dark:border-[#2e303d] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="p-4 border-b border-slate-200 dark:border-[#262732] flex items-center justify-between bg-slate-50/70 dark:bg-[#181920]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#7b68ee] to-[#ff007f] text-white flex items-center justify-center font-bold text-sm shadow-sm">
               <Plus className="w-4 h-4" />
             </div>
-            <h3 className="font-semibold text-white">Create New Workspace</h3>
+            <div>
+              <h3 className="font-bold text-slate-900 dark:text-white text-sm">Create New Workspace</h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Isolate projects and shared rules</p>
+            </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#282935] transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto">
           <div>
-            <label className="block text-xs font-mono text-slate-400 uppercase mb-1">
-              Workspace ID (e.g. workspace-a) *
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+              Workspace ID (slug) *
             </label>
             <input
               type="text"
@@ -81,12 +84,12 @@ export function CreateWorkspaceModal({ isOpen, onClose }: CreateWorkspaceModalPr
               placeholder="workspace-a"
               value={id}
               onChange={(e) => setId(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 font-mono focus:outline-none focus:border-blue-500"
+              className="w-full px-3 py-2 bg-slate-50 dark:bg-[#14151b] border border-slate-300 dark:border-[#2e303d] rounded-lg text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee] focus:ring-1 focus:ring-[#7b68ee]"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-mono text-slate-400 uppercase mb-1">
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
               Workspace Name *
             </label>
             <input
@@ -95,12 +98,12 @@ export function CreateWorkspaceModal({ isOpen, onClose }: CreateWorkspaceModalPr
               placeholder="Workspace A (Mobile & Core API)"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 focus:outline-none focus:border-blue-500"
+              className="w-full px-3 py-2 bg-slate-50 dark:bg-[#14151b] border border-slate-300 dark:border-[#2e303d] rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee] focus:ring-1 focus:ring-[#7b68ee]"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-mono text-slate-400 uppercase mb-1">
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
               Description
             </label>
             <input
@@ -108,48 +111,48 @@ export function CreateWorkspaceModal({ isOpen, onClose }: CreateWorkspaceModalPr
               placeholder="Team workspace for Mobile and Backend projects"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 focus:outline-none focus:border-blue-500"
+              className="w-full px-3 py-2 bg-slate-50 dark:bg-[#14151b] border border-slate-300 dark:border-[#2e303d] rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee] focus:ring-1 focus:ring-[#7b68ee]"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-mono text-slate-400 uppercase mb-1">
-              Shared Workspace Rules (Shared across all projects in workspace)
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+              Shared Rules (Shared across all projects in workspace)
             </label>
             <textarea
               rows={3}
               placeholder="e.g. All API PRs must follow OpenAPI v3 spec; 100% test pass required."
               value={rules}
               onChange={(e) => setRules(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 font-mono focus:outline-none focus:border-blue-500"
+              className="w-full px-3 py-2 bg-slate-50 dark:bg-[#14151b] border border-slate-300 dark:border-[#2e303d] rounded-lg text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee] focus:ring-1 focus:ring-[#7b68ee]"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-mono text-slate-400 uppercase mb-1">
-              Shared Workspace Context (Architecture, conventions, base URLs)
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+              Shared Context (Architecture overview, ports, endpoints)
             </label>
             <textarea
               rows={3}
-              placeholder="e.g. Backend: Go microservice at :8080. Mobile: Flutter client in /mobile."
+              placeholder="e.g. Backend: Go microservice on :8080. Mobile: Flutter client in /mobile."
               value={context}
               onChange={(e) => setContext(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 font-mono focus:outline-none focus:border-blue-500"
+              className="w-full px-3 py-2 bg-slate-50 dark:bg-[#14151b] border border-slate-300 dark:border-[#2e303d] rounded-lg text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee] focus:ring-1 focus:ring-[#7b68ee]"
             />
           </div>
 
-          <div className="pt-3 border-t border-slate-800 flex justify-end gap-3">
+          <div className="pt-3 border-t border-slate-200 dark:border-[#262732] flex justify-end gap-2.5">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-slate-800"
+              className="px-3.5 py-2 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#282935] transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
+              className="px-4 py-2 rounded-lg text-xs font-semibold bg-gradient-to-r from-[#7b68ee] to-[#6c5ce7] hover:from-[#6c5ce7] hover:to-[#5f3dc4] text-white shadow-md shadow-purple-600/20 disabled:opacity-50 transition-all"
             >
               {isSubmitting ? 'Creating...' : 'Create Workspace'}
             </button>
@@ -171,8 +174,7 @@ export function WorkspaceRulesModal({ isOpen, onClose }: WorkspaceRulesModalProp
   const [context, setContext] = useState(activeWorkspace?.context || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Sync state if activeWorkspace changes
-  React.useEffect(() => {
+  useEffect(() => {
     if (activeWorkspace) {
       setRules(activeWorkspace.rules || '');
       setContext(activeWorkspace.context || '');
@@ -200,76 +202,76 @@ export function WorkspaceRulesModal({ isOpen, onClose }: WorkspaceRulesModalProp
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-[#0f172a] border border-slate-700/80 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/60">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-emerald-600/20 text-emerald-400 flex items-center justify-center font-bold text-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+      <div className="bg-white dark:bg-[#1e1f26] border border-slate-200 dark:border-[#2e303d] rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="p-4 border-b border-slate-200 dark:border-[#262732] flex items-center justify-between bg-slate-50/70 dark:bg-[#181920]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-sm shadow-sm">
               <BookOpen className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-semibold text-white">Shared Rules & Context</h3>
-              <p className="text-xs text-slate-400">
-                Workspace: <span className="font-mono text-emerald-400 font-semibold">{activeWorkspace.name}</span> ({activeWorkspace.id})
+              <h3 className="font-bold text-slate-900 dark:text-white text-sm">Shared Rules & Architecture Context</h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Workspace: <span className="font-semibold text-emerald-600 dark:text-emerald-400">{activeWorkspace.name}</span> ({activeWorkspace.id})
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#282935] transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         <form onSubmit={handleSave} className="p-5 space-y-4 overflow-y-auto">
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-mono text-slate-300 uppercase font-semibold">
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                 Shared Rules
               </label>
-              <span className="text-[11px] text-slate-500">Shared across all projects in this workspace</span>
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">Inherited by all projects in this workspace</span>
             </div>
             <textarea
               rows={5}
               placeholder="e.g. 1. Tests must pass before PR. 2. API contracts in /specs. 3. Follow conventional commits."
               value={rules}
               onChange={(e) => setRules(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 font-mono focus:outline-none focus:border-emerald-500"
+              className="w-full px-3 py-2 bg-slate-50 dark:bg-[#14151b] border border-slate-300 dark:border-[#2e303d] rounded-lg text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
             />
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-mono text-slate-300 uppercase font-semibold">
-                Shared Architecture & Context
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                Shared Architecture & Topology
               </label>
-              <span className="text-[11px] text-slate-500">System overview, ports, database schemas</span>
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">Base URLs, database versions, conventions</span>
             </div>
             <textarea
               rows={5}
               placeholder="e.g. Architecture overview: Client apps interact with API gateway on :4100. Database is PostgreSQL 16."
               value={context}
               onChange={(e) => setContext(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 font-mono focus:outline-none focus:border-emerald-500"
+              className="w-full px-3 py-2 bg-slate-50 dark:bg-[#14151b] border border-slate-300 dark:border-[#2e303d] rounded-lg text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
             />
           </div>
 
-          <div className="pt-3 border-t border-slate-800 flex justify-end gap-3">
+          <div className="pt-3 border-t border-slate-200 dark:border-[#262732] flex justify-end gap-2.5">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-slate-800"
+              className="px-3.5 py-2 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#282935] transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 disabled:opacity-50"
+              className="px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 flex items-center gap-1.5 disabled:opacity-50 transition-all"
             >
-              <Save className="w-4 h-4" />
-              {isSubmitting ? 'Saving...' : 'Save Workspace Rules'}
+              <Save className="w-3.5 h-3.5" />
+              {isSubmitting ? 'Saving...' : 'Save Rules & Context'}
             </button>
           </div>
         </form>

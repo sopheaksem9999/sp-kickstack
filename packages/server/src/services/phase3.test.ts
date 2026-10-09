@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { initDatabase, AppDatabase } from '../db/index.js';
 import { ProjectService } from './projectService.js';
 import { RequirementService } from './requirementService.js';
@@ -85,6 +85,10 @@ describe('Phase 3: Requirements, Fan-Out, and Watcher Sync', () => {
       base_branch: 'main',
       enabled: true,
     });
+  });
+
+  afterEach(() => {
+    db.close();
   });
 
   it('creates requirement with sequential ID and markdown file', () => {

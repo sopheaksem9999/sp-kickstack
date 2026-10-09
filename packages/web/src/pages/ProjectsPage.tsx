@@ -4,13 +4,13 @@ import { fetchProjects, testProjectConnection } from '../lib/api.js';
 import { Project, EngineType } from '@sp-kickstack/shared';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { toast } from 'sonner';
-import { RefreshCw, Plus, X } from 'lucide-react';
+import { RefreshCw, Plus, X, FolderGit2 } from 'lucide-react';
 
 export function ProjectsPage() {
   const queryClient = useQueryClient();
   const { activeWorkspaceId, workspaces } = useWorkspace();
 
-  const { data: projects, isLoading } = useQuery({
+  const { data: projects = [], isLoading } = useQuery({
     queryKey: ['projects', activeWorkspaceId],
     queryFn: () => fetchProjects(activeWorkspaceId),
   });
@@ -90,83 +90,126 @@ export function ProjectsPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="max-w-6xl mx-auto space-y-6">
+      {/* ClickUp Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-white tracking-tight">Projects & Engines</h2>
-          <p className="text-sm text-slate-400">Connected repositories and per-repo agent engine runtimes</p>
+          <div className="flex items-center gap-2 text-xs font-semibold text-purple-600 dark:text-purple-400 uppercase tracking-wider">
+            <span>Repositories & Engines</span>
+          </div>
+          <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+            Connected Projects & Agent Runtimes
+          </h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Decoupled per-repo agent engines orchestrated across workspaces
+          </p>
         </div>
+
         <button
           onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition shadow-lg shadow-blue-600/20"
+          className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-[#7b68ee] to-[#ec4899] hover:from-[#6c5ce7] hover:to-[#db2777] text-white rounded-lg text-xs font-bold shadow-md shadow-purple-500/20 active:scale-[0.98] transition-all"
         >
-          <Plus className="w-4 h-4" /> Add Project
+          <Plus className="w-3.5 h-3.5" />
+          <span>Add Project</span>
         </button>
       </div>
 
       {isLoading ? (
-        <div className="p-12 text-center text-slate-500">Loading projects...</div>
-      ) : projects?.length === 0 ? (
-        <div className="p-12 text-center border border-dashed border-slate-800 rounded-xl bg-slate-900/30">
-          <p className="text-slate-400 mb-3">No projects registered yet.</p>
+        <div className="p-16 text-center text-slate-400 text-sm">Loading projects...</div>
+      ) : projects.length === 0 ? (
+        <div className="p-12 text-center border border-dashed border-slate-300 dark:border-[#2c2d38] rounded-2xl bg-white dark:bg-[#16171d]/60 shadow-sm">
+          <p className="text-slate-500 dark:text-slate-400 mb-3 text-sm font-medium">
+            No projects registered in this workspace yet.
+          </p>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="text-sm text-blue-400 hover:underline"
+            className="text-xs font-bold text-[#7b68ee] hover:underline inline-flex items-center gap-1"
           >
-            Register your first project
+            Register your first project <Plus className="w-3.5 h-3.5" />
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {projects?.map((proj) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {projects.map((proj) => (
             <div
               key={proj.name}
-              className="border border-slate-800 rounded-xl p-5 bg-[#0d1322]/80 space-y-3"
+              className="bg-white dark:bg-[#181922] border border-slate-200 dark:border-[#262732] rounded-xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-4"
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-white capitalize">{proj.name}</span>
-                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-blue-950/60 text-blue-300 border border-blue-800/40">
-                    📁 {proj.workspace_id || 'default'}
-                  </span>
-                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
-                    {proj.kind}
-                  </span>
+              <div>
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-[#7b68ee] dark:text-purple-300 flex items-center justify-center font-bold">
+                      <FolderGit2 className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-sm text-slate-900 dark:text-white capitalize">
+                        {proj.name}
+                      </h3>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                          {proj.kind}
+                        </span>
+                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40">
+                          📁 {proj.workspace_id || 'default'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Engine Status Pill */}
+                  <div>
+                    {proj.engine_status === 'ok' ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Online
+                      </span>
+                    ) : proj.engine_status === 'down' ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Down
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span> {proj.engine_type}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5 text-xs font-mono">
-                  {proj.engine_status === 'ok' ? (
-                    <span className="text-emerald-400 flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Online
-                    </span>
-                  ) : proj.engine_status === 'down' ? (
-                    <span className="text-rose-400 flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-rose-500"></span> Down
-                    </span>
-                  ) : (
-                    <span className="text-slate-400 flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-slate-500"></span> Ready ({proj.engine_type})
-                    </span>
+
+                {/* Metadata List */}
+                <div className="space-y-1.5 text-xs font-mono text-slate-500 dark:text-slate-400 bg-slate-50/70 dark:bg-[#14151b] p-3 rounded-lg border border-slate-100 dark:border-[#22232e]">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400 dark:text-slate-500">Engine:</span>
+                    <span className="text-slate-800 dark:text-slate-200 font-semibold">{proj.engine_type}</span>
+                  </div>
+                  <div className="flex justify-between truncate">
+                    <span className="text-slate-400 dark:text-slate-500">URL:</span>
+                    <span className="text-[#7b68ee] truncate max-w-[170px]">{proj.engine_url || 'local/manual'}</span>
+                  </div>
+                  <div className="flex justify-between truncate">
+                    <span className="text-slate-400 dark:text-slate-500">Repo:</span>
+                    <span className="text-slate-700 dark:text-slate-300 truncate max-w-[170px]">{proj.repo_path}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400 dark:text-slate-500">Branch:</span>
+                    <span className="text-slate-700 dark:text-slate-300">{proj.base_branch}</span>
+                  </div>
+                  {proj.contract_path && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-400 dark:text-slate-500">Contract:</span>
+                      <span className="text-purple-600 dark:text-purple-300 font-semibold">{proj.contract_path}</span>
+                    </div>
                   )}
                 </div>
               </div>
 
-              <div className="text-xs text-slate-400 space-y-1 font-mono">
-                <div>Engine: <span className="text-slate-200">{proj.engine_type}</span></div>
-                <div>URL: <span className="text-blue-400">{proj.engine_url || 'local/manual'}</span></div>
-                <div>Repo: <span className="text-slate-300">{proj.repo_path}</span></div>
-                {proj.contract_path && (
-                  <div>Contract: <span className="text-purple-400">{proj.contract_path}</span></div>
-                )}
-                <div>Done means: <span className="text-amber-400">{proj.done_means}</span></div>
-              </div>
-
-              <div className="pt-2 border-t border-slate-800 flex justify-end">
+              {/* Card Footer Action */}
+              <div className="pt-2 border-t border-slate-100 dark:border-[#242531] flex justify-end">
                 <button
                   onClick={() => testMutation.mutate(proj.name)}
                   disabled={testMutation.isPending}
-                  className="px-3 py-1.5 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-1.5 transition font-medium"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-[#20212c] hover:bg-slate-200 dark:hover:bg-[#292a38] transition-colors disabled:opacity-50"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" /> Test Connection
+                  <RefreshCw className={`w-3 h-3 ${testMutation.isPending ? 'animate-spin' : ''}`} />
+                  <span>Test Connection</span>
                 </button>
               </div>
             </div>
@@ -176,25 +219,32 @@ export function ProjectsPage() {
 
       {/* Add Project Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0d1322] border border-slate-800 rounded-xl p-6 w-full max-w-lg space-y-5 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-base font-bold text-white">Register New Project</h3>
+        <div className="fixed inset-0 z-50 bg-black/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-[#1e1f26] border border-slate-200 dark:border-[#2e303d] rounded-2xl p-6 w-full max-w-lg space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-[#262732]">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-[#7b68ee] to-[#ec4899] text-white flex items-center justify-center font-bold text-xs">
+                  <Plus className="w-4 h-4" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Register New Project</h3>
+              </div>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1 rounded"
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1 rounded-lg"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleCreate} className="space-y-4 text-sm">
+            <form onSubmit={handleCreate} className="space-y-4 text-xs">
               <div>
-                <label className="block text-xs font-mono text-slate-300 mb-1">Workspace</label>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Workspace
+                </label>
                 <select
                   value={workspaceId}
                   onChange={(e) => setWorkspaceId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-blue-500"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#14151b] border border-slate-300 dark:border-[#2e303d] text-slate-900 dark:text-slate-100 font-semibold focus:outline-none focus:border-[#7b68ee]"
                 >
                   {workspaces.map((ws) => (
                     <option key={ws.id} value={ws.id}>
@@ -206,22 +256,26 @@ export function ProjectsPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-mono text-slate-300 mb-1">Name</label>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Name
+                  </label>
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g. backend"
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#14151b] border border-slate-300 dark:border-[#2e303d] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-mono text-slate-300 mb-1">Kind</label>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Kind
+                  </label>
                   <select
                     value={kind}
                     onChange={(e) => setKind(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#14151b] border border-slate-300 dark:border-[#2e303d] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee]"
                   >
                     <option value="backend">backend</option>
                     <option value="frontend">frontend</option>
@@ -232,24 +286,28 @@ export function ProjectsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-mono text-slate-300 mb-1">Repository Path</label>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Repository Path
+                </label>
                 <input
                   type="text"
                   value={repoPath}
                   onChange={(e) => setRepoPath(e.target.value)}
                   placeholder="/Users/sopheak/projects/my-repo"
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-blue-500"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#14151b] border border-slate-300 dark:border-[#2e303d] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
                   required
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-mono text-slate-300 mb-1">Engine Type</label>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Engine Type
+                  </label>
                   <select
                     value={engineType}
                     onChange={(e) => setEngineType(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#14151b] border border-slate-300 dark:border-[#2e303d] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee]"
                   >
                     <option value="manual">manual (human / simulated)</option>
                     <option value="stoneforge">stoneforge</option>
@@ -257,52 +315,58 @@ export function ProjectsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-mono text-slate-300 mb-1">Engine URL</label>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Engine URL
+                  </label>
                   <input
                     type="text"
                     value={engineUrl}
                     onChange={(e) => setEngineUrl(e.target.value)}
                     placeholder="http://127.0.0.1:3457"
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#14151b] border border-slate-300 dark:border-[#2e303d] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-mono text-slate-300 mb-1">Base Branch</label>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Base Branch
+                  </label>
                   <input
                     type="text"
                     value={baseBranch}
                     onChange={(e) => setBaseBranch(e.target.value)}
                     placeholder="main"
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#14151b] border border-slate-300 dark:border-[#2e303d] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-mono text-slate-300 mb-1">Contract Path (Optional)</label>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Contract Path (Optional)
+                  </label>
                   <input
                     type="text"
                     value={contractPath}
                     onChange={(e) => setContractPath(e.target.value)}
                     placeholder="api/openapi.yaml"
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#14151b] border border-slate-300 dark:border-[#2e303d] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
                   />
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
+              <div className="pt-3 border-t border-slate-200 dark:border-[#262732] flex justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-3.5 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-medium"
+                  className="px-3.5 py-2 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#292a38]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={createMutation.isPending}
-                  className="px-3.5 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500 text-xs font-medium"
+                  className="px-4 py-2 rounded-lg text-xs font-bold bg-gradient-to-r from-[#7b68ee] to-[#6c5ce7] hover:from-[#6c5ce7] hover:to-[#5f3dc4] text-white shadow-md shadow-purple-600/20 disabled:opacity-50"
                 >
                   Save Project
                 </button>

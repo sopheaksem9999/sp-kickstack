@@ -1559,3 +1559,71 @@ describe('Review fixes: one stuck engine cannot stall the retry sweep', () => {
     vi.restoreAllMocks();
   });
 });
+
+describe('Review fixes: a held source can always be released', () => {
+  let h: Harness;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => h.db.close());
+
+  const engineStatus = (id: string) => h.mobileEngine.getTaskData(id)!.status;
+  const links = (taskId: number) => h.linkService.getLinksForTask(taskId).map((l) => l.state);
+
+  it('sweeps a source whose links were left ready (crash between claim and release)', async () => {
+    const { mobileGoal } = await blockMobileOn(h, ['GET /loc']);
+    h.db.prepare("UPDATE links SET state = 'ready', context_md = 'ctx' WHERE task_id = ?").run(mobileGoal.id);
+
+    await new RetrySweeper(h.db, h.fanOutService, h.ticketService, h.linkService, { now: () => Date.now() + 3600_000 }).sweepOnce();
+
+    expect(links(mobileGoal.id)).toEqual(['released']);
+    expect(engineStatus(mobileGoal.engine_task_id!)).toBe('queued');
+  });
+
+  it('cancelling the last waiting link releases the source with the finished context', async () => {
+    const { mobileGoal, tickets } = await blockMobileOn(h, ['GET /loc', 'GET /eta']);
+    await h.linkService.evaluateDependencyResolved(tickets[0].ticketId);
+    const second = h.linkService.getLinksForTask(mobileGoal.id).find((l) => l.depends_on_id === tickets[1].ticketId)!;
+
+    const res = await testRequest(h.app, 'POST', `/api/links/${second.id}/cancel`);
+
+    expect(res.status).toBe(200);
+    expect(links(mobileGoal.id)).toEqual(['released', 'cancelled']);
+    expect(engineStatus(mobileGoal.engine_task_id!)).toBe('queued');
+    expect(taskRow(h, second.placeholder_id!).status).toBe('cancelled');
+  });
+
+  it('cancelling the only dependency releases the source with a note', async () => {
+    const { mobileGoal } = await blockMobileOn(h, ['GET /loc']);
+    const [link] = h.linkService.getLinksForTask(mobileGoal.id);
+
+    await testRequest(h.app, 'POST', `/api/links/${link.id}/cancel`);
+
+    expect(engineStatus(mobileGoal.engine_task_id!)).toBe('queued');
+    expect(h.mobileEngine.getTaskData(mobileGoal.engine_task_id!)!.notes.join('\n')).toMatch(/dependency cancelled/i);
+    expect(taskRow(h, mobileGoal.id).status).toBe('queued');
+  });
+
+  it('operator release retries a link whose engine release failed', async () => {
+    const { mobileGoal, tickets } = await blockMobileOn(h, ['GET /loc']);
+    const original = h.adapters.mobile.releaseTask.bind(h.adapters.mobile);
+    h.adapters.mobile.releaseTask = async () => { throw new Error('engine 503'); };
+    await h.linkService.evaluateDependencyResolved(tickets[0].ticketId);
+    h.adapters.mobile.releaseTask = original;
+    const [link] = h.linkService.getLinksForTask(mobileGoal.id);
+
+    const res = await testRequest(h.app, 'POST', `/api/links/${link.id}/release`);
+
+    expect(res.body.released).toHaveLength(1);
+    expect(engineStatus(mobileGoal.engine_task_id!)).toBe('queued');
+  });
+
+  it('operator release of a waiting link releases the source anyway', async () => {
+    const { mobileGoal } = await blockMobileOn(h, ['GET /loc']);
+    const [link] = h.linkService.getLinksForTask(mobileGoal.id);
+
+    const res = await testRequest(h.app, 'POST', `/api/links/${link.id}/release`);
+
+    expect(res.body.released).toHaveLength(1);
+    expect(links(mobileGoal.id)).toEqual(['released']);
+    expect(engineStatus(mobileGoal.engine_task_id!)).toBe('queued');
+  });
+});

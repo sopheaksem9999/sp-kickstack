@@ -175,12 +175,15 @@ export class RetrySweeper {
   }
 
   private async retryReleases(): Promise<number> {
+    // Failed releases ('error') and releases interrupted by a crash ('ready' links with
+    // nothing left waiting).
     const sources = this.db
       .prepare(`
         SELECT DISTINCT l.task_id, t.req_id, t.updated_at FROM links l
         JOIN bridge_tasks t ON t.id = l.task_id
         JOIN requirements r ON r.id = t.req_id
-        WHERE l.state = 'error' AND r.status NOT IN ('cancelled', 'done')
+        WHERE l.state IN ('error', 'ready') AND r.status NOT IN ('cancelled', 'done')
+          AND NOT EXISTS (SELECT 1 FROM links w WHERE w.task_id = l.task_id AND w.state = 'waiting')
       `)
       .all() as Array<{ task_id: number; req_id: string; updated_at: string }>;
 

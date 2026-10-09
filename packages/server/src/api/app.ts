@@ -674,7 +674,7 @@ export function createApp(deps: AppDependencies): Express {
       const link = deps.linkService.getLink(linkId);
       if (!link) return res.status(404).json({ error: 'Link not found' });
 
-      const released = await deps.linkService.evaluateDependencyResolved(link.depends_on_id);
+      const released = await deps.linkService.forceRelease(linkId);
       deps.broadcaster.broadcast({ type: 'link_released', payload: { linkId, released } });
       res.json({ ok: true, released });
     } catch (err) {
@@ -682,11 +682,17 @@ export function createApp(deps: AppDependencies): Express {
     }
   });
 
-  app.post('/api/links/:id/cancel', (req, res) => {
-    const linkId = Number(req.params.id);
-    deps.db.prepare('UPDATE links SET state = ? WHERE id = ?').run('cancelled', linkId);
-    deps.broadcaster.broadcast({ type: 'link_cancelled', payload: { linkId } });
-    res.json({ ok: true });
+  app.post('/api/links/:id/cancel', async (req, res, next) => {
+    try {
+      const linkId = Number(req.params.id);
+      if (!deps.linkService.getLink(linkId)) return res.status(404).json({ error: 'Link not found' });
+      // The source resumes if this was the last thing it waited on.
+      const released = await deps.linkService.cancelLink(linkId);
+      deps.broadcaster.broadcast({ type: 'link_cancelled', payload: { linkId, released } });
+      res.json({ ok: true, released });
+    } catch (err) {
+      next(err);
+    }
   });
 
   // Tickets

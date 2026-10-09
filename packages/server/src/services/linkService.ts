@@ -129,10 +129,11 @@ ${contractBlock}
 
   /**
    * Release a held source task once none of its links are `waiting` and at least one is
-   * `ready`: one engine release carrying every upstream context, then links -> released,
-   * placeholders -> done, source -> queued. On engine failure links -> error (retryable).
+   * `ready` (or the operator removed its last dependency, passing `extraContext`): one
+   * engine release carrying every upstream context, then links -> released, placeholders
+   * -> done, source -> queued. On engine failure links -> error (retryable).
    */
-  public async releaseSourceIfUnblocked(sourceTaskId: number): Promise<Link[]> {
+  public async releaseSourceIfUnblocked(sourceTaskId: number, extraContext?: string): Promise<Link[]> {
     if (this.releasing.has(sourceTaskId)) return [];
 
     const waiting = this.db
@@ -141,14 +142,17 @@ ${contractBlock}
     const ready = this.db
       .prepare("SELECT * FROM links WHERE task_id = ? AND state = 'ready' ORDER BY id")
       .all(sourceTaskId) as Link[];
-    if (waiting.c > 0 || ready.length === 0) return [];
+    if (waiting.c > 0) return [];
 
     const sourceTask = this.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(sourceTaskId) as BridgeTask;
     if (!sourceTask) return [];
+    if (ready.length === 0 && !(extraContext && sourceTask.status === 'held')) return [];
 
     this.releasing.add(sourceTaskId);
     try {
-      const context = ready.map((l) => l.context_md || '').join('\n\n');
+      const context = [...ready.map((l) => l.context_md || ''), extraContext || '']
+        .filter(Boolean)
+        .join('\n\n');
       const now = new Date().toISOString();
 
       if (sourceTask.engine_task_id) {
@@ -182,6 +186,43 @@ ${contractBlock}
     } finally {
       this.releasing.delete(sourceTaskId);
     }
+  }
+
+  /**
+   * Operator "release anyway": stop waiting on this dependency (whatever its state) and
+   * release the source if nothing else blocks it. Also retries a link whose release failed.
+   */
+  public async forceRelease(linkId: number): Promise<Link[]> {
+    const link = this.getLink(linkId);
+    if (!link || link.state === 'released' || link.state === 'cancelled') return [];
+
+    this.db
+      .prepare(`
+        UPDATE links SET state = 'ready', context_md = COALESCE(context_md, ?)
+        WHERE id = ? AND state IN ('waiting', 'error', 'ready')
+      `)
+      .run(
+        '## Update: dependency released by operator\nThe operator released this dependency before it finished. Re-check the contract before relying on it.',
+        linkId
+      );
+    return this.releaseSourceIfUnblocked(link.task_id);
+  }
+
+  /** Operator stops waiting on a dependency; the source resumes if nothing else blocks it. */
+  public async cancelLink(linkId: number): Promise<Link[]> {
+    const link = this.getLink(linkId);
+    if (!link) return [];
+
+    this.db.prepare("UPDATE links SET state = 'cancelled' WHERE id = ? AND state IN ('waiting', 'ready', 'error')").run(linkId);
+    if (link.placeholder_id) {
+      this.db
+        .prepare("UPDATE bridge_tasks SET status = 'cancelled', updated_at = ? WHERE id = ? AND role = 'waiting'")
+        .run(new Date().toISOString(), link.placeholder_id);
+    }
+    return this.releaseSourceIfUnblocked(
+      link.task_id,
+      '## Update: dependency cancelled\nThe operator cancelled a dependency this task was waiting on. Continue without it and note any gaps.'
+    );
   }
 
   private async appendNoteToSource(sourceTaskId: number, note: string) {

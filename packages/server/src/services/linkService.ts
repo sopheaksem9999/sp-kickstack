@@ -61,7 +61,8 @@ export class LinkService {
     ticketTask: BridgeTask,
     targetProjectName: string,
     contractPath?: string,
-    baseBranch: string = 'main'
+    baseBranch: string = 'main',
+    repoPath?: string
   ): string {
     const summaryBlock = ticketTask.body_md
       ? wrapUntrusted('summary', ticketTask.title)
@@ -75,7 +76,7 @@ export class LinkService {
 
     const contractBlock = contractPath
       ? location
-        ? `${location} Read the contract there: \`git show ${unmergedBranch}:${contractPath}\`. Regenerate clients/types if applicable, then finish remaining plan steps.`
+        ? `${location} Read the contract there: \`git ${repoPath ? `-C ${repoPath} ` : ''}show ${unmergedBranch}:${contractPath}\`. Regenerate clients/types if applicable, then finish remaining plan steps.`
         : `Contract file: ${contractPath} (now on ${baseBranch}). Regenerate clients/types if applicable, then finish remaining plan steps.`
       : location
         ? `${location} Finish remaining implementation steps and run tests.`
@@ -107,7 +108,8 @@ ${contractBlock}
       dependencyTask,
       dependencyTask.project,
       targetProject?.contract_path || undefined,
-      targetProject?.base_branch
+      targetProject?.base_branch,
+      targetProject?.repo_path
     );
 
     const releasedLinks: Link[] = [];

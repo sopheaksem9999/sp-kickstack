@@ -21,8 +21,16 @@ export interface MergeGateOptions {
   getAdapter?: AdapterFactory;
   settingsService?: SettingsService;
   testTimeoutMs?: number;
+  /** Limit for fetch, push, merge and worktree operations (default 2 min). */
+  gitTimeoutMs?: number;
   /** Where temporary merge worktrees are created (default: the OS temp dir). */
   tmpRoot?: string;
+}
+
+/** Temp folder prefix that can never contain a path separator, whatever the names are. */
+export function tempDirPrefix(reqId: string, project: string): string {
+  const safe = (s: string) => s.replace(/[^A-Za-z0-9._-]+/g, '-');
+  return `sp-merge-${safe(reqId)}-${safe(project)}-`;
 }
 
 const DEFAULT_TEST_TIMEOUT_MS = 15 * 60 * 1000;
@@ -43,7 +51,8 @@ interface PreparedProject {
   worktree: string;
   startSha: string;
   resultSha: string;
-  merges: Array<{ task: BridgeTask; mergeSha: string | null }>;
+  /** tipSha: the branch commit that was merged; it must not move before the push. */
+  merges: Array<{ task: BridgeTask; tipSha: string; mergeSha: string | null }>;
 }
 
 function tail(text: string, lines: number): string {
@@ -144,11 +153,16 @@ export class MergeGateService {
         for (const name of projectNames) {
           prepared.push(await this.prepare(reqId, name, groups.get(name)!));
         }
+        // Phase 1 can take minutes (tests). Nothing is pushed unless everything still holds.
+        this.revalidate(reqId, prepared);
+
         const warnings: string[] = [];
         for (const p of prepared) {
-          const warning = this.advance(p);
+          for (const m of p.merges) {
+            if (!m.mergeSha) warnings.push(`${p.project.name}: task #${m.task.id} (${m.task.branch}) had no new commits and was skipped`);
+          }
+          const warning = await this.advance(p);
           if (warning) warnings.push(`${p.project.name}: ${warning}`);
-          this.recordMerged(p);
           mergedProjects.push(p.project.name);
         }
         await this.finishSuccess(reqId, prepared, warnings);
@@ -212,14 +226,18 @@ export class MergeGateService {
     const base = this.branches.baseBranchFor(project);
     const remote = git.hasRemote(repo);
 
+    const gitTimeout = this.options.gitTimeoutMs;
     let startSha: string | null = null;
     if (remote) {
       try {
-        git.fetchBranch(repo, base);
+        await git.fetchBranch(repo, base, 'origin', gitTimeout);
+        startSha = git.resolveCommit(repo, `refs/remotes/origin/${base}`);
       } catch (err: any) {
-        throw new GateFailure(`${name}: could not fetch ${base} from origin (${err.message})`);
+        // origin does not have the base branch yet: merge on the local base; the push creates it.
+        if (!/couldn't find remote ref/i.test(err.message)) {
+          throw new GateFailure(`${name}: could not fetch ${base} from origin (${err.message})`);
+        }
       }
-      startSha = git.resolveCommit(repo, `refs/remotes/origin/${base}`);
     }
     startSha = startSha ?? git.resolveCommit(repo, `refs/heads/${base}`);
     if (!startSha) throw new GateFailure(`${name}: base branch ${base} was not found`);
@@ -235,22 +253,23 @@ export class MergeGateService {
 
     const tmpRoot = this.options.tmpRoot ?? os.tmpdir();
     fs.mkdirSync(tmpRoot, { recursive: true });
-    const tmpDir = fs.mkdtempSync(path.join(tmpRoot, `sp-merge-${reqId}-${name}-`));
+    const tmpDir = fs.mkdtempSync(path.join(tmpRoot, tempDirPrefix(reqId, name)));
     const worktree = path.join(tmpDir, 'wt');
-    git.addDetachedWorktree(repo, worktree, startSha);
+    await git.addDetachedWorktree(repo, worktree, startSha, gitTimeout);
 
     try {
       const merges: PreparedProject['merges'] = [];
       for (const task of tasks) {
         const branch = task.branch!;
-        if (!git.resolveCommit(repo, `refs/heads/${branch}`)) {
+        const tipSha = git.resolveCommit(repo, `refs/heads/${branch}`);
+        if (!tipSha) {
           throw new GateFailure(`${name}: branch ${branch} (task #${task.id}) does not exist`);
         }
-        if (git.commitsAhead(worktree, 'HEAD', branch) === 0) {
-          merges.push({ task, mergeSha: null }); // nothing to merge
+        if (git.commitsAhead(worktree, 'HEAD', tipSha) === 0) {
+          merges.push({ task, tipSha, mergeSha: null }); // nothing to merge
           continue;
         }
-        const result = git.mergeNoFf(worktree, branch, `Merge ${reqId} task-${task.id}: ${task.title}`);
+        const result = await git.mergeNoFf(worktree, tipSha, `Merge ${reqId} task-${task.id}: ${task.title}`, gitTimeout);
         if (!result.ok) {
           const files = result.conflicts.length ? ` in ${result.conflicts.join(', ')}` : '';
           throw new GateFailure(`${name}: merging ${branch} (task #${task.id}) into ${base} conflicts${files}`, {
@@ -258,7 +277,7 @@ export class MergeGateService {
             text: `## Merge conflict\nMerging \`${branch}\` into \`${base}\` conflicts${files}. Rebase your branch onto \`${base}\`, resolve the conflicts, commit, and report back for review.`,
           });
         }
-        merges.push({ task, mergeSha: result.sha });
+        merges.push({ task, tipSha, mergeSha: result.sha });
       }
 
       if (project.test_command) {
@@ -277,22 +296,60 @@ export class MergeGateService {
     }
   }
 
-  /** Phase 2 for one project: push (never forced), then fast-forward the local base. */
-  private advance(p: PreparedProject): string | undefined {
-    if (p.resultSha === p.startSha) return undefined; // every branch was empty
+  /**
+   * Before anything is pushed: the requirement must still be in review, every task still in
+   * review/done, and every branch still at the commit that was merged and tested.
+   */
+  private revalidate(reqId: string, prepared: PreparedProject[]) {
+    const status = this.requirementService.getRequirement(reqId)?.status;
+    if (status !== 'in_review') {
+      throw new GateFailure(`${reqId} changed to ${status} during the merge; nothing was pushed`);
+    }
+    for (const p of prepared) {
+      for (const m of p.merges) {
+        const row = this.db.prepare('SELECT status FROM bridge_tasks WHERE id = ?').get(m.task.id) as
+          | { status: string }
+          | undefined;
+        if (!row || !READY_FOR_MERGE.includes(row.status)) {
+          throw new GateFailure(`task #${m.task.id} went back to ${row?.status ?? 'missing'} during the merge; nothing was pushed`);
+        }
+        if (git.resolveCommit(p.repo, `refs/heads/${m.task.branch}`) !== m.tipSha) {
+          throw new GateFailure(`${p.project.name}: branch ${m.task.branch} changed during the merge (new commits); nothing was pushed — merge again`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Phase 2 for one project: push (never forced) and record the merge as soon as origin has
+   * it; then fast-forward the local base (a local failure is only a warning once origin has it).
+   */
+  private async advance(p: PreparedProject): Promise<string | undefined> {
+    if (p.resultSha === p.startSha) {
+      this.recordMerged(p); // every branch was empty: handled, nothing to push
+      return undefined;
+    }
 
     if (p.remote) {
       try {
-        git.pushCommit(p.repo, p.resultSha, p.base);
+        await git.pushCommit(p.repo, p.resultSha, p.base, 'origin', this.options.gitTimeoutMs);
       } catch (err: any) {
-        throw new GateFailure(`${p.project.name}: pushing ${p.base} to origin was rejected (${err.message})`);
+        throw new GateFailure(`${p.project.name}: pushing ${p.base} to origin failed (${err.message})`);
+      }
+      this.recordMerged(p);
+      try {
+        return git.fastForwardBranch(p.repo, p.base, p.resultSha).warning;
+      } catch (err: any) {
+        return `origin has the merge, but local ${p.base} could not be updated (${err.message}); run "git pull" there`;
       }
     }
+
     const ff = git.fastForwardBranch(p.repo, p.base, p.resultSha);
-    if (!p.remote && !ff.advanced) {
+    if (!ff.advanced) {
       throw new GateFailure(`${p.project.name}: could not advance ${p.base}: ${ff.warning}`);
     }
-    return ff.warning;
+    this.recordMerged(p);
+    return undefined;
   }
 
   private recordMerged(p: PreparedProject) {
@@ -303,12 +360,15 @@ export class MergeGateService {
 
   private async finishSuccess(reqId: string, prepared: PreparedProject[], warnings: string[]) {
     // QA first: it is operator-owned, so the task completions below cannot recompute it away.
-    this.requirementService.updateStatus(reqId, 'qa');
+    const movedToQa = this.db
+      .prepare("UPDATE requirements SET status = 'qa', updated_at = datetime('now') WHERE id = ? AND status = 'in_review'")
+      .run(reqId).changes === 1;
+    if (!movedToQa) warnings.push(`${reqId} changed status during the merge; it was left as it is`);
 
     const merged = this.db
       .prepare(`
         SELECT * FROM bridge_tasks
-        WHERE req_id = ? AND role IN ('goal', 'ticket') AND merged_at IS NOT NULL AND status NOT IN ('done', 'cancelled')
+        WHERE req_id = ? AND role IN ('goal', 'ticket') AND merged_at IS NOT NULL AND status = 'in_review'
       `)
       .all(reqId) as BridgeTask[];
     for (const task of merged) {
@@ -330,7 +390,7 @@ export class MergeGateService {
             ? `## Merged into \`${p.base}\`\nYour branch \`${m.task.branch}\` was merged at ${sha}.`
             : `## Merged into \`${p.base}\`\nYour branch \`${m.task.branch}\` had no new commits, so nothing changed.`
         );
-        if (deleteBranches) git.deleteMergedBranch(p.repo, m.task.branch!);
+        if (deleteBranches) git.deleteMergedBranch(p.repo, m.task.branch!, p.resultSha);
       }
     }
 

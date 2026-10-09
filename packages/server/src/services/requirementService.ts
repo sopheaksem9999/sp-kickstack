@@ -366,8 +366,10 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
     }
 
     if (tasks.every((t) => t.status === 'done')) {
-      this.updateStatus(reqId, 'done');
-      return 'done';
+      // Branched work is only finished once the merge gate merged it.
+      const finished: RequirementStatus = this.hasUnmergedBranches(reqId) ? 'in_review' : 'done';
+      this.updateStatus(reqId, finished);
+      return finished;
     }
 
     const nonTerminal = tasks.filter((t) => t.status !== 'done');

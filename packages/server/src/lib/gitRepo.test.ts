@@ -49,7 +49,7 @@ describe('gitRepo helpers', () => {
     expect(sh(repo, ['branch', '--show-current'])).toBe('develop');
   });
 
-  it('merges --no-ff as the bridge and reports conflicts without leaving a mess', () => {
+  it('merges --no-ff as the bridge and reports conflicts without leaving a mess', async () => {
     const { repo } = makeRepo(root);
     const base = headOf(repo, 'develop');
     createBranch(repo, 'clean', base);
@@ -60,15 +60,15 @@ describe('gitRepo helpers', () => {
     expect(commitsAhead(repo, base, 'clean')).toBe(1);
 
     const wt = path.join(root, 'merge-wt');
-    addDetachedWorktree(repo, wt, headOf(repo, 'develop'));
-    const ok = mergeNoFf(wt, 'clean', 'Merge clean');
+    await addDetachedWorktree(repo, wt, headOf(repo, 'develop'));
+    const ok = await mergeNoFf(wt, 'clean', 'Merge clean');
     expect(ok.ok).toBe(true);
     if (ok.ok) {
       expect(sh(wt, ['rev-list', '--parents', '-n', '1', ok.sha]).split(' ')).toHaveLength(3);
       expect(sh(wt, ['log', '-1', '--format=%an', ok.sha])).toBe('SP-Kickstack Bridge');
     }
 
-    const bad = mergeNoFf(wt, 'clash', 'Merge clash');
+    const bad = await mergeNoFf(wt, 'clash', 'Merge clash');
     expect(bad).toMatchObject({ ok: false, conflicts: ['README.md'] });
     expect(sh(wt, ['status', '--porcelain'])).toBe('');
     removeWorktree(repo, wt);
@@ -119,16 +119,16 @@ describe('gitRepo helpers', () => {
     expect(result.warning).toMatch(/not in the merge/);
   });
 
-  it('pushes a fast-forward and refuses a non-fast-forward push', () => {
+  it('pushes a fast-forward and refuses a non-fast-forward push', async () => {
     const { repo, origin } = makeRepo(root, { withOrigin: true });
     createBranch(repo, 'feature', headOf(repo, 'develop'));
     const sha = commitOnBranch(repo, 'feature', 'f.txt', 'f\n');
-    pushCommit(repo, sha, 'develop');
+    await pushCommit(repo, sha, 'develop');
     expect(headOf(origin!, 'develop')).toBe(sha);
 
     createBranch(repo, 'other', headOf(repo, 'develop'));
     const unrelated = commitOnBranch(repo, 'other', 'o.txt', 'o\n');
-    expect(() => pushCommit(repo, unrelated, 'develop')).toThrow();
+    await expect(pushCommit(repo, unrelated, 'develop')).rejects.toThrow();
     expect(headOf(origin!, 'develop')).toBe(sha);
   });
 

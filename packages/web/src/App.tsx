@@ -7,6 +7,9 @@ import { RequirementDetailPage } from './pages/RequirementDetailPage.js';
 import { ProjectsPage } from './pages/ProjectsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { useBridgeEvents } from './lib/useEvents.js';
+import { WorkspaceProvider } from './lib/WorkspaceContext.js';
+import { ThemeProvider } from './lib/ThemeContext.js';
+import { CreateRequirementProvider } from './lib/CreateRequirementContext.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,17 +36,16 @@ function AppRoutes() {
   );
 }
 
-import { WorkspaceProvider } from './lib/WorkspaceContext.js';
-import { ThemeProvider } from './lib/ThemeContext.js';
-
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <WorkspaceProvider>
-          <BrowserRouter>
-            <AppRoutes />
-          </BrowserRouter>
+          <CreateRequirementProvider>
+            <BrowserRouter>
+              <AppRoutes />
+            </BrowserRouter>
+          </CreateRequirementProvider>
         </WorkspaceProvider>
       </ThemeProvider>
     </QueryClientProvider>

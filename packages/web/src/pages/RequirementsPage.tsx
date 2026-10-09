@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { fetchRequirements } from '../lib/api.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
+import { useCreateRequirement } from '../lib/CreateRequirementContext.js';
 import {
   Plus,
   ArrowRight,
@@ -25,6 +26,7 @@ const priorityConfig: Record<Priority, { color: string; label: string }> = {
 
 export function RequirementsPage() {
   const { activeWorkspaceId } = useWorkspace();
+  const { openSheet } = useCreateRequirement();
   const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
@@ -74,13 +76,14 @@ export function RequirementsPage() {
         </div>
 
         <div className="flex items-center gap-2.5">
-          <Link
-            to="/requirements/new"
+          <button
+            type="button"
+            onClick={openSheet}
             className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-[#7b68ee] to-[#ec4899] hover:from-[#6c5ce7] hover:to-[#db2777] text-white rounded-lg text-xs font-bold shadow-md shadow-purple-500/20 active:scale-[0.98] transition-all"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>New Requirement</span>
-          </Link>
+          </button>
         </div>
       </div>
 
@@ -253,6 +256,16 @@ export function RequirementsPage() {
                         })}
                       </tbody>
                     </table>
+                    <div className="px-4 py-2 bg-slate-50/30 dark:bg-[#14151b] border-t border-slate-100 dark:border-[#22232e]">
+                      <button
+                        type="button"
+                        onClick={openSheet}
+                        className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-[#7b68ee] dark:hover:text-[#a29bfe] font-semibold transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Task / Requirement</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -317,6 +330,18 @@ export function RequirementsPage() {
                       </Link>
                     );
                   })}
+                </div>
+
+                {/* Column Footer Quick Add */}
+                <div className="p-2 border-t border-slate-100 dark:border-[#22232e]">
+                  <button
+                    type="button"
+                    onClick={openSheet}
+                    className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#20212a] font-medium transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Task</span>
+                  </button>
                 </div>
               </div>
             );

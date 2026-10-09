@@ -15,12 +15,15 @@ import {
 import { Toaster } from 'sonner';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { useTheme } from '../lib/ThemeContext.js';
+import { useCreateRequirement } from '../lib/CreateRequirementContext.js';
 import { CreateWorkspaceModal, WorkspaceRulesModal } from './WorkspaceModals.js';
+import { CreateRequirementSheet } from './CreateRequirementSheet.js';
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
   const { workspaces, activeWorkspaceId, setActiveWorkspaceId, activeWorkspace } = useWorkspace();
+  const { openSheet } = useCreateRequirement();
   const [isCreateWsOpen, setIsCreateWsOpen] = useState(false);
   const [isRulesOpen, setIsRulesOpen] = useState(false);
 
@@ -53,6 +56,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
         onClose={() => setIsRulesOpen(false)}
       />
 
+      <CreateRequirementSheet />
+
       {/* ClickUp Sidebar */}
       <aside className="w-64 border-r border-slate-200 dark:border-[#262732] bg-[#fbfcfd] dark:bg-[#16171d] flex flex-col shrink-0 select-none transition-colors duration-200">
         {/* Workspace Brand Tile */}
@@ -73,15 +78,16 @@ export function AppLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
 
-        {/* Quick Add Action Button */}
+        {/* Quick Add Action Button (Opens Right Sheet) */}
         <div className="p-3 pb-1">
-          <Link
-            to="/requirements/new"
+          <button
+            type="button"
+            onClick={openSheet}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-[#7b68ee] to-[#6c5ce7] hover:from-[#6c5ce7] hover:to-[#5f3dc4] text-white rounded-lg text-xs font-semibold shadow-md shadow-purple-600/20 transition-all active:scale-[0.98]"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>New Requirement</span>
-          </Link>
+          </button>
         </div>
 
         {/* Search Mockup */}

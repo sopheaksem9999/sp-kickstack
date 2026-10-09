@@ -494,7 +494,7 @@ export function createApp(deps: AppDependencies): Express {
     try {
       const taskId = Number(req.params.id);
       const now = new Date().toISOString();
-      deps.db.prepare('UPDATE bridge_tasks SET status = "done", updated_at = ? WHERE id = ?').run(now, taskId);
+      deps.db.prepare('UPDATE bridge_tasks SET status = ?, updated_at = ? WHERE id = ?').run('done', now, taskId);
 
       // Release any dependent links
       const releasedLinks = await deps.linkService.evaluateDependencyResolved(taskId);
@@ -589,10 +589,10 @@ export function createApp(deps: AppDependencies): Express {
       const repoPath = project?.repo_path || `/workspace/${task.project}`;
 
       // Update to in_progress
-      deps.db.prepare('UPDATE bridge_tasks SET status = "in_progress", updated_at = ? WHERE id = ?').run(now, taskId);
+      deps.db.prepare('UPDATE bridge_tasks SET status = ?, updated_at = ? WHERE id = ?').run('running', now, taskId);
       deps.broadcaster.broadcast({
         type: 'task_status_changed',
-        payload: { taskId, status: 'in_progress' },
+        payload: { taskId, status: 'running' },
       });
 
       const appendLog = (stream: 'stdout' | 'stderr' | 'system', msg: string) => {
@@ -612,7 +612,9 @@ export function createApp(deps: AppDependencies): Express {
       appendLog('system', `[VCS] Pushing feature branch and opening pull request to develop.`);
 
       const prUrl = `https://github.com/my-org/${task.project}/pull/${Math.floor(Math.random() * 80 + 20)}`;
-      deps.db.prepare('UPDATE bridge_tasks SET status = "in_review", pr_url = ?, updated_at = ? WHERE id = ?').run(prUrl, new Date().toISOString(), taskId);
+      deps.db
+        .prepare('UPDATE bridge_tasks SET status = ?, pr_url = ?, updated_at = ? WHERE id = ?')
+        .run('in_review', prUrl, new Date().toISOString(), taskId);
 
       appendLog('stdout', `[PR Ready] Pull request opened: ${prUrl}`);
       appendLog('system', `[Done] Task transitioned to IN_REVIEW.`);
@@ -646,7 +648,7 @@ export function createApp(deps: AppDependencies): Express {
 
   app.post('/api/links/:id/cancel', (req, res) => {
     const linkId = Number(req.params.id);
-    deps.db.prepare('UPDATE links SET state = "cancelled" WHERE id = ?').run(linkId);
+    deps.db.prepare('UPDATE links SET state = ? WHERE id = ?').run('cancelled', linkId);
     deps.broadcaster.broadcast({ type: 'link_cancelled', payload: { linkId } });
     res.json({ ok: true });
   });

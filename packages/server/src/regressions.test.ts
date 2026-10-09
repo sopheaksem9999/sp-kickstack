@@ -302,3 +302,34 @@ describe('J: untrusted text cannot close its untrusted_input block', () => {
     h.db.close();
   });
 });
+
+describe('K: task and link routes write valid SQL', () => {
+  let h: Harness;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => h.db.close());
+
+  it('marks a task done', async () => {
+    const req = h.createRequirement();
+    const [task] = await h.fanOutService.execute(req.id);
+    const res = await testRequest(h.app, 'POST', `/api/tasks/${task.id}/mark-done`);
+    expect(res.status).toBe(200);
+    expect((h.db.prepare('SELECT status FROM bridge_tasks WHERE id = ?').get(task.id) as any).status).toBe('done');
+  });
+
+  it('cancels a dependency link', async () => {
+    const req = h.createRequirement();
+    const [a, b] = await h.fanOutService.execute(req.id);
+    const link = h.linkService.createLink(a.id, b.id);
+    const res = await testRequest(h.app, 'POST', `/api/links/${link.id}/cancel`);
+    expect(res.status).toBe(200);
+    expect(h.linkService.getLink(link.id)!.state).toBe('cancelled');
+  });
+
+  it('runs the CLI simulation without a SQL error', async () => {
+    const req = h.createRequirement();
+    const [task] = await h.fanOutService.execute(req.id);
+    const res = await testRequest(h.app, 'POST', `/api/tasks/${task.id}/run-cli`);
+    expect(res.status).toBe(200);
+    expect(res.body.task.status).toBe('in_review');
+  });
+});

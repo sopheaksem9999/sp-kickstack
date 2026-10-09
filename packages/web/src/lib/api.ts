@@ -30,6 +30,16 @@ import {
 
 const BASE = '/api';
 
+/** fetch + JSON, throwing the server's `error` message (or the HTTP status) on failure. */
+async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, init);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((body as { error?: string })?.error || `Request failed (${res.status})`);
+  }
+  return body as T;
+}
+
 export async function fetchWorkspaces(): Promise<Workspace[]> {
   const res = await fetch(`${BASE}/workspaces`);
   return res.json();
@@ -130,23 +140,19 @@ export async function createRequirement(input: CreateRequirementInput): Promise<
 }
 
 export async function startRequirementFanOut(id: string): Promise<{ ok: boolean; tasks: BridgeTask[] }> {
-  const res = await fetch(`${BASE}/requirements/${id}/ready`, { method: 'POST' });
-  return res.json();
+  return request(`${BASE}/requirements/${id}/ready`, { method: 'POST' });
 }
 
 export async function cancelRequirement(id: string): Promise<{ ok: boolean }> {
-  const res = await fetch(`${BASE}/requirements/${id}/cancel`, { method: 'POST' });
-  return res.json();
+  return request(`${BASE}/requirements/${id}/cancel`, { method: 'POST' });
 }
 
 export async function fetchRequirementGraph(id: string): Promise<{ tasks: BridgeTask[]; links: Link[] }> {
-  const res = await fetch(`${BASE}/requirements/${id}/graph`);
-  return res.json();
+  return request(`${BASE}/requirements/${id}/graph`);
 }
 
 export async function markTaskDone(taskId: number): Promise<{ ok: boolean }> {
-  const res = await fetch(`${BASE}/tasks/${taskId}/mark-done`, { method: 'POST' });
-  return res.json();
+  return request(`${BASE}/tasks/${taskId}/mark-done`, { method: 'POST' });
 }
 
 export interface TaskLogItem {
@@ -170,14 +176,11 @@ export async function fetchTaskLogs(taskId: number): Promise<TaskLogsResponse> {
 }
 
 export async function runTaskCli(taskId: number): Promise<{ ok: boolean; task: BridgeTask }> {
-  const res = await fetch(`${BASE}/tasks/${taskId}/run-cli`, { method: 'POST' });
-  if (!res.ok) throw new Error('Failed to run task CLI');
-  return res.json();
+  return request(`${BASE}/tasks/${taskId}/run-cli`, { method: 'POST' });
 }
 
 export async function releaseLink(linkId: number): Promise<{ ok: boolean }> {
-  const res = await fetch(`${BASE}/links/${linkId}/release`, { method: 'POST' });
-  return res.json();
+  return request(`${BASE}/links/${linkId}/release`, { method: 'POST' });
 }
 
 export async function fetchNotifications(): Promise<BridgeEvent[]> {
@@ -212,21 +215,15 @@ export async function updateAiCliSettings(settings: Partial<AiCliSettings>): Pro
 }
 
 export async function updateRequirementStatus(id: string, status: RequirementStatus): Promise<Requirement> {
-  const res = await fetch(`${BASE}/requirements/${id}/status`, {
+  return request(`${BASE}/requirements/${id}/status`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status }),
   });
-  if (!res.ok) throw new Error('Failed to update requirement status');
-  return res.json();
 }
 
 export async function mergeRequirementToMain(id: string): Promise<{ ok: boolean; status: string; merged_branch: string }> {
-  const res = await fetch(`${BASE}/requirements/${id}/merge-to-main`, {
-    method: 'POST',
-  });
-  if (!res.ok) throw new Error('Failed to merge requirement to main');
-  return res.json();
+  return request(`${BASE}/requirements/${id}/merge-to-main`, { method: 'POST' });
 }
 
 export interface TicketAttachmentItem {

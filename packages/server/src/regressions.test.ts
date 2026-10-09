@@ -1660,3 +1660,42 @@ describe('Review fixes: cancelled requirements stay cancelled', () => {
     expect(taskRow(h, backendGoal.id).engine_task_id).toBeNull();
   });
 });
+
+describe('Review fixes: QA can send work back', () => {
+  let h: Harness;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => h.db.close());
+
+  const putStatus = (id: string, status: string) =>
+    testRequest(h.app, 'PUT', `/api/requirements/${id}/status`, { body: { status } });
+
+  it('moving a QA requirement back to work returns it to the status derived from its tasks', async () => {
+    const req = h.createRequirement();
+    const tasks = await h.fanOutService.execute(req.id);
+    expect((await putStatus(req.id, 'qa')).status).toBe(200);
+
+    const back = await putStatus(req.id, 'in_progress');
+    expect(back.status).toBe(200);
+    expect(back.body.status).toBe('in_progress');
+
+    for (const t of tasks) h.db.prepare("UPDATE bridge_tasks SET status = 'in_review' WHERE id = ?").run(t.id);
+    await putStatus(req.id, 'qa');
+    const review = await putStatus(req.id, 'in_review');
+    expect(review.status).toBe(200);
+    expect(review.body.status).toBe('in_review');
+  });
+
+  it('allows fan-out from QA to retry goals that failed', async () => {
+    const req = h.createRequirement();
+    const original = h.adapters.backend.createGoal.bind(h.adapters.backend);
+    h.adapters.backend.createGoal = async () => { throw new Error('down'); };
+    const tasks = await h.fanOutService.execute(req.id);
+    h.adapters.backend.createGoal = original;
+    await putStatus(req.id, 'qa');
+
+    const res = await testRequest(h.app, 'POST', `/api/requirements/${req.id}/ready`);
+
+    expect(res.status).toBe(200);
+    expect(taskRow(h, tasks.find((t) => t.project === 'backend')!.id).status).toBe('queued');
+  });
+});

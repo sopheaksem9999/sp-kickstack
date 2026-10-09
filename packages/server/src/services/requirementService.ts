@@ -250,6 +250,12 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
       if (req.status === 'cancelled') {
         throw conflict(`${id} was cancelled after dispatch; create a new requirement instead of reopening it`);
       }
+      // Leaving QA for work statuses hands control back to task progress.
+      if (req.status === 'qa' && (status === 'in_progress' || status === 'in_review')) {
+        this.updateStatus(id, 'in_progress');
+        this.recalculateDerivedStatus(id);
+        return this.getRequirement(id);
+      }
       const active = tasks.filter((t) => !TERMINAL_TASK_STATUSES.includes(t.status));
       if (status === 'done' && active.length > 0) {
         throw conflict(`${active.length} task(s) are still active; finish or cancel them before marking ${id} done`);

@@ -11,7 +11,8 @@ import { MAX_DISPATCH_ATTEMPTS, shouldNotifyFailure } from '../lib/retryPolicy.j
 
 export type AdapterFactory = (projectName: string) => EngineAdapter;
 
-const FANOUT_FROM: RequirementStatus[] = ['draft', 'ready', 'in_progress'];
+// qa: QA may send failed goals back out after a fix.
+const FANOUT_FROM: RequirementStatus[] = ['draft', 'ready', 'in_progress', 'qa'];
 
 export class FanOutService {
   constructor(
@@ -83,7 +84,7 @@ ${wrapUntrusted('requirement', requirementMd)}
       throw new HttpError(404, `Requirement ${reqId} not found`);
     }
     if (!FANOUT_FROM.includes(req.status)) {
-      throw conflict(`Requirement ${reqId} is ${req.status}; fan-out is only allowed from draft, ready or in_progress`);
+      throw conflict(`Requirement ${reqId} is ${req.status}; fan-out is only allowed from draft, ready, in_progress or qa`);
     }
 
     // Retrieve branch and merge settings

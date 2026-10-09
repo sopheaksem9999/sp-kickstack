@@ -1,4 +1,4 @@
-import { useState, useMemo, Fragment } from 'react';
+import { useState, useMemo, Fragment, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchRequirements,
@@ -7,6 +7,7 @@ import {
   startSprint,
   completeSprint,
   assignRequirementSprint,
+  updateRequirementStatus,
 } from '../lib/api.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
@@ -59,6 +60,9 @@ export function RequirementsPage() {
   // View states - active Board by default
   const [viewMode, setViewMode] = useState<'list' | 'board'>('board');
   const [selectedRequirementId, setSelectedRequirementId] = useState<string | null>(null);
+  const [draggedReqId, setDraggedReqId] = useState<string | null>(null);
+  const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null);
+  const isDraggingJustEndedRef = useRef(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
@@ -147,6 +151,34 @@ export function RequirementsPage() {
     },
     onError: (err: any) => toast.error(err.message || 'Failed to move requirement'),
   });
+
+  // Drag-and-drop state update mutation
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: RequirementStatus }) =>
+      updateRequirementStatus(id, status),
+    onSuccess: (updatedReq) => {
+      toast.success(
+        `Moved "${updatedReq.title}" to ${updatedReq.status.replace('_', ' ').toUpperCase()}`
+      );
+      queryClient.invalidateQueries({ queryKey: ['requirements'] });
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to move requirement state'),
+  });
+
+  const handleDropOnGroup = (targetGroupId: string) => {
+    if (!draggedReqId) return;
+    const req = requirements.find((r) => r.id === draggedReqId);
+    if (!req) return;
+
+    if (groupBy === 'status' || groupBy === 'none') {
+      const targetStatus = targetGroupId as RequirementStatus;
+      if (req.status !== targetStatus) {
+        updateStatusMutation.mutate({ id: req.id, status: targetStatus });
+      }
+    }
+    setDraggedReqId(null);
+    setDragOverGroupId(null);
+  };
 
   // Sprint metrics
   const activeSprintReqs = useMemo(
@@ -1363,7 +1395,27 @@ export function RequirementsPage() {
             return (
               <div
                 key={group.id}
-                className={`${group.bgLight} border rounded-2xl flex flex-col max-h-[82vh] shadow-xs overflow-hidden transition-all`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  if (dragOverGroupId !== group.id) {
+                    setDragOverGroupId(group.id);
+                  }
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    setDragOverGroupId(null);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  handleDropOnGroup(group.id);
+                }}
+                className={`${group.bgLight} border rounded-2xl flex flex-col max-h-[82vh] shadow-xs overflow-hidden transition-all duration-200 ${
+                  dragOverGroupId === group.id
+                    ? 'ring-2 ring-[#7b68ee] ring-offset-2 scale-[1.01] shadow-md border-[#7b68ee]'
+                    : ''
+                }`}
               >
                 {/* Column Header */}
                 <div className={`p-3 border-b ${group.headerBg} flex items-center justify-between`}>
@@ -1379,16 +1431,50 @@ export function RequirementsPage() {
                 </div>
 
                 {/* Cards Container */}
-                <div className="p-2.5 space-y-2.5 overflow-y-auto flex-1">
+                <div className="p-2.5 space-y-2.5 overflow-y-auto flex-1 min-h-[120px]">
+                  {dragOverGroupId === group.id && draggedReqId && (
+                    <div className="border-2 border-dashed border-[#7b68ee]/70 rounded-xl p-3 bg-purple-100/60 dark:bg-purple-950/40 text-center text-xs font-bold text-[#7b68ee] dark:text-purple-300 animate-pulse">
+                      Drop to move to {group.title}
+                    </div>
+                  )}
+
+                  {groupReqs.length === 0 && (!dragOverGroupId || dragOverGroupId !== group.id) && (
+                    <div className="p-6 text-center text-slate-400 dark:text-slate-500 text-xs italic border border-dashed border-slate-300/60 dark:border-[#282a38] rounded-xl my-2">
+                      Drop cards here
+                    </div>
+                  )}
+
                   {groupReqs.map((req) => {
                     const prio = priorityConfig[req.priority] || priorityConfig.normal;
                     const reqSprint = req.sprint_id ? sprints.find((s) => s.id === req.sprint_id) : null;
+                    const isBeingDragged = draggedReqId === req.id;
 
                     return (
                       <div
                         key={req.id}
-                        onClick={() => setSelectedRequirementId(req.id)}
-                        className="block p-3.5 rounded-xl bg-white dark:bg-[#1a1b26] hover:bg-slate-50/90 dark:hover:bg-[#222332] border border-slate-200/80 dark:border-[#2d2f3e] shadow-2xs hover:shadow-md transition-all group cursor-pointer"
+                        draggable={true}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/plain', req.id);
+                          e.dataTransfer.effectAllowed = 'move';
+                          setDraggedReqId(req.id);
+                          isDraggingJustEndedRef.current = true;
+                        }}
+                        onDragEnd={() => {
+                          setDraggedReqId(null);
+                          setDragOverGroupId(null);
+                          setTimeout(() => {
+                            isDraggingJustEndedRef.current = false;
+                          }, 150);
+                        }}
+                        onClick={() => {
+                          if (isDraggingJustEndedRef.current) return;
+                          setSelectedRequirementId(req.id);
+                        }}
+                        className={`block p-3.5 rounded-xl bg-white dark:bg-[#1a1b26] hover:bg-slate-50/90 dark:hover:bg-[#222332] border border-slate-200/80 dark:border-[#2d2f3e] shadow-2xs hover:shadow-md transition-all group cursor-grab active:cursor-grabbing select-none ${
+                          isBeingDragged
+                            ? 'opacity-40 scale-95 border-dashed border-[#7b68ee]'
+                            : ''
+                        }`}
                       >
                         <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 mb-1">
                           <span className="text-[#7b68ee] font-bold group-hover:underline">{req.id}</span>

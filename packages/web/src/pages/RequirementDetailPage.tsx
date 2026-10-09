@@ -1,17 +1,21 @@
+import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchRequirement,
   fetchRequirementGraph,
+  fetchProjects,
   startRequirementFanOut,
   cancelRequirement,
   markTaskDone,
   releaseLink,
   updateRequirementStatus,
+  updateRequirementProjects,
+  updateRequirementMergePolicy,
   mergeRequirementToMain,
 } from '../lib/api.js';
 import { StatusBadge } from '../components/StatusBadge.js';
-import { BridgeTask, RequirementStatus } from '@sp-kickstack/shared';
+import { BridgeTask, RequirementStatus, BranchMergePolicy } from '@sp-kickstack/shared';
 import { toast } from 'sonner';
 import {
   ArrowLeft,
@@ -29,6 +33,8 @@ import {
   FileCode,
   Image as ImageIcon,
   FileText,
+  Edit3,
+  X,
 } from 'lucide-react';
 
 const stateOptions: { value: RequirementStatus; label: string }[] = [
@@ -81,6 +87,24 @@ export function RequirementDetailPage() {
     onError: (err: any) => toast.error(err.message || 'Failed to update status'),
   });
 
+  const doneMutation = useMutation({
+    mutationFn: (taskId: number) => markTaskDone(taskId),
+    onSuccess: () => {
+      toast.success('Task marked as done');
+      queryClient.invalidateQueries();
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to update task'),
+  });
+
+  const releaseMutation = useMutation({
+    mutationFn: (linkId: number) => releaseLink(linkId),
+    onSuccess: () => {
+      toast.success('Dependency link released');
+      queryClient.invalidateQueries();
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to release link'),
+  });
+
   const mergeMutation = useMutation({
     mutationFn: () => mergeRequirementToMain(id!),
     onSuccess: () => {
@@ -90,20 +114,32 @@ export function RequirementDetailPage() {
     onError: (err: any) => toast.error(err.message || 'Failed to merge to main'),
   });
 
-  const doneMutation = useMutation({
-    mutationFn: (taskId: number) => markTaskDone(taskId),
-    onSuccess: () => {
-      toast.success('Task marked done');
-      queryClient.invalidateQueries();
-    },
+  const [isEditingProjects, setIsEditingProjects] = useState(false);
+  const [editingProjectsList, setEditingProjectsList] = useState<string[]>([]);
+
+  const { data: allProjects = [] } = useQuery({
+    queryKey: ['projects', req?.workspace_id || 'default'],
+    queryFn: () => fetchProjects(req?.workspace_id || 'default'),
+    enabled: Boolean(req),
   });
 
-  const releaseMutation = useMutation({
-    mutationFn: (linkId: number) => releaseLink(linkId),
+  const projectsMutation = useMutation({
+    mutationFn: (newProjects: string[]) => updateRequirementProjects(id!, newProjects),
     onSuccess: () => {
-      toast.success('Link released and task unblocked');
+      toast.success('Affected projects updated');
+      setIsEditingProjects(false);
       queryClient.invalidateQueries();
     },
+    onError: (err: any) => toast.error(err.message || 'Failed to update projects'),
+  });
+
+  const policyMutation = useMutation({
+    mutationFn: (newPolicy: BranchMergePolicy | null) => updateRequirementMergePolicy(id!, newPolicy),
+    onSuccess: () => {
+      toast.success('Merge policy updated');
+      queryClient.invalidateQueries();
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to update merge policy'),
   });
 
   if (reqLoading || graphLoading) {
@@ -180,6 +216,30 @@ export function RequirementDetailPage() {
                 <GitBranch className="w-3 h-3 text-[#7b68ee]" />
                 <span>develop</span>
               </span>
+
+              {/* Merge Policy Selector */}
+              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-[#1f202b] px-2 py-0.5 rounded-lg border border-slate-200 dark:border-[#2d2f3d]">
+                <span className="text-[10px] text-slate-400 font-bold uppercase">Merge:</span>
+                <select
+                  value={req.merge_policy || 'default'}
+                  onChange={(e) => {
+                    const val = e.target.value === 'default' ? null : (e.target.value as BranchMergePolicy);
+                    policyMutation.mutate(val);
+                  }}
+                  className="bg-transparent text-[11px] font-bold text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
+                  title="Ticket Merge Policy"
+                >
+                  <option value="default" className="bg-white dark:bg-[#1a1b22] text-slate-800 dark:text-slate-200">
+                    Workspace Default
+                  </option>
+                  <option value="manual_review_merge" className="bg-white dark:bg-[#1a1b22] text-slate-800 dark:text-slate-200">
+                    Manual Review & Merge
+                  </option>
+                  <option value="auto_merge_main" className="bg-white dark:bg-[#1a1b22] text-slate-800 dark:text-slate-200">
+                    Auto-Merge to Main
+                  </option>
+                </select>
+              </div>
 
               <span className="text-xs text-slate-400 font-mono">rev.{req.revision}</span>
             </div>
@@ -289,9 +349,22 @@ export function RequirementDetailPage() {
           <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Per-Repo Agent Engine Runtimes
           </h3>
-          <span className="text-xs font-mono text-slate-400">
-            {req.affected_projects.length} connected repos (targeted to develop branch)
-          </span>
+          <div className="flex items-center gap-2.5">
+            <span className="text-xs font-mono text-slate-400">
+              {req.affected_projects.length} connected repos (targeted to develop branch)
+            </span>
+            <button
+              onClick={() => {
+                setEditingProjectsList([...req.affected_projects]);
+                setIsEditingProjects(true);
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-lg bg-purple-50 dark:bg-purple-950/40 text-[#7b68ee] dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 border border-purple-200 dark:border-purple-800/40 transition-all shadow-sm"
+              title="Add or remove affected repositories"
+            >
+              <Edit3 className="w-3 h-3" />
+              <span>Edit Repos</span>
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -437,6 +510,77 @@ export function RequirementDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Edit Projects Modal */}
+      {isEditingProjects && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white dark:bg-[#1a1b24] border border-slate-200 dark:border-[#2d2f3e] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-[#262734] flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                  Edit Affected Repositories
+                </h3>
+                <p className="text-xs text-slate-400">Select target engines for this requirement</p>
+              </div>
+              <button
+                onClick={() => setIsEditingProjects(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-2.5 max-h-80 overflow-y-auto">
+              {allProjects.map((p) => {
+                const checked = editingProjectsList.includes(p.name);
+                return (
+                  <label
+                    key={p.name}
+                    className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
+                      checked
+                        ? 'border-[#7b68ee] bg-purple-50/60 dark:bg-purple-950/30'
+                        : 'border-slate-200 dark:border-[#282937] hover:bg-slate-50 dark:hover:bg-[#20212d]'
+                    }`}
+                  >
+                    <div>
+                      <p className="font-bold text-xs text-slate-800 dark:text-slate-200">{p.name}</p>
+                      <p className="text-[10px] text-slate-400">{p.repo_path} · {p.engine_type}</p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => {
+                        setEditingProjectsList((prev) =>
+                          prev.includes(p.name) ? prev.filter((n) => n !== p.name) : [...prev, p.name]
+                        );
+                      }}
+                      className="w-4 h-4 text-[#7b68ee] rounded focus:ring-[#7b68ee] cursor-pointer"
+                    />
+                  </label>
+                );
+              })}
+            </div>
+
+            <div className="px-5 py-3.5 bg-slate-50 dark:bg-[#15161e] border-t border-slate-100 dark:border-[#262734] flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsEditingProjects(false)}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-[#242533]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={editingProjectsList.length === 0 || projectsMutation.isPending}
+                onClick={() => projectsMutation.mutate(editingProjectsList)}
+                className="px-4 py-1.5 rounded-lg text-xs font-bold text-white bg-[#7b68ee] hover:bg-[#6c5ce7] shadow-sm disabled:opacity-50"
+              >
+                {projectsMutation.isPending ? 'Saving...' : 'Save Repos'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

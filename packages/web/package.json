@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@radix-ui/react-dialog": "^1.2.0",
     "@sp-kickstack/shared": "*",
     "@tanstack/react-query": "^5.59.20",
     "clsx": "^2.1.1",
@@ -17,7 +18,8 @@
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.27.0",
     "sonner": "^1.7.0",
-    "tailwind-merge": "^2.5.4"
+    "tailwind-merge": "^2.5.4",
+    "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

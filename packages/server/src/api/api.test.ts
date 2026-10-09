@@ -66,9 +66,9 @@ describe('Bridge REST API Integration Tests', () => {
     });
   });
 
-  // afterAll(() => {
-  //   db.close();
-  // });
+  afterAll(() => {
+    db.close();
+  });
 
   beforeEach(() => {
     db.exec(`

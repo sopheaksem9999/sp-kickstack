@@ -9,7 +9,10 @@ import {
   CreateWorkspaceInput,
   UpdateWorkspaceInput,
   BranchMergeSettings,
+  BranchMergePolicy,
   RequirementStatus,
+  SharedAsset,
+  CreateSharedAssetInput,
 } from '@sp-kickstack/shared';
 
 const BASE = '/api';
@@ -147,5 +150,65 @@ export async function mergeRequirementToMain(id: string): Promise<{ ok: boolean;
     method: 'POST',
   });
   if (!res.ok) throw new Error('Failed to merge requirement to main');
+  return res.json();
+}
+
+export interface TicketAttachmentItem {
+  req_id: string;
+  req_title: string;
+  name: string;
+  size?: number;
+  type?: string;
+  data_url?: string;
+  created_at: string;
+}
+
+export interface AssetsResponse {
+  ticket_attachments: TicketAttachmentItem[];
+  shared_assets: SharedAsset[];
+}
+
+export async function updateRequirementProjects(id: string, affected_projects: string[]): Promise<Requirement> {
+  const res = await fetch(`${BASE}/requirements/${id}/projects`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ affected_projects }),
+  });
+  if (!res.ok) throw new Error('Failed to update requirement projects');
+  return res.json();
+}
+
+export async function updateRequirementMergePolicy(id: string, merge_policy: BranchMergePolicy | null): Promise<Requirement> {
+  const res = await fetch(`${BASE}/requirements/${id}/merge-policy`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ merge_policy }),
+  });
+  if (!res.ok) throw new Error('Failed to update requirement merge policy');
+  return res.json();
+}
+
+export async function fetchAssets(workspaceId?: string): Promise<AssetsResponse> {
+  const qs = workspaceId && workspaceId !== 'all' ? `?workspace=${workspaceId}` : '';
+  const res = await fetch(`${BASE}/assets${qs}`);
+  if (!res.ok) throw new Error('Failed to fetch assets');
+  return res.json();
+}
+
+export async function createSharedAsset(input: CreateSharedAssetInput): Promise<SharedAsset> {
+  const res = await fetch(`${BASE}/assets/shared`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error('Failed to upload shared asset');
+  return res.json();
+}
+
+export async function deleteSharedAsset(id: string): Promise<{ ok: boolean }> {
+  const res = await fetch(`${BASE}/assets/shared/${id}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error('Failed to delete shared asset');
   return res.json();
 }

@@ -11,7 +11,6 @@ import {
   Trash2,
   BookOpen,
   Sparkles,
-  Flag,
   CheckCircle2,
   FolderGit2,
   ArrowRight,
@@ -31,21 +30,8 @@ import {
   Image as ImageIcon,
   FileCode,
 } from 'lucide-react';
-import { Priority, RequirementStatus, AttachmentItem } from '@sp-kickstack/shared';
-
-const priorityOptions: { value: Priority; label: string; color: string; bg: string }[] = [
-  { value: 'urgent', label: 'Urgent', color: 'text-rose-500 fill-rose-500', bg: 'hover:bg-rose-500/10' },
-  { value: 'high', label: 'High', color: 'text-amber-500 fill-amber-500', bg: 'hover:bg-amber-500/10' },
-  { value: 'normal', label: 'Normal', color: 'text-blue-500 fill-blue-500', bg: 'hover:bg-blue-500/10' },
-  { value: 'low', label: 'Low', color: 'text-slate-400 fill-slate-400', bg: 'hover:bg-slate-500/10' },
-];
-
-const stateOptions: { value: RequirementStatus; label: string; dot: string; desc: string }[] = [
-  { value: 'draft', label: 'ToDo', dot: 'bg-slate-400', desc: 'Backlog / Ready for assignment' },
-  { value: 'in_progress', label: 'In-Progress', dot: 'bg-purple-500 animate-pulse', desc: 'Active implementation' },
-  { value: 'qa', label: 'QA', dot: 'bg-amber-400', desc: 'Quality assurance & testing' },
-  { value: 'done', label: 'Done', dot: 'bg-emerald-500', desc: 'Merged & completed' },
-];
+import { Priority, RequirementStatus, AttachmentItem, BranchMergePolicy } from '@sp-kickstack/shared';
+import { Sheet, SheetContent } from './ui/sheet.js';
 
 export function CreateRequirementSheet() {
   const { isOpen, closeSheet } = useCreateRequirement();
@@ -71,6 +57,7 @@ export function CreateRequirementSheet() {
   const [userStory, setUserStory] = useState('');
   const [priority, setPriority] = useState<Priority>('normal');
   const [status, setStatus] = useState<RequirementStatus>('draft');
+  const [mergePolicy, setMergePolicy] = useState<'inherit' | BranchMergePolicy>('inherit');
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [criteria, setCriteria] = useState<string[]>(['']);
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
@@ -101,6 +88,7 @@ export function CreateRequirementSheet() {
     setUserStory('');
     setPriority('normal');
     setStatus('draft');
+    setMergePolicy('inherit');
     setSelectedProjects([]);
     setCriteria(['']);
     setAttachments([]);
@@ -211,6 +199,7 @@ export function CreateRequirementSheet() {
         user_story: userStory || undefined,
         priority,
         status: andStart ? 'ready' : status,
+        merge_policy: mergePolicy !== 'inherit' ? mergePolicy : undefined,
         affected_projects: selectedProjects,
         acceptance_criteria: filteredCriteria,
         attachments,
@@ -239,22 +228,12 @@ export function CreateRequirementSheet() {
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-300"
-        onClick={handleClose}
-      />
-
-      <div className="fixed inset-y-0 right-0 pl-10 max-w-full flex">
-        {/* Slide-over Right Sheet */}
-        <div className="w-screen max-w-2xl bg-white dark:bg-[#16171d] shadow-2xl border-l border-slate-200 dark:border-[#262732] flex flex-col transform transition-transform duration-300 ease-out animate-in slide-in-from-right">
-          {/* Header */}
-          <div className="px-6 py-4 border-b border-slate-200 dark:border-[#262732] flex items-center justify-between bg-slate-50/70 dark:bg-[#1a1b23]/70">
-            <div className="flex items-center gap-2.5">
+    <Sheet open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
+      <SheetContent side="right" className="p-0 overflow-hidden sm:max-w-2xl flex flex-col w-screen">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-[#262732] flex items-center justify-between bg-slate-50/70 dark:bg-[#1a1b23]/70">
+          <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#7b68ee] to-[#ec4899] flex items-center justify-center font-black text-white text-sm shadow-md shadow-purple-500/20">
                 ⚡
               </div>
@@ -327,54 +306,56 @@ export function CreateRequirementSheet() {
               />
             </div>
 
-            {/* Input State & Priority Controls */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* State Selector (ToDo, In-Progress, QA, Done) */}
+            {/* Input State, Priority & Merge Policy Select Controls */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* State Select */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  Requirement State
+                  State
                 </label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {stateOptions.map((st) => (
-                    <button
-                      key={st.value}
-                      type="button"
-                      onClick={() => setStatus(st.value)}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-bold transition-all text-left ${
-                        status === st.value
-                          ? 'bg-purple-50 dark:bg-purple-950/40 border-[#7b68ee] text-[#7b68ee] dark:text-purple-300 shadow-sm ring-1 ring-[#7b68ee]'
-                          : 'border-slate-200 dark:border-[#2a2b36] bg-slate-50/60 dark:bg-[#1a1b22] text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#20212a]'
-                      }`}
-                    >
-                      <span className={`w-2 h-2 rounded-full ${st.dot} shrink-0`} />
-                      <span className="truncate">{st.label}</span>
-                    </button>
-                  ))}
-                </div>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value as RequirementStatus)}
+                  className="w-full px-3 py-2.5 rounded-lg border border-slate-200 dark:border-[#2a2b36] bg-slate-50 dark:bg-[#1a1b22] text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] cursor-pointer"
+                >
+                  <option value="draft">📋 ToDo (Backlog)</option>
+                  <option value="in_progress">⚡ In-Progress</option>
+                  <option value="qa">🧪 QA / Testing</option>
+                  <option value="done">✅ Done / Complete</option>
+                </select>
               </div>
 
-              {/* Priority Selector */}
+              {/* Priority Select */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   Priority
                 </label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {priorityOptions.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setPriority(opt.value)}
-                      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-bold transition-all ${
-                        priority === opt.value
-                          ? 'bg-white dark:bg-[#23242e] border-purple-400 dark:border-purple-600 shadow-sm text-slate-900 dark:text-white ring-1 ring-purple-400'
-                          : 'border-slate-200 dark:border-[#2a2b36] bg-slate-50/60 dark:bg-[#1a1b22] text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#20212a]'
-                      }`}
-                    >
-                      <Flag className={`w-3.5 h-3.5 ${opt.color}`} />
-                      <span>{opt.label}</span>
-                    </button>
-                  ))}
-                </div>
+                <select
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value as Priority)}
+                  className="w-full px-3 py-2.5 rounded-lg border border-slate-200 dark:border-[#2a2b36] bg-slate-50 dark:bg-[#1a1b22] text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] cursor-pointer"
+                >
+                  <option value="urgent">🔴 Urgent</option>
+                  <option value="high">🟠 High</option>
+                  <option value="normal">🔵 Normal</option>
+                  <option value="low">⚪ Low</option>
+                </select>
+              </div>
+
+              {/* Merge Policy Select */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Merge into Main
+                </label>
+                <select
+                  value={mergePolicy}
+                  onChange={(e) => setMergePolicy(e.target.value as any)}
+                  className="w-full px-3 py-2.5 rounded-lg border border-slate-200 dark:border-[#2a2b36] bg-slate-50 dark:bg-[#1a1b22] text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] cursor-pointer"
+                >
+                  <option value="inherit">⚙️ Workspace Default</option>
+                  <option value="manual_review_merge">🛡️ Manual Review & Merge</option>
+                  <option value="auto_merge_main">🚀 Automatic Merge to Main</option>
+                </select>
               </div>
             </div>
 
@@ -385,9 +366,31 @@ export function CreateRequirementSheet() {
                   <FolderGit2 className="w-3.5 h-3.5" />
                   <span>Affected Repositories / Engines *</span>
                 </label>
-                <span className="text-[11px] text-purple-600 dark:text-purple-400 font-semibold">
-                  {selectedProjects.length} selected
-                </span>
+                <div className="flex items-center gap-2 text-[11px]">
+                  {projects.length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProjects(projects.map((p) => p.name))}
+                        className="text-purple-600 dark:text-purple-400 font-semibold hover:underline"
+                      >
+                        Select All
+                      </button>
+                      <span className="text-slate-300 dark:text-slate-600">·</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProjects([])}
+                        className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:underline"
+                      >
+                        Clear
+                      </button>
+                      <span className="text-slate-300 dark:text-slate-600">·</span>
+                    </>
+                  )}
+                  <span className="text-purple-600 dark:text-purple-400 font-bold">
+                    {selectedProjects.length} selected
+                  </span>
+                </div>
               </div>
 
               {projects.length === 0 ? (
@@ -718,8 +721,7 @@ export function CreateRequirementSheet() {
               </button>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
-  );
+        </SheetContent>
+      </Sheet>
+    );
 }

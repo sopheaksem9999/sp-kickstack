@@ -10,11 +10,10 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['packages/**/*.{test,spec}.ts'],
-    pool: 'forks',
-    isolate: false,
+    pool: 'threads',
     poolOptions: {
-      forks: {
-        singleFork: true,
+      threads: {
+        singleThread: true,
       },
     },
   },

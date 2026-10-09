@@ -11,6 +11,7 @@ import {
   Sun,
   Moon,
   Search,
+  Paperclip,
 } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
@@ -29,6 +30,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   const navItems = [
     { label: 'Requirements', path: '/requirements', icon: Layers, badge: 'Tasks' },
+    { label: 'Attachments Hub', path: '/attachments', icon: Paperclip, badge: 'Files' },
     { label: 'Projects & Engines', path: '/projects', icon: FolderGit2, badge: 'Repos' },
     { label: 'Settings', path: '/settings', icon: Settings },
   ];
@@ -37,6 +39,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     if (location.pathname === '/requirements/new') return 'New Requirement';
     if (location.pathname.startsWith('/requirements/')) return 'Requirement Detail';
     if (location.pathname === '/requirements') return 'Requirements';
+    if (location.pathname === '/attachments') return 'Attachments & Assets';
     if (location.pathname === '/projects') return 'Projects & Engines';
     if (location.pathname === '/settings') return 'Settings';
     return 'Home';

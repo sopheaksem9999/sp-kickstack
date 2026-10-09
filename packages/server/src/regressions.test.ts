@@ -519,7 +519,7 @@ describe('B: every status source goes through one reaction path', () => {
         action: 'closed',
         pull_request: {
           html_url: 'https://gh/pr/7', number: 7, title: `[${ticket.req_id}] GET /loc`, body: null,
-          state: 'closed', merged: true, head: { ref: `req/${ticket.req_id}-loc` }, base: { ref: 'main' },
+          state: 'closed', merged: true, head: { ref: `req/${ticket.req_id}-task-${ticket.id}` }, base: { ref: 'main' },
         },
         repository: { name: 'backend', full_name: 'o/backend' },
       },
@@ -541,5 +541,141 @@ describe('B: every status source goes through one reaction path', () => {
     expect(h.mobileEngine.getTaskData(mobileGoal.engine_task_id!)!.status).toBe('queued');
     const change = broadcasts.find((e) => e.type === 'task_status_changed');
     expect(change.payload).toMatchObject({ taskId: tickets[0].ticketId, project: 'backend', newStatus: 'done' });
+  });
+});
+
+describe('I: GitHub webhooks only touch the task they clearly refer to', () => {
+  let h: Harness;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => h.db.close());
+
+  const pr = ({ action = 'closed', ...overrides }: Record<string, unknown> = {}, repo = 'backend') => ({
+    action,
+    pull_request: {
+      html_url: 'https://gh/pr/9', number: 9, title: 'chore: bump eslint', body: null,
+      state: 'closed', merged: true, head: { ref: 'dependabot/eslint' }, base: { ref: 'main' },
+      ...overrides,
+    },
+    repository: { name: repo, full_name: `o/${repo}` },
+  });
+  const send = (body: unknown) =>
+    testRequest(h.app, 'POST', '/api/webhooks/github', { headers: { 'x-github-event': 'pull_request' }, body });
+
+  it('ignores a merged PR that names no requirement', async () => {
+    const req = h.createRequirement(['backend']);
+    const [task] = await h.fanOutService.execute(req.id);
+    const res = await send(pr());
+    expect(res.body.processed).toBe(false);
+    expect(taskRow(h, task.id).status).toBe('queued');
+  });
+
+  it('ignores a PR from a repository that is not a registered project', async () => {
+    const req = h.createRequirement(['backend']);
+    const [task] = await h.fanOutService.execute(req.id);
+    const res = await send(pr({ title: `[${req.id}] work` }, 'some-other-repo'));
+    expect(res.body.processed).toBe(false);
+    expect(taskRow(h, task.id).status).toBe('queued');
+  });
+
+  it('matches the project by its repository folder name', async () => {
+    const repo = path.join(h.ws, 'payments-service');
+    fs.mkdirSync(repo);
+    h.projectService.registerProject({ name: 'payments', repo_path: repo, engine_type: 'manual' });
+    const req = h.createRequirement(['payments']);
+    const now = new Date().toISOString();
+    const id = Number(h.db.prepare(`
+      INSERT INTO bridge_tasks (req_id, project, role, title, status, created_at, updated_at)
+      VALUES (?, 'payments', 'goal', 't', 'running', ?, ?)
+    `).run(req.id, now, now).lastInsertRowid);
+
+    const res = await send(pr({ title: `[${req.id}] payments` }, 'payments-service'));
+    expect(res.body.taskId).toBe(id);
+    expect(taskRow(h, id).status).toBe('done');
+  });
+
+  it('never picks a waiting placeholder', async () => {
+    const { req, mobileGoal } = await blockMobileOn(h, ['GET /loc']);
+    const res = await send(pr({ action: 'opened', merged: false, state: 'open', title: `[${req.id}] mobile` }, 'mobile'));
+    expect(res.body.taskId).toBe(mobileGoal.id);
+  });
+
+  it('ignores and records an ambiguous match', async () => {
+    const { req } = await blockMobileOn(h, ['GET /loc']);
+    // backend now has the goal and the ticket for the same requirement
+    const res = await send(pr({ title: `[${req.id}] backend work` }));
+    expect(res.body.processed).toBe(false);
+    const ignored = h.db.prepare("SELECT COUNT(*) c FROM events WHERE type = 'webhook_ignored'").get() as any;
+    expect(ignored.c).toBe(1);
+  });
+
+  it('uses a task-<id> reference to pick between candidates', async () => {
+    const { req, tickets } = await blockMobileOn(h, ['GET /loc']);
+    const res = await send(pr({ title: `[${req.id}] GET /loc`, head: { ref: `req/${req.id}-task-${tickets[0].ticketId}` } }));
+    expect(res.body.taskId).toBe(tickets[0].ticketId);
+  });
+
+  it('matches the merge to the task whose PR was opened earlier', async () => {
+    const { req, tickets } = await blockMobileOn(h, ['GET /loc']);
+    const url = 'https://gh/pr/42';
+    await send(pr({ action: 'opened', merged: false, state: 'open', html_url: url, title: `[${req.id}] task-${tickets[0].ticketId}` }));
+    const merged = await send(pr({ html_url: url, title: `[${req.id}] GET /loc` }));
+    expect(merged.body.taskId).toBe(tickets[0].ticketId);
+  });
+});
+
+describe('H: tickets are attributed to the right requirement', () => {
+  let h: Harness;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => h.db.close());
+
+  it('rejects a ticket with an unknown source task and no req_id, before touching the engine', async () => {
+    h.createRequirement();
+    const second = h.createRequirement();
+    await h.fanOutService.execute(second.id);
+    const engineTasksBefore = (h.db.prepare("SELECT COUNT(*) c FROM bridge_tasks WHERE project = 'backend'").get() as any).c;
+
+    await expect(
+      h.ticketService.createTicket(
+        { to: 'backend', type: 'api_request', title: 'GET /x', body: 'Provide it please', blocking: false },
+        'mobile',
+        'does-not-exist'
+      )
+    ).rejects.toMatchObject({ status: 400 });
+    expect((h.db.prepare("SELECT COUNT(*) c FROM bridge_tasks WHERE project = 'backend'").get() as any).c).toBe(engineTasksBefore);
+  });
+
+  it('attributes a ticket to the requirement named in req_id', async () => {
+    h.createRequirement();
+    const second = h.createRequirement();
+    const resp = await h.ticketService.createTicket(
+      { to: 'backend', type: 'api_request', title: 'GET /x', body: 'Provide it please', blocking: false, req_id: second.id } as any,
+      'manual'
+    );
+    expect(taskRow(h, resp.ticketId).req_id).toBe(second.id);
+  });
+
+  it('rejects a req_id that does not exist', async () => {
+    await expect(
+      h.ticketService.createTicket(
+        { to: 'backend', type: 'api_request', title: 'GET /x', body: 'Provide it please', blocking: false, req_id: 'REQ-999' } as any,
+        'manual'
+      )
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('returns 400 over HTTP for an unattributable ticket', async () => {
+    const res = await testRequest(h.app, 'POST', '/api/tickets', {
+      body: { to: 'backend', type: 'api_request', title: 'GET /x', body: 'Provide it please' },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('keeps req_id through schema validation', async () => {
+    const second = h.createRequirement();
+    const res = await testRequest(h.app, 'POST', '/api/tickets', {
+      body: { to: 'backend', type: 'api_request', title: 'GET /x', body: 'Provide it please', req_id: second.id },
+    });
+    expect(res.status).toBe(201);
+    expect(taskRow(h, res.body.ticketId).req_id).toBe(second.id);
   });
 });

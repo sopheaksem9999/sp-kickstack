@@ -8,6 +8,7 @@ import {
   BridgeTask,
 } from '@sp-kickstack/shared';
 import { oneLine, wrapUntrusted } from '../lib/promptSafety.js';
+import { badRequest } from '../lib/httpError.js';
 
 export class TicketService {
   public static MAX_DEPTH = 3;
@@ -64,8 +65,18 @@ ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input
         .get(sourceProject, sourceEngineTaskId) as BridgeTask;
     }
 
-    // Determine req_id & depth
-    const reqId = sourceTask ? sourceTask.req_id : 'REQ-001';
+    // Determine req_id & depth: from the source task, else the explicit req_id. Never guess.
+    let reqId: string;
+    if (sourceTask) {
+      reqId = sourceTask.req_id;
+    } else if (input.req_id) {
+      if (!this.db.prepare('SELECT 1 FROM requirements WHERE id = ?').get(input.req_id)) {
+        throw badRequest(`Requirement ${input.req_id} not found`);
+      }
+      reqId = input.req_id;
+    } else {
+      throw badRequest('Cannot attribute ticket: source task not found and no req_id given');
+    }
     const depth = sourceTask ? sourceTask.depth + 1 : 1;
 
     if (depth > TicketService.MAX_DEPTH) {

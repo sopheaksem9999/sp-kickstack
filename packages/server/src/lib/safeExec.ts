@@ -1,10 +1,13 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { HttpError } from './httpError.js';
 
-/** Input rejected for safety reasons; the API error middleware maps `status` to the response. */
-export class UnsafeInputError extends Error {
-  public status = 400;
+/** Input rejected for safety reasons (answered as 400). */
+export class UnsafeInputError extends HttpError {
+  constructor(message: string) {
+    super(400, message);
+  }
 }
 
 /** Run git with an argv array (no shell), returning stdout. stderr is discarded. */

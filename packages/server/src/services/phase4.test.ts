@@ -197,6 +197,7 @@ describe('Phase 4: Cross-Repo Tickets, Links, and Outbox Scanner', () => {
       title: 'Outbox endpoint ticket',
       body: 'Generated from sandboxed agent file outbox',
       blocking: false,
+      req_id: 'REQ-001',
     };
 
     fs.writeFileSync(

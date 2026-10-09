@@ -201,6 +201,8 @@ export const CreateTicketInputSchema = z.object({
   title: z.string().min(3).max(250),
   body: z.string().min(5).max(20480), // 20 KB limit as per FR-TKT-02
   blocking: z.boolean().default(false),
+  // Requirement to attribute the ticket to when it has no resolvable source task (UI/manual tickets).
+  req_id: z.string().min(1).optional(),
 });
 
 export const TicketResponseSchema = z.object({

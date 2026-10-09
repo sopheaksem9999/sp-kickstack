@@ -3,6 +3,7 @@ import { ProjectService } from './projectService.js';
 import { RequirementService } from './requirementService.js';
 import { EngineAdapter } from '../adapters/types.js';
 import { BridgeTask } from '@sp-kickstack/shared';
+import { oneLine, wrapUntrusted } from '../lib/promptSafety.js';
 
 export type AdapterFactory = (projectName: string) => EngineAdapter;
 
@@ -31,11 +32,11 @@ export class FanOutService {
     const assetsBlock =
       sharedAssets.length > 0
         ? `\n## Shared Workspace Assets & Contracts\n` +
-          sharedAssets.map((a) => `- **${a.name}**${a.notes ? `: ${a.notes}` : ''}`).join('\n') +
+          sharedAssets.map((a) => `- **${oneLine(a.name)}**${a.notes ? `: ${oneLine(a.notes)}` : ''}`).join('\n') +
           '\n'
         : '';
 
-    return `# ${reqId} — ${title}  (project: ${project})
+    return `# ${reqId} — ${oneLine(title)}  (project: ${project})
 
 ## Branch & Implementation Rules
 - Target Branch: All changes must be developed on the \`${baseBranch}\` branch.
@@ -58,9 +59,7 @@ ${assetsBlock}
    then stop and report that you are blocked.
 5. Never modify other repositories. Never run deployments or destructive commands.
 
-<untrusted_input name="requirement">
-${requirementMd}
-</untrusted_input>
+${wrapUntrusted('requirement', requirementMd)}
 `;
   }
 

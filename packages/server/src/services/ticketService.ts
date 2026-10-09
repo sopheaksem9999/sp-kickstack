@@ -7,6 +7,7 @@ import {
   TicketResponse,
   BridgeTask,
 } from '@sp-kickstack/shared';
+import { oneLine, wrapUntrusted } from '../lib/promptSafety.js';
 
 export class TicketService {
   public static MAX_DEPTH = 3;
@@ -25,18 +26,13 @@ export class TicketService {
     reqId: string,
     input: CreateTicketInput
   ): string {
-    return `# Ticket from ${sourceProject} — ${input.title}  (${reqId})
+    return `# Ticket from ${sourceProject} — ${oneLine(input.title)}  (${reqId})
 
 Review feasibility against the current contract and tenant-isolation rules,
 write a short plan, implement, update the contract file, add tests.
 If the request is unclear or unsafe, say so instead of guessing.
 
-<untrusted_input name="ticket">
-Type: ${input.type}
-Title: ${input.title}
-
-${input.body}
-</untrusted_input>
+${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input.body}`)}
 `;
   }
 

@@ -1,7 +1,7 @@
-import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { ProjectService } from './projectService.js';
+import { assertSafeRef, resolveInRepo, tryGit } from '../lib/safeExec.js';
 
 export interface ChangedFile {
   path: string;
@@ -75,42 +75,28 @@ export class GitReviewService {
     projectName: string,
     targetBranch = 'main'
   ): GitReviewSummary {
+    assertSafeRef(targetBranch);
     const repoPath = this.resolveRepo(projectName);
 
-    let currentBranch = 'develop';
-    try {
-      currentBranch = execSync('git branch --show-current', {
-        cwd: repoPath,
-        encoding: 'utf8',
-      }).trim() || 'develop';
-    } catch {
-      // fallback
-    }
+    const currentBranch = tryGit(repoPath, ['branch', '--show-current'])?.trim() || 'develop';
 
-    // Check if target branch exists locally or in remotes
-    let compareTarget = targetBranch;
-    try {
-      execSync(`git rev-parse --verify ${targetBranch} 2>/dev/null`, { cwd: repoPath });
-    } catch {
-      // If target branch doesn't exist, compare against HEAD~1 or HEAD
-      compareTarget = 'HEAD';
-    }
+    // Check if target branch exists locally or in remotes; otherwise compare against HEAD
+    const compareTarget =
+      tryGit(repoPath, ['rev-parse', '--verify', '--quiet', targetBranch]) !== null ? targetBranch : 'HEAD';
 
     // 1. Get numstat (additions, deletions, filenames)
     let totalAdditions = 0;
     let totalDeletions = 0;
     const changedFiles: ChangedFile[] = [];
 
-    try {
-      const numstatCmd =
+    {
+      const numstat = (
         compareTarget === 'HEAD'
-          ? 'git diff --numstat HEAD'
-          : `git diff --numstat ${compareTarget}...HEAD 2>/dev/null || git diff --numstat ${compareTarget} 2>/dev/null || git diff --numstat`;
-
-      const numstat = execSync(numstatCmd, {
-        cwd: repoPath,
-        encoding: 'utf8',
-      }).trim();
+          ? tryGit(repoPath, ['diff', '--numstat', 'HEAD'])
+          : tryGit(repoPath, ['diff', '--numstat', `${compareTarget}...HEAD`]) ??
+            tryGit(repoPath, ['diff', '--numstat', compareTarget]) ??
+            tryGit(repoPath, ['diff', '--numstat'])
+      )?.trim();
 
       if (numstat) {
         for (const line of numstat.split('\n')) {
@@ -132,16 +118,11 @@ export class GitReviewService {
           }
         }
       }
-    } catch {
-      // Ignore git diff error
     }
 
     // Also check uncommitted/untracked status
-    try {
-      const statusOut = execSync('git status --porcelain', {
-        cwd: repoPath,
-        encoding: 'utf8',
-      }).trim();
+    {
+      const statusOut = tryGit(repoPath, ['status', '--porcelain'])?.trim();
 
       if (statusOut) {
         for (const line of statusOut.split('\n')) {
@@ -160,17 +141,15 @@ export class GitReviewService {
           }
         }
       }
-    } catch {
-      // Ignore
     }
 
     // 2. Recent Commits
     const recentCommits: GitCommitInfo[] = [];
-    try {
-      const logOut = execSync(
-        'git log -n 8 --pretty=format:"%h|%s|%an|%cr" 2>/dev/null || git log -n 5 --oneline',
-        { cwd: repoPath, encoding: 'utf8' }
-      ).trim();
+    {
+      const logOut = (
+        tryGit(repoPath, ['log', '-n', '8', '--pretty=format:%h|%s|%an|%cr']) ??
+        tryGit(repoPath, ['log', '-n', '5', '--oneline'])
+      )?.trim();
 
       if (logOut) {
         for (const line of logOut.split('\n')) {
@@ -185,8 +164,6 @@ export class GitReviewService {
           }
         }
       }
-    } catch {
-      // Ignore
     }
 
     return {
@@ -210,21 +187,14 @@ export class GitReviewService {
     filePath: string,
     targetBranch = 'main'
   ): FileDiffResult {
+    assertSafeRef(targetBranch);
     const repoPath = this.resolveRepo(projectName);
-    const fullPath = path.join(repoPath, filePath);
+    const { fullPath, relPath } = resolveInRepo(repoPath, filePath);
 
-    let originalContent = '';
     let modifiedContent = '';
 
     // Read original content from targetBranch
-    try {
-      originalContent = execSync(`git show ${targetBranch}:${filePath} 2>/dev/null`, {
-        cwd: repoPath,
-        encoding: 'utf8',
-      });
-    } catch {
-      originalContent = '';
-    }
+    const originalContent = tryGit(repoPath, ['show', `${targetBranch}:${relPath}`]) ?? '';
 
     // Read current modified content
     try {
@@ -242,12 +212,11 @@ export class GitReviewService {
     let additions = 0;
     let deletions = 0;
 
-    try {
-      const rawDiff = execSync(
-        `git diff ${targetBranch}...HEAD -- "${filePath}" 2>/dev/null || git diff -- "${filePath}" 2>/dev/null`,
-        { cwd: repoPath, encoding: 'utf8' }
-      );
+    const rawDiff =
+      tryGit(repoPath, ['diff', `${targetBranch}...HEAD`, '--', relPath]) ??
+      tryGit(repoPath, ['diff', '--', relPath]);
 
+    if (rawDiff !== null) {
       let oldLine = 1;
       let newLine = 1;
 
@@ -283,8 +252,6 @@ export class GitReviewService {
           });
         }
       }
-    } catch {
-      // If diff failed, create simple line diff from content
     }
 
     let status: 'modified' | 'added' | 'deleted' | 'unchanged' = 'modified';
@@ -379,7 +346,7 @@ export class GitReviewService {
    */
   public getFileContent(projectName: string, filePath: string): { path: string; content: string; size: number } {
     const repoPath = this.resolveRepo(projectName);
-    const fullPath = path.join(repoPath, filePath);
+    const { fullPath } = resolveInRepo(repoPath, filePath);
 
     if (!fs.existsSync(fullPath)) {
       throw new Error(`File not found: ${filePath}`);

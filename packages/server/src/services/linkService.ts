@@ -2,6 +2,7 @@ import { AppDatabase } from '../db/index.js';
 import { AdapterFactory } from './fanOutService.js';
 import { ProjectService } from './projectService.js';
 import { Link, LinkState, BridgeTask } from '@sp-kickstack/shared';
+import { wrapUntrusted } from '../lib/promptSafety.js';
 
 export class LinkService {
   constructor(
@@ -63,7 +64,7 @@ export class LinkService {
     baseBranch: string = 'main'
   ): string {
     const summaryBlock = ticketTask.body_md
-      ? `<untrusted_input name="summary">\n${ticketTask.title}\n</untrusted_input>`
+      ? wrapUntrusted('summary', ticketTask.title)
       : 'Ticket resolved.';
 
     const contractBlock = contractPath

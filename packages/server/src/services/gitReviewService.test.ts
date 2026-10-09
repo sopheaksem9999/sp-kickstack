@@ -89,6 +89,31 @@ describe('GitReviewService & Endpoints', () => {
     expect(diff).toHaveProperty('modifiedContent');
   });
 
+  it('summarizes changed files and recent commits against the target branch', () => {
+    const summary = gitReviewService.getReviewSummary('sample-project', 'main');
+    expect(summary.currentBranch).toBe('develop');
+    expect(summary.changedFiles.map((f) => f.path)).toEqual(
+      expect.arrayContaining(['README.md', 'new-file.ts'])
+    );
+    expect(summary.totalAdditions).toBeGreaterThan(0);
+    expect(summary.recentCommits[0].message).toBe('Feature commit on develop');
+    expect(summary.recentCommits[0].author).toBe('Test Developer');
+  });
+
+  it('parses added and removed lines of a file diff', () => {
+    const diff = gitReviewService.getFileDiff('sample-project', 'README.md', 'main');
+    expect(diff.status).toBe('modified');
+    expect(diff.originalContent).toContain('Line 2\n');
+    expect(diff.diffLines).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'add', content: 'Line 3 added' }),
+        expect.objectContaining({ type: 'del', content: 'Line 2' }),
+      ])
+    );
+    expect(diff.additions).toBe(2);
+    expect(diff.deletions).toBe(1);
+  });
+
   it('scans file tree of the project repo', () => {
     const tree = gitReviewService.getFileTree('sample-project');
     expect(tree.type).toBe('directory');

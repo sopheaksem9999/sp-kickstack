@@ -83,6 +83,8 @@ const app = createApp({
   ticketService,
   broadcaster,
   notifier,
+  agentToken: process.env.AGENT_TOKEN || undefined,
+  webhookSecret: process.env.GITHUB_WEBHOOK_SECRET || undefined,
 });
 
 const server = app.listen(PORT, HOST, () => {

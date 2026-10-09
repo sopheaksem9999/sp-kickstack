@@ -1,4 +1,7 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+import { execFile } from 'node:child_process';
 import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -40,6 +43,7 @@ import { AiDraftService } from '../services/aiDraftService.js';
 import { AiChatService } from '../services/aiChatService.js';
 import { IdeService } from '../services/ideService.js';
 import { GitReviewService } from '../services/gitReviewService.js';
+import { requestGuard, resolveAllowedHosts, resolveWebOrigins } from './requestGuard.js';
 
 export interface AppDependencies {
   db: AppDatabase;
@@ -59,6 +63,15 @@ export interface AppDependencies {
   broadcaster: SseBroadcaster;
   notifier: Notifier;
   agentToken?: string;
+  webhookSecret?: string;
+  webOrigins?: string[];
+  allowedHosts?: string[];
+}
+
+function safeEqual(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
 }
 
 export function createApp(deps: AppDependencies): Express {
@@ -94,10 +107,24 @@ export function createApp(deps: AppDependencies): Express {
     deps.aiChatService ||
     new AiChatService(deps.db, deps.projectService, settingsService);
 
+  const webOrigins = deps.webOrigins || resolveWebOrigins();
+  const allowedHosts = deps.allowedHosts || resolveAllowedHosts();
+
   app.use(helmet({ contentSecurityPolicy: false }));
-  app.use(cors({ origin: true, credentials: true }));
+  app.use(requestGuard({ webOrigins, allowedHosts }));
+  app.use(cors({ origin: webOrigins, credentials: true }));
   app.use(cookieParser());
-  app.use(express.json({ limit: '50mb' }));
+  app.use(
+    express.json({
+      limit: '50mb',
+      // Keep the exact bytes of webhook deliveries for signature verification.
+      verify: (req, _res, buf) => {
+        if (req.url?.startsWith('/api/webhooks/')) {
+          (req as Request & { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+        }
+      },
+    })
+  );
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // Health
@@ -207,14 +234,17 @@ export function createApp(deps: AppDependencies): Express {
       if (!proj) {
         return res.status(404).json({ error: 'Project not found' });
       }
-      const { exec } = await import('node:child_process');
-      const cmd =
+      if (!fs.existsSync(proj.repo_path) || !fs.statSync(proj.repo_path).isDirectory()) {
+        return res.status(400).json({ error: `Repository path is not a directory: ${proj.repo_path}` });
+      }
+      // argv only, never a shell; `open -R` reveals the folder instead of launching a bundle.
+      const [cmd, args]: [string, string[]] =
         process.platform === 'darwin'
-          ? 'open'
+          ? ['open', ['-R', proj.repo_path]]
           : process.platform === 'win32'
-          ? 'explorer'
-          : 'xdg-open';
-      exec(`${cmd} "${proj.repo_path}"`);
+          ? ['explorer', [proj.repo_path]]
+          : ['xdg-open', [proj.repo_path]];
+      execFile(cmd, args, () => {});
       res.json({ ok: true, path: proj.repo_path });
     } catch (err: any) {
       next(err);
@@ -642,12 +672,30 @@ export function createApp(deps: AppDependencies): Express {
     }
   };
 
+  const requireAgentToken = (req: Request, res: Response, next: NextFunction) => {
+    if (!deps.agentToken) return next();
+    if (safeEqual(req.headers.authorization || '', `Bearer ${deps.agentToken}`)) return next();
+    return res.status(401).json({ error: 'Invalid or missing agent token' });
+  };
+
   app.post('/api/tickets', handleCreateTicket);
-  app.post('/api/agent/tickets', handleCreateTicket);
+  app.post('/api/agent/tickets', requireAgentToken, handleCreateTicket);
 
   // VCS Webhooks Sync
+  const hasValidGitHubSignature = (req: Request): boolean => {
+    if (!deps.webhookSecret) return true;
+    const signature = req.headers['x-hub-signature-256'];
+    const raw = (req as Request & { rawBody?: Buffer }).rawBody;
+    if (typeof signature !== 'string' || !raw) return false;
+    const expected = 'sha256=' + crypto.createHmac('sha256', deps.webhookSecret).update(raw).digest('hex');
+    return safeEqual(signature, expected);
+  };
+
   app.post('/api/webhooks/github', async (req, res, next) => {
     try {
+      if (!hasValidGitHubSignature(req)) {
+        return res.status(401).json({ error: 'Invalid webhook signature' });
+      }
       const event = (req.headers['x-github-event'] as string) || req.body?.event || 'pull_request';
       const result = await vcsSyncService.handleGitHubWebhook(event, req.body);
       res.status(200).json(result);

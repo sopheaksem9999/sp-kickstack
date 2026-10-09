@@ -48,3 +48,41 @@ html.light ::-webkit-scrollbar-thumb {
 html.light ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* React Day Picker / Radix Date Picker Sleek Styling */
+.rdp-root {
+  --rdp-accent-color: #6366f1;
+  --rdp-accent-background-color: #eef2ff;
+  --rdp-day-height: 34px;
+  --rdp-day-width: 34px;
+  margin: 0;
+  font-family: inherit;
+}
+
+html.dark .rdp-root {
+  --rdp-accent-color: #6366f1;
+  --rdp-accent-background-color: #2e3048;
+  color: #f1f5f9;
+}
+
+html.dark .rdp-button:hover:not([disabled]):not(.rdp-day_selected):not(.rdp-selected) {
+  background-color: #262838;
+}
+
+html.dark .rdp-caption_label,
+html.dark .rdp-nav_button {
+  color: #f1f5f9;
+}
+
+.rdp-selected .rdp-day_button,
+.rdp-day_selected {
+  background-color: #6366f1 !important;
+  color: #ffffff !important;
+  font-weight: 700;
+  border-radius: 10px;
+}
+
+.rdp-day_today:not(.rdp-day_selected):not(.rdp-selected) {
+  font-weight: 700;
+  color: #6366f1;
+}

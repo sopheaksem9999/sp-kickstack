@@ -12,6 +12,20 @@ export type EventCallback = (event: {
   payload: Record<string, unknown>;
 }) => void;
 
+const TASKS_IN_FLIGHT_PER_ENGINE = 4;
+const MAX_DOWN_BACKOFF_MS = 5 * 60 * 1000;
+
+/** Run `fn` over `items` with at most `limit` calls in flight. */
+async function forEachLimit<T>(items: T[], limit: number, fn: (item: T) => Promise<void>) {
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      await fn(items[next++]);
+    }
+  });
+  await Promise.all(workers);
+}
+
 export class EngineWatcher {
   private timer: NodeJS.Timeout | null = null;
   private isScanning = false;
@@ -42,7 +56,6 @@ export class EngineWatcher {
   public async scanOnce(): Promise<number> {
     if (this.isScanning) return 0;
     this.isScanning = true;
-    let changesCount = 0;
 
     try {
       // Find all tasks that are not terminal
@@ -62,90 +75,105 @@ export class EngineWatcher {
         tasksByProject.set(t.project, list);
       }
 
-      for (const [projectName, tasks] of tasksByProject.entries()) {
-        const project = this.projectService.getProject(projectName);
-        // Manual projects have no engine to poll: people and webhooks move their tasks.
-        if (!project || !project.enabled || project.engine_type === 'manual') continue;
-
-        const adapter = this.getAdapter(projectName);
-
-        // Check health
-        const health = await adapter.health();
-        if (!health.ok) {
-          if (project.engine_status !== 'down') {
-            this.projectService.updateEngineStatus(projectName, 'down');
-            this.recordEvent('engine_down', undefined, undefined, {
-              project: projectName,
-              error: health.error,
-            });
-          }
-          continue;
-        } else if (project.engine_status === 'down') {
-          this.projectService.updateEngineStatus(projectName, 'ok');
-          this.recordEvent('engine_up', undefined, undefined, { project: projectName });
-        }
-
-        // Query each task
-        for (const task of tasks) {
-          try {
-            const engineTask = await adapter.getTask(task.engine_task_id!);
-            if (!engineTask) continue;
-
-            const rawChanged = engineTask.rawStatus !== task.engine_status_raw;
-            const statusChanged = engineTask.status !== task.status;
-            const prChanged = (engineTask.prUrl || null) !== (task.pr_url || null);
-
-            if (statusChanged || rawChanged || prChanged) {
-              const oldStatus = task.status;
-              const now = new Date().toISOString();
-
-              // Guarded on the status we read before awaiting the engine: if someone else
-              // (webhook, operator, link release) changed it meanwhile, theirs wins.
-              const updated = this.db
-                .prepare(`
-                  UPDATE bridge_tasks
-                  SET status = ?, engine_status_raw = ?, pr_url = COALESCE(?, pr_url), updated_at = ?
-                  WHERE id = ? AND status = ?
-                `)
-                .run(
-                  engineTask.status,
-                  engineTask.rawStatus,
-                  engineTask.prUrl || null,
-                  now,
-                  task.id,
-                  oldStatus
-                );
-              if (updated.changes !== 1) continue;
-              changesCount++;
-
-              if (statusChanged) {
-                await this.reactor.onTaskStatusChanged(
-                  { ...task, pr_url: engineTask.prUrl || task.pr_url },
-                  oldStatus,
-                  engineTask.status,
-                  'watcher',
-                  { rawStatus: engineTask.rawStatus, prUrl: engineTask.prUrl || null }
-                );
-              } else {
-                // Raw status / PR link only: refresh clients without a notification row.
-                this.onEvent?.({
-                  type: 'task_updated',
-                  req_id: task.req_id,
-                  task_id: task.id,
-                  payload: { taskId: task.id, rawStatus: engineTask.rawStatus, prUrl: engineTask.prUrl || null },
-                });
-              }
-            }
-          } catch (err: any) {
-            // Task query error; keep old state
-          }
-        }
-      }
+      // Engines are independent: poll them in parallel.
+      const results = await Promise.allSettled(
+        [...tasksByProject.entries()].map(([projectName, tasks]) => this.scanProject(projectName, tasks))
+      );
+      return results.reduce((sum, r) => sum + (r.status === 'fulfilled' ? r.value : 0), 0);
     } finally {
       this.isScanning = false;
     }
+  }
 
-    return changesCount;
+  private downBackoff = new Map<string, { until: number; delayMs: number }>();
+
+  private async scanProject(projectName: string, tasks: BridgeTask[]): Promise<number> {
+    const project = this.projectService.getProject(projectName);
+    // Manual projects have no engine to poll: people and webhooks move their tasks.
+    if (!project || !project.enabled || project.engine_type === 'manual') return 0;
+
+    // A down engine is re-checked with exponential backoff, not on every tick.
+    const backoff = this.downBackoff.get(projectName);
+    if (backoff && backoff.until > Date.now()) return 0;
+
+    let adapter: ReturnType<AdapterFactory>;
+    try {
+      adapter = this.getAdapter(projectName);
+    } catch (err: any) {
+      console.warn(`[watcher] no adapter for ${projectName}: ${err?.message || err}`);
+      return 0;
+    }
+
+    const health = await adapter.health();
+    if (!health.ok) {
+      const delayMs = Math.min((backoff?.delayMs ?? this.pollIntervalMs / 2) * 2, MAX_DOWN_BACKOFF_MS);
+      this.downBackoff.set(projectName, { until: Date.now() + delayMs, delayMs });
+      if (project.engine_status !== 'down') {
+        this.projectService.updateEngineStatus(projectName, 'down');
+        this.recordEvent('engine_down', undefined, undefined, {
+          project: projectName,
+          error: health.error,
+        });
+      }
+      return 0;
+    }
+    this.downBackoff.delete(projectName);
+    if (project.engine_status === 'down') {
+      this.projectService.updateEngineStatus(projectName, 'ok');
+      this.recordEvent('engine_up', undefined, undefined, { project: projectName });
+    }
+
+    let changes = 0;
+    await forEachLimit(tasks, TASKS_IN_FLIGHT_PER_ENGINE, async (task) => {
+      try {
+        if (await this.syncTask(adapter, task)) changes++;
+      } catch (err: any) {
+        console.warn(`[watcher] ${projectName} task #${task.id} (${task.engine_task_id}): ${err?.message || err}`);
+      }
+    });
+    return changes;
+  }
+
+  /** Compare one task with its engine; persist and react to a change. Returns true if it changed. */
+  private async syncTask(adapter: ReturnType<AdapterFactory>, task: BridgeTask): Promise<boolean> {
+    const engineTask = await adapter.getTask(task.engine_task_id!);
+    if (!engineTask) return false;
+
+    const rawChanged = engineTask.rawStatus !== task.engine_status_raw;
+    const statusChanged = engineTask.status !== task.status;
+    const prChanged = (engineTask.prUrl || null) !== (task.pr_url || null);
+    if (!statusChanged && !rawChanged && !prChanged) return false;
+
+    const oldStatus = task.status;
+    // Guarded on the status we read before awaiting the engine: if someone else
+    // (webhook, operator, link release) changed it meanwhile, theirs wins.
+    const updated = this.db
+      .prepare(`
+        UPDATE bridge_tasks
+        SET status = ?, engine_status_raw = ?, pr_url = COALESCE(?, pr_url), updated_at = ?
+        WHERE id = ? AND status = ?
+      `)
+      .run(engineTask.status, engineTask.rawStatus, engineTask.prUrl || null, new Date().toISOString(), task.id, oldStatus);
+    if (updated.changes !== 1) return false;
+
+    if (statusChanged) {
+      await this.reactor.onTaskStatusChanged(
+        { ...task, pr_url: engineTask.prUrl || task.pr_url },
+        oldStatus,
+        engineTask.status,
+        'watcher',
+        { rawStatus: engineTask.rawStatus, prUrl: engineTask.prUrl || null }
+      );
+    } else {
+      // Raw status / PR link only: refresh clients without a notification row.
+      this.onEvent?.({
+        type: 'task_updated',
+        req_id: task.req_id,
+        task_id: task.id,
+        payload: { taskId: task.id, rawStatus: engineTask.rawStatus, prUrl: engineTask.prUrl || null },
+      });
+    }
+    return true;
   }
 
   public start() {

@@ -158,8 +158,11 @@ ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input
     };
   }
 
-  /** Create a reserved ('pending') ticket in its target engine; throws if the engine refuses. */
-  public async dispatchTicket(ticketId: number): Promise<void> {
+  /**
+   * Create a reserved ('pending') ticket in its target engine; throws if the engine refuses.
+   * `recordFailure: false` keeps intermediate retry-sweep failures out of notifications.
+   */
+  public async dispatchTicket(ticketId: number, options: { recordFailure?: boolean } = {}): Promise<void> {
     const ticket = this.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(ticketId) as BridgeTask | undefined;
     if (!ticket || ticket.status !== 'pending') return;
 
@@ -185,7 +188,9 @@ ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input
       this.db
         .prepare("UPDATE bridge_tasks SET status = 'failed', last_error = ?, updated_at = ? WHERE id = ? AND status = 'pending'")
         .run(message, now, ticketId);
-      this.recordEvent('task_failed', ticket.req_id, ticketId, { taskId: ticketId, project: ticket.project, error: message, stage: 'ticket' });
+      if (options.recordFailure !== false) {
+        this.recordEvent('task_failed', ticket.req_id, ticketId, { taskId: ticketId, project: ticket.project, error: message, stage: 'ticket' });
+      }
       throw new HttpError(502, `Ticket #${ticketId} could not be created in ${ticket.project}: ${message}`);
     }
   }

@@ -17,6 +17,8 @@ import { VcsSyncService } from './services/vcsSyncService.js';
 import { MetricsService } from './services/metricsService.js';
 import { createApp } from './api/app.js';
 import { TaskReactor } from './services/taskReactor.js';
+import { RetrySweeper } from './services/retrySweeper.js';
+import { startScheduler } from './services/scheduler.js';
 
 const PORT = Number(process.env.PORT || 4100);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -67,6 +69,8 @@ const watcher = new EngineWatcher(
 );
 
 const outboxScanner = new OutboxScanner(projectService, ticketService);
+const retrySweeper = new RetrySweeper(db, fanOutService, ticketService, linkService);
+const TICK_MS = Number(process.env.WATCH_INTERVAL_MS) || 5000;
 
 // Seed from projects.yaml if present
 const yamlPath = path.join(WORKSPACE_DIR, 'projects.yaml');
@@ -96,10 +100,16 @@ const app = createApp({
 
 const server = app.listen(PORT, HOST, () => {
   console.log(`🚀 SP Kickstack DevFlow Bridge running at http://${HOST}:${PORT}`);
-  watcher.start();
-  setInterval(() => {
-    outboxScanner.scanOnce().catch(() => {});
-  }, 5000);
+  // One tick: sync engine state, retry failed side effects (also recovers reservations
+  // left pending by a crash), then pick up agent outbox tickets.
+  startScheduler(
+    [
+      ['watcher', () => watcher.scanOnce()],
+      ['retry', () => retrySweeper.sweepOnce()],
+      ['outbox', () => outboxScanner.scanOnce()],
+    ],
+    TICK_MS
+  );
 });
 
 export { app, server };

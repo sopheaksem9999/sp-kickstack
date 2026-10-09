@@ -1,5 +1,5 @@
 // Regression tests for the requirement-execution review (one describe per finding ID).
-import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -19,6 +19,8 @@ import { SseBroadcaster } from './sse/broadcaster.js';
 import { TaskReactor } from './services/taskReactor.js';
 import { EngineWatcher } from './watcher/engineWatcher.js';
 import { OutboxScanner } from './watcher/outboxScanner.js';
+import { RetrySweeper } from './services/retrySweeper.js';
+import { startScheduler } from './services/scheduler.js';
 import { Notifier } from './notify/notifier.js';
 import { createApp, AppDependencies } from './api/app.js';
 import { testRequest } from './api/testHelper.js';
@@ -1111,5 +1113,214 @@ describe('O: simulated features only exist in DEMO_MODE', () => {
     const req = h.createRequirement();
     const res = await testRequest(h.app, 'POST', `/api/requirements/${req.id}/merge-to-main`);
     expect(res.status).toBe(409);
+  });
+});
+
+describe('T12: retry sweep picks up everything that failed transiently', () => {
+  let h: Harness;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => h.db.close());
+
+  const later = () => Date.now() + 60 * 60 * 1000;
+  const sweeper = (now: () => number = later) =>
+    new RetrySweeper(h.db, h.fanOutService, h.ticketService, h.linkService, { now });
+  const breakAdapter = (project: 'backend' | 'mobile', method: 'createGoal' | 'createTask' | 'releaseTask' | 'cancelTask') => {
+    const adapter = h.adapters[project] as any;
+    const original = adapter[method].bind(adapter);
+    adapter[method] = async () => { throw new Error(`${project} ${method} down`); };
+    return () => { adapter[method] = original; };
+  };
+
+  it('retries a failed goal after its backoff and moves the requirement to in_progress', async () => {
+    const req = h.createRequirement(['backend']);
+    const restore = breakAdapter('backend', 'createGoal');
+    const [goal] = await h.fanOutService.execute(req.id);
+    expect(h.requirementService.getRequirement(req.id)!.status).toBe('ready');
+    restore();
+
+    await sweeper().sweepOnce();
+
+    const row = taskRow(h, goal.id);
+    expect(row.status).toBe('queued');
+    expect(row.engine_task_id).toBeTruthy();
+    expect(row.attempts).toBe(2);
+    expect(h.requirementService.getRequirement(req.id)!.status).toBe('in_progress');
+  });
+
+  it('waits for the backoff before retrying', async () => {
+    const req = h.createRequirement(['backend']);
+    const restore = breakAdapter('backend', 'createGoal');
+    const [goal] = await h.fanOutService.execute(req.id);
+    restore();
+
+    await sweeper(() => Date.now()).sweepOnce();
+
+    expect(taskRow(h, goal.id).status).toBe('failed');
+  });
+
+  it('gives up after the maximum number of attempts', async () => {
+    const req = h.createRequirement(['backend']);
+    const restore = breakAdapter('backend', 'createGoal');
+    const [goal] = await h.fanOutService.execute(req.id);
+    restore();
+    h.db.prepare('UPDATE bridge_tasks SET attempts = 5 WHERE id = ?').run(goal.id);
+
+    await sweeper().sweepOnce();
+
+    expect(taskRow(h, goal.id).status).toBe('failed');
+  });
+
+  it('recovers a goal reservation left pending by a crash', async () => {
+    const req = h.createRequirement(['backend']);
+    const stale = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    const id = Number(h.db.prepare(`
+      INSERT INTO bridge_tasks (req_id, project, role, title, body_md, status, revision, attempts, created_at, updated_at)
+      VALUES (?, 'backend', 'goal', 't', 'b', 'pending', 1, 1, ?, ?)
+    `).run(req.id, stale, stale).lastInsertRowid);
+
+    await sweeper(() => Date.now()).sweepOnce();
+
+    expect(taskRow(h, id).status).toBe('queued');
+  });
+
+  it('leaves goals of cancelled requirements alone', async () => {
+    const req = h.createRequirement(['backend']);
+    const restore = breakAdapter('backend', 'createGoal');
+    const [goal] = await h.fanOutService.execute(req.id);
+    restore();
+    h.requirementService.updateStatus(req.id, 'cancelled');
+
+    await sweeper().sweepOnce();
+
+    expect(taskRow(h, goal.id).engine_task_id).toBeNull();
+  });
+
+  it('retries a ticket whose engine creation failed', async () => {
+    const req = h.createRequirement();
+    const restore = breakAdapter('backend', 'createTask');
+    await expect(
+      h.ticketService.createTicket(
+        { to: 'backend', type: 'api_request', title: 'GET /x', body: 'Provide it please', blocking: false, req_id: req.id },
+        'manual'
+      )
+    ).rejects.toThrow();
+    restore();
+
+    await sweeper().sweepOnce();
+
+    const ticket = h.db.prepare("SELECT * FROM bridge_tasks WHERE role = 'ticket'").get() as any;
+    expect(ticket.engine_task_id).toBeTruthy();
+  });
+
+  it('retries a link release the source engine refused', async () => {
+    const { mobileGoal, tickets } = await blockMobileOn(h, ['GET /loc']);
+    const restore = breakAdapter('mobile', 'releaseTask');
+    await h.linkService.evaluateDependencyResolved(tickets[0].ticketId);
+    expect(h.linkService.getLinksForTask(mobileGoal.id)[0].state).toBe('error');
+    restore();
+
+    await sweeper().sweepOnce();
+
+    expect(h.linkService.getLinksForTask(mobileGoal.id)[0].state).toBe('released');
+    expect(h.mobileEngine.getTaskData(mobileGoal.engine_task_id!)!.status).toBe('queued');
+  });
+
+  it('retries cancelling tasks whose engine refused', async () => {
+    const req = h.createRequirement();
+    const tasks = await h.fanOutService.execute(req.id);
+    const restore = breakAdapter('mobile', 'cancelTask');
+    await h.fanOutService.cancel(req.id);
+    const mobile = tasks.find((t) => t.project === 'mobile')!;
+    expect(taskRow(h, mobile.id).status).toBe('queued');
+    restore();
+
+    await sweeper().sweepOnce();
+
+    expect(taskRow(h, mobile.id).status).toBe('cancelled');
+    expect(h.mobileEngine.getTaskData(mobile.engine_task_id!)!.status).toBe('cancelled');
+  });
+});
+
+describe('T12: faster, observable watcher', () => {
+  let h: Harness;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => { h.db.close(); vi.restoreAllMocks(); });
+
+  it('polls projects in parallel', async () => {
+    const req = h.createRequirement();
+    await h.fanOutService.execute(req.id);
+    let inFlight = 0;
+    let maxInFlight = 0;
+    for (const a of Object.values(h.adapters)) {
+      const original = a.getTask.bind(a);
+      a.getTask = async (id: string) => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 30));
+        inFlight--;
+        return original(id);
+      };
+    }
+
+    await h.watcher.scanOnce();
+
+    expect(maxInFlight).toBeGreaterThan(1);
+  });
+
+  it('skips a down engine until its backoff passes', async () => {
+    const req = h.createRequirement(['backend']);
+    await h.fanOutService.execute(req.id);
+    let healthChecks = 0;
+    h.adapters.backend.health = async () => { healthChecks++; return { ok: false, error: 'down' }; };
+
+    await h.watcher.scanOnce();
+    await h.watcher.scanOnce();
+
+    expect(healthChecks).toBe(1);
+    expect((h.db.prepare("SELECT COUNT(*) c FROM events WHERE type = 'engine_down'").get() as any).c).toBe(1);
+  });
+
+  it('logs task polling errors instead of swallowing them', async () => {
+    const req = h.createRequirement(['backend']);
+    await h.fanOutService.execute(req.id);
+    h.adapters.backend.getTask = async () => { throw new Error('engine 500'); };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await h.watcher.scanOnce();
+
+    expect(warn).toHaveBeenCalled();
+    expect(String(warn.mock.calls[0])).toContain('engine 500');
+  });
+});
+
+describe('T12: one scheduler tick', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('runs jobs in order each tick, skips overlapping ticks, and survives a failing job', async () => {
+    vi.useFakeTimers();
+    const calls: string[] = [];
+    let release!: () => void;
+    const slow = new Promise<void>((r) => { release = r; });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const stop = startScheduler(
+      [
+        ['watcher', async () => { calls.push('watcher'); await slow; }],
+        ['retry', async () => { calls.push('retry'); throw new Error('boom'); }],
+        ['outbox', async () => { calls.push('outbox'); }],
+      ],
+      1000
+    );
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000); // overlapping tick: skipped while watcher is still running
+    expect(calls).toEqual(['watcher']);
+
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toEqual(['watcher', 'retry', 'outbox']);
+    expect(warn).toHaveBeenCalled();
+    stop();
+    warn.mockRestore();
   });
 });

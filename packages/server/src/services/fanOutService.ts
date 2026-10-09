@@ -154,8 +154,11 @@ ${wrapUntrusted('requirement', requirementMd)}
     return goals;
   }
 
-  /** Send one reserved ('pending') goal to its engine, with 3 tries and backoff. */
-  public async dispatchGoal(taskId: number): Promise<void> {
+  /**
+   * Send one reserved ('pending') goal to its engine, with 3 tries and backoff.
+   * `recordFailure: false` keeps intermediate retry-sweep failures out of notifications.
+   */
+  public async dispatchGoal(taskId: number, options: { recordFailure?: boolean } = {}): Promise<void> {
     const task = this.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(taskId) as BridgeTask | undefined;
     if (!task || task.status !== 'pending') return;
 
@@ -187,6 +190,7 @@ ${wrapUntrusted('requirement', requirementMd)}
     this.db
       .prepare("UPDATE bridge_tasks SET status = 'failed', last_error = ?, updated_at = ? WHERE id = ? AND status = 'pending'")
       .run(lastError, now, taskId);
+    if (options.recordFailure === false) return;
     this.db
       .prepare("INSERT INTO events (req_id, task_id, type, payload, read, at) VALUES (?, ?, 'task_failed', ?, 0, ?)")
       .run(task.req_id, taskId, JSON.stringify({ taskId, project: task.project, error: lastError, stage: 'fan-out' }), now);

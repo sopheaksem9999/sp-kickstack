@@ -1,12 +1,14 @@
 import Database from 'better-sqlite3';
 import { INITIAL_SCHEMA } from './schema.js';
+import { LATEST_VERSION, getUserVersion, runMigrations } from './migrations.js';
 import path from 'node:path';
 import fs from 'node:fs';
 
 export type AppDatabase = Database.Database;
 
 export function initDatabase(dbPath: string = ':memory:'): AppDatabase {
-  if (dbPath !== ':memory:') {
+  const isFile = dbPath !== ':memory:';
+  if (isFile) {
     const dir = path.dirname(dbPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
@@ -14,47 +16,29 @@ export function initDatabase(dbPath: string = ':memory:'): AppDatabase {
   }
 
   const db = new Database(dbPath);
-  
+
   // Pragmas
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
 
+  // Back up an existing database before its schema changes. VACUUM INTO cannot run
+  // inside a transaction, so it happens here, before any migration starts.
+  const hadTables =
+    (db.prepare("SELECT COUNT(*) AS c FROM sqlite_master WHERE type = 'table'").get() as { c: number }).c > 0;
+  const fromVersion = getUserVersion(db);
+  if (isFile && hadTables && fromVersion < LATEST_VERSION) {
+    const backupDir = path.join(path.dirname(dbPath), 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const base = path.basename(dbPath, path.extname(dbPath));
+    db.prepare('VACUUM INTO ?').run(path.join(backupDir, `${base}-${stamp}-v${fromVersion}.db`));
+  }
+
   // Execute schema
   db.exec(INITIAL_SCHEMA);
 
-  // Migrate existing tables if columns are missing
-  try {
-    const projCols = db.pragma('table_info(projects)') as any[];
-    if (projCols.length > 0 && !projCols.some((col) => col.name === 'workspace_id')) {
-      db.exec("ALTER TABLE projects ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'default' REFERENCES workspaces(id) ON DELETE CASCADE;");
-    }
-    const reqCols = db.pragma('table_info(requirements)') as any[];
-    if (reqCols.length > 0 && !reqCols.some((col) => col.name === 'workspace_id')) {
-      db.exec("ALTER TABLE requirements ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'default' REFERENCES workspaces(id) ON DELETE CASCADE;");
-    }
-    if (reqCols.length > 0 && !reqCols.some((col) => col.name === 'attachments')) {
-      db.exec("ALTER TABLE requirements ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]';");
-    }
-    if (reqCols.length > 0 && !reqCols.some((col) => col.name === 'merge_policy')) {
-      db.exec("ALTER TABLE requirements ADD COLUMN merge_policy TEXT DEFAULT NULL;");
-    }
-    if (reqCols.length > 0 && !reqCols.some((col) => col.name === 'sprint_id')) {
-      db.exec("ALTER TABLE requirements ADD COLUMN sprint_id TEXT DEFAULT NULL REFERENCES sprints(id) ON DELETE SET NULL;");
-    }
-    if (reqCols.length > 0 && !reqCols.some((col) => col.name === 'session_id')) {
-      db.exec("ALTER TABLE requirements ADD COLUMN session_id TEXT DEFAULT NULL REFERENCES ai_chat_sessions(id) ON DELETE SET NULL;");
-    }
-    const chatCols = db.pragma('table_info(ai_chat_sessions)') as any[];
-    if (chatCols.length > 0 && !chatCols.some((col) => col.name === 'effort')) {
-      db.exec("ALTER TABLE ai_chat_sessions ADD COLUMN effort TEXT NOT NULL DEFAULT 'medium';");
-    }
-    const msgCols = db.pragma('table_info(ai_chat_messages)') as any[];
-    if (msgCols.length > 0 && !msgCols.some((col) => col.name === 'attachments')) {
-      db.exec("ALTER TABLE ai_chat_messages ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]';");
-    }
-  } catch (err) {
-    // Already migrated or in-memory
-  }
+  // Numbered migrations (db/migrations.ts); failures throw instead of being swallowed.
+  runMigrations(db);
 
   return db;
 }

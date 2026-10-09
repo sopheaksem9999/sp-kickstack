@@ -68,23 +68,20 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
   }
 
   public createRequirement(input: CreateRequirementInput): Requirement {
-    const seq = this.getNextSeq();
-    const id = this.formatId(seq);
     const now = new Date().toISOString();
     const status: RequirementStatus = input.status || 'draft';
     const revision = 1;
     const attachments = input.attachments || [];
-
     const reqDir = path.join(this.workspaceDir, 'requirements');
-    if (!fs.existsSync(reqDir)) {
-      fs.mkdirSync(reqDir, { recursive: true });
-    }
 
-    const filePath = path.join(reqDir, `${id}.md`);
-    const bodyMd = this.renderMarkdown(id, input, status, revision);
-    fs.writeFileSync(filePath, bodyMd, 'utf-8');
-
+    // Allocate the sequence number and insert in one IMMEDIATE transaction:
+    // the MCP server process writes to the same database.
     const insertTx = this.db.transaction(() => {
+      const seq = this.getNextSeq();
+      const id = this.formatId(seq);
+      const filePath = path.join(reqDir, `${id}.md`);
+      const bodyMd = this.renderMarkdown(id, input, status, revision);
+
       this.db.prepare(`
         INSERT INTO requirements (id, workspace_id, session_id, seq, title, status, priority, body_md, file_path, revision, attachments, merge_policy, sprint_id, created_at, updated_at)
         VALUES (@id, @workspace_id, @session_id, @seq, @title, @status, @priority, @body_md, @file_path, @revision, @attachments, @merge_policy, @sprint_id, @created_at, @updated_at)
@@ -112,9 +109,19 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
       for (const proj of input.affected_projects) {
         insertProj.run(id, proj);
       }
+
+      return { id, filePath, bodyMd };
     });
 
-    insertTx();
+    const { id, filePath, bodyMd } = insertTx.immediate();
+
+    // Write the markdown copy only after the row is committed, atomically via rename.
+    if (!fs.existsSync(reqDir)) {
+      fs.mkdirSync(reqDir, { recursive: true });
+    }
+    const tmpPath = `${filePath}.${process.pid}.tmp`;
+    fs.writeFileSync(tmpPath, bodyMd, 'utf-8');
+    fs.renameSync(tmpPath, filePath);
 
     return this.getRequirement(id)!;
   }

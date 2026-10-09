@@ -57,3 +57,6 @@ coverage/
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/

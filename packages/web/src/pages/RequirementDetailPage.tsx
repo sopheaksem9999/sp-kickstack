@@ -7,21 +7,36 @@ import {
   cancelRequirement,
   markTaskDone,
   releaseLink,
+  updateRequirementStatus,
+  mergeRequirementToMain,
 } from '../lib/api.js';
 import { StatusBadge } from '../components/StatusBadge.js';
-import { BridgeTask } from '@sp-kickstack/shared';
+import { BridgeTask, RequirementStatus } from '@sp-kickstack/shared';
 import { toast } from 'sonner';
 import {
   ArrowLeft,
   Play,
   XCircle,
   ExternalLink,
-  GitPullRequest,
   CheckCircle2,
   Unlock,
   BookOpen,
   GitFork,
+  GitBranch,
+  GitMerge,
+  Paperclip,
+  FileSpreadsheet,
+  FileCode,
+  Image as ImageIcon,
+  FileText,
 } from 'lucide-react';
+
+const stateOptions: { value: RequirementStatus; label: string }[] = [
+  { value: 'draft', label: 'ToDo' },
+  { value: 'in_progress', label: 'In-Progress' },
+  { value: 'qa', label: 'QA / Review' },
+  { value: 'done', label: 'Done' },
+];
 
 export function RequirementDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -55,6 +70,24 @@ export function RequirementDetailPage() {
       toast.info('Requirement cancelled');
       queryClient.invalidateQueries();
     },
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: (newStatus: RequirementStatus) => updateRequirementStatus(id!, newStatus),
+    onSuccess: () => {
+      toast.success('Requirement state updated');
+      queryClient.invalidateQueries();
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to update status'),
+  });
+
+  const mergeMutation = useMutation({
+    mutationFn: () => mergeRequirementToMain(id!),
+    onSuccess: () => {
+      toast.success('Successfully reviewed and merged into main branch! 🎉');
+      queryClient.invalidateQueries();
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to merge to main'),
   });
 
   const doneMutation = useMutation({
@@ -91,6 +124,22 @@ export function RequirementDetailPage() {
     tasksByProject.set(task.project, list);
   }
 
+  const getAttachmentIcon = (name: string, type?: string) => {
+    const lower = name.toLowerCase();
+    if (lower.endsWith('.xlsx') || lower.endsWith('.xls') || lower.endsWith('.csv')) {
+      return <FileSpreadsheet className="w-4 h-4 text-emerald-500" />;
+    }
+    if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.svg') || lower.endsWith('.gif') || type?.startsWith('image/')) {
+      return <ImageIcon className="w-4 h-4 text-sky-500" />;
+    }
+    if (lower.endsWith('.md') || lower.endsWith('.json') || lower.endsWith('.yaml')) {
+      return <FileCode className="w-4 h-4 text-purple-500" />;
+    }
+    return <FileText className="w-4 h-4 text-slate-400" />;
+  };
+
+  const isMergeReady = req.status === 'qa' || req.status === 'in_review' || req.status === 'done';
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       {/* ClickUp Header & Action Bar */}
@@ -108,7 +157,30 @@ export function RequirementDetailPage() {
               <span className="text-[11px] text-purple-700 dark:text-purple-300 font-mono bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800/40 px-2 py-0.5 rounded font-semibold">
                 📁 {req.workspace_id || 'default'}
               </span>
-              <StatusBadge status={req.status} />
+
+              {/* Status Badge & Interactive State Switcher */}
+              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-[#1f202b] px-2 py-0.5 rounded-lg border border-slate-200 dark:border-[#2d2f3d]">
+                <StatusBadge status={req.status} size="xs" />
+                <select
+                  value={req.status === 'in_review' ? 'qa' : req.status}
+                  onChange={(e) => statusMutation.mutate(e.target.value as RequirementStatus)}
+                  className="bg-transparent text-[11px] font-bold text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
+                  title="Change State"
+                >
+                  {stateOptions.map((st) => (
+                    <option key={st.value} value={st.value} className="bg-white dark:bg-[#1a1b22] text-slate-800 dark:text-slate-200">
+                      State: {st.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Implementation Branch Tag */}
+              <span className="inline-flex items-center gap-1 text-[11px] font-mono text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-[#1f202b] px-2 py-0.5 rounded-md border border-slate-200 dark:border-[#2d2f3d]">
+                <GitBranch className="w-3 h-3 text-[#7b68ee]" />
+                <span>develop</span>
+              </span>
+
               <span className="text-xs text-slate-400 font-mono">rev.{req.revision}</span>
             </div>
             <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight mt-1">
@@ -118,6 +190,7 @@ export function RequirementDetailPage() {
         </div>
 
         <div className="flex items-center gap-2.5">
+          {/* Fan-Out Dispatch */}
           {req.status === 'draft' && (
             <button
               onClick={() => fanOutMutation.mutate()}
@@ -126,6 +199,19 @@ export function RequirementDetailPage() {
             >
               <Play className="w-3.5 h-3.5 fill-current" />
               <span>Start Fan-Out</span>
+            </button>
+          )}
+
+          {/* Human Review & Click Merge to Main Button */}
+          {isMergeReady && (
+            <button
+              onClick={() => mergeMutation.mutate()}
+              disabled={mergeMutation.isPending}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-xs font-bold shadow-md shadow-emerald-600/20 active:scale-[0.98] transition-all disabled:opacity-50"
+              title="Operator review passed: Merge develop branch into main"
+            >
+              <GitMerge className="w-3.5 h-3.5" />
+              <span>{mergeMutation.isPending ? 'Merging...' : 'Review & Merge to Main'}</span>
             </button>
           )}
 
@@ -143,14 +229,58 @@ export function RequirementDetailPage() {
       </div>
 
       {/* ClickUp Doc Spec Preview Card */}
-      <div className="bg-white dark:bg-[#181922] border border-slate-200 dark:border-[#262732] rounded-2xl p-5 shadow-sm space-y-3">
-        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
-          <BookOpen className="w-4 h-4" />
-          <span>Requirement Document & Spec</span>
+      <div className="bg-white dark:bg-[#181922] border border-slate-200 dark:border-[#262732] rounded-2xl p-5 shadow-sm space-y-4">
+        <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
+          <div className="flex items-center gap-2">
+            <BookOpen className="w-4 h-4" />
+            <span>Requirement Document & Spec</span>
+          </div>
+          <span className="font-mono text-slate-400 text-[11px] font-normal">
+            Base Branch: <strong className="text-purple-600 dark:text-purple-400">develop</strong>
+          </span>
         </div>
+
         <div className="bg-slate-50 dark:bg-[#14151b] p-4 rounded-xl border border-slate-200 dark:border-[#22232e] text-xs font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed">
           {req.body_md}
         </div>
+
+        {/* Attached Files & Spreadsheets (if any) */}
+        {req.attachments && req.attachments.length > 0 && (
+          <div className="pt-2 border-t border-slate-100 dark:border-[#22232e] space-y-2">
+            <div className="flex items-center gap-1.5 text-xs font-bold uppercase text-slate-400 tracking-wider">
+              <Paperclip className="w-3.5 h-3.5 text-[#7b68ee]" />
+              <span>Attached Files ({req.attachments.length}):</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {req.attachments.map((file, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center gap-2.5 p-2.5 rounded-lg bg-slate-50 dark:bg-[#14151b] border border-slate-200 dark:border-[#262732] text-xs"
+                >
+                  {getAttachmentIcon(file.name, file.type)}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-slate-800 dark:text-slate-200 truncate text-[11px]">
+                      {file.name}
+                    </p>
+                    <p className="text-[10px] text-slate-400">
+                      {file.size ? Math.round(file.size / 1024) + ' KB' : 'Asset'}
+                    </p>
+                  </div>
+                  {file.data_url && (
+                    <a
+                      href={file.data_url}
+                      download={file.name}
+                      className="p-1 text-slate-400 hover:text-[#7b68ee] transition-colors"
+                      title="Download Asset"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Multi-Project Columns (ClickUp Task Board Per Repo) */}
@@ -160,7 +290,7 @@ export function RequirementDetailPage() {
             Per-Repo Agent Engine Runtimes
           </h3>
           <span className="text-xs font-mono text-slate-400">
-            {req.affected_projects.length} connected repos
+            {req.affected_projects.length} connected repos (targeted to develop branch)
           </span>
         </div>
 
@@ -168,81 +298,74 @@ export function RequirementDetailPage() {
           {Array.from(tasksByProject.entries()).map(([projectName, tasks]) => (
             <div
               key={projectName}
-              className="bg-white dark:bg-[#181922] border border-slate-200 dark:border-[#262732] rounded-2xl flex flex-col shadow-sm overflow-hidden"
+              className="bg-white dark:bg-[#181922] border border-slate-200 dark:border-[#262732] rounded-2xl p-4 shadow-sm flex flex-col min-h-[300px]"
             >
-              <div className="p-3.5 border-b border-slate-200 dark:border-[#262732] bg-slate-50/70 dark:bg-[#1c1d27] flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-md bg-purple-100 dark:bg-purple-950/60 text-[#7b68ee] dark:text-purple-300 flex items-center justify-center font-bold text-xs">
-                    📁
-                  </div>
-                  <span className="font-mono text-xs font-bold text-slate-900 dark:text-white capitalize">
-                    {projectName}
-                  </span>
-                </div>
-                <span className="text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-full font-mono font-bold">
-                  {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-[#262732] mb-3">
+                <span className="font-bold text-xs uppercase text-slate-700 dark:text-slate-200 tracking-wider">
+                  {projectName}
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 dark:bg-[#20212b] text-slate-500 font-bold">
+                  {tasks.length} tasks
                 </span>
               </div>
 
-              <div className="p-3 space-y-3 flex-1 overflow-y-auto min-h-[220px]">
+              <div className="space-y-3 flex-1">
                 {tasks.length === 0 ? (
-                  <div className="text-center py-12 text-xs text-slate-400 italic">
-                    Awaiting fan-out dispatch...
+                  <div className="p-8 text-center text-slate-400 text-xs italic">
+                    Waiting for fan-out initialization...
                   </div>
                 ) : (
-                  tasks.map((task: BridgeTask) => (
+                  tasks.map((task) => (
                     <div
                       key={task.id}
-                      className="p-3.5 rounded-xl border border-slate-200 dark:border-[#2e303d] bg-slate-50 dark:bg-[#1f202b] shadow-sm space-y-2.5 transition-all"
+                      className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#14151b] border border-slate-200 dark:border-[#22232e] shadow-sm space-y-2 hover:border-slate-300 transition-colors"
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                          {task.role}
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="font-semibold text-xs text-slate-800 dark:text-slate-100 leading-snug">
+                          {task.title}
                         </span>
                         <StatusBadge status={task.status} size="xs" />
                       </div>
 
-                      <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 leading-snug">
-                        {task.title}
-                      </h4>
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono pt-1 border-t border-slate-100 dark:border-[#1c1d27]">
+                        <span>Role: {task.role}</span>
+                        {task.engine_task_id && (
+                          <span className="text-slate-500">#{task.engine_task_id}</span>
+                        )}
+                      </div>
 
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-200 dark:border-[#2a2b38]">
-                        <span className="font-mono text-[10px] text-slate-400">
-                          engine: {task.engine_status_raw || 'pending'}
-                        </span>
-                        {task.engine_url && (
+                      {task.last_error && (
+                        <div className="p-2 rounded bg-rose-50 dark:bg-rose-950/40 text-rose-600 text-[10px] font-mono break-all">
+                          {task.last_error}
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between pt-1">
+                        {task.engine_url ? (
                           <a
                             href={task.engine_url}
                             target="_blank"
                             rel="noreferrer"
-                            className="flex items-center gap-1 text-[#7b68ee] hover:underline font-semibold"
+                            className="inline-flex items-center gap-1 text-[11px] text-[#7b68ee] hover:underline"
                           >
-                            Engine <ExternalLink className="w-3 h-3" />
+                            <span>Open Engine</span>
+                            <ExternalLink className="w-3 h-3" />
                           </a>
+                        ) : (
+                          <div />
+                        )}
+
+                        {task.status !== 'done' && (
+                          <button
+                            onClick={() => doneMutation.mutate(task.id)}
+                            disabled={doneMutation.isPending}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-200 dark:bg-[#20212c] hover:bg-slate-300 dark:hover:bg-[#2a2b38] text-[10px] font-bold text-slate-700 dark:text-slate-300 transition-colors"
+                          >
+                            <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                            <span>Mark Done</span>
+                          </button>
                         )}
                       </div>
-
-                      {task.pr_url && (
-                        <a
-                          href={task.pr_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-bold hover:underline pt-0.5"
-                        >
-                          <GitPullRequest className="w-3.5 h-3.5" />
-                          <span>Pull Request</span>
-                        </a>
-                      )}
-
-                      {task.status !== 'done' && task.status !== 'cancelled' && (
-                        <button
-                          onClick={() => doneMutation.mutate(task.id)}
-                          className="w-full mt-2 py-1.5 px-2 text-xs font-bold rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-emerald-600 hover:text-white dark:hover:bg-emerald-600 text-slate-700 dark:text-slate-300 transition-all flex items-center justify-center gap-1.5"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Mark Complete</span>
-                        </button>
-                      )}
                     </div>
                   ))
                 )}
@@ -252,64 +375,65 @@ export function RequirementDetailPage() {
         </div>
       </div>
 
-      {/* Cross-Repo Dependencies / Links Panel */}
-      <div className="bg-white dark:bg-[#181922] border border-slate-200 dark:border-[#262732] rounded-2xl p-5 shadow-sm space-y-4">
+      {/* Dependency Links Panel (Cross-repo Contract Locks) */}
+      <div className="bg-white dark:bg-[#181922] border border-slate-200 dark:border-[#262732] rounded-2xl p-5 shadow-sm space-y-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <GitFork className="w-4 h-4 text-[#7b68ee]" />
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white">
-              Cross-Repo Dependency Links (xticket)
-            </h3>
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+            <GitFork className="w-4 h-4 text-purple-500" />
+            <span>Cross-Repo Dependency Links & Contracts</span>
           </div>
           <span className="text-xs text-slate-400 font-mono">
-            {graph?.links?.length || 0} links active
+            {graph?.links?.length || 0} active links
           </span>
         </div>
 
-        {graph?.links?.length === 0 ? (
-          <p className="text-xs text-slate-400 py-3 italic">
-            No cross-repo dependency tickets filed for this requirement yet.
-          </p>
+        {(!graph?.links || graph.links.length === 0) ? (
+          <div className="p-6 text-center text-slate-400 text-xs italic">
+            No inter-repository blocking tickets created yet.
+          </div>
         ) : (
-          <div className="divide-y divide-slate-100 dark:divide-[#262732]">
-            {graph?.links?.map((link: any) => {
-              const waitingTask = graph.tasks.find((t: any) => t.id === link.task_id);
-              const depTask = graph.tasks.find((t: any) => t.id === link.depends_on_id);
-
-              return (
-                <div key={link.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="font-mono text-[#7b68ee] font-bold">
-                        [{waitingTask?.project}] #{waitingTask?.id}
-                      </span>
-                      <span className="text-slate-400 text-[11px] font-medium">waits on</span>
-                      <span className="font-mono text-blue-600 dark:text-blue-400 font-bold">
-                        [{depTask?.project}] #{depTask?.id} ({depTask?.title})
-                      </span>
+          <div className="divide-y divide-slate-100 dark:divide-[#22232e]">
+            {graph.links.map((link) => (
+              <div key={link.id} className="py-3 flex items-center justify-between gap-4 text-xs">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-purple-600 dark:text-purple-400">
+                      Link #{link.id}
+                    </span>
+                    <span className="text-slate-400 font-mono text-[11px]">
+                      Task #{link.task_id} ➔ Depends on Task #{link.depends_on_id}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        link.state === 'released'
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                          : link.state === 'ready'
+                          ? 'bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300'
+                          : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                      }`}
+                    >
+                      {link.state}
+                    </span>
+                  </div>
+                  {link.context_md && (
+                    <div className="mt-1 text-[11px] text-slate-500 font-mono">
+                      Contract: {link.context_md}
                     </div>
-                    {link.context_md && (
-                      <div className="text-[11px] text-slate-600 dark:text-slate-300 font-mono bg-slate-50 dark:bg-[#14151b] p-2.5 rounded-lg border border-slate-200 dark:border-[#262732] max-w-2xl whitespace-pre-wrap">
-                        {link.context_md}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <StatusBadge status={link.state} size="xs" />
-                    {link.state === 'waiting' && (
-                      <button
-                        onClick={() => releaseMutation.mutate(link.id)}
-                        className="px-3 py-1.5 text-xs font-bold rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 flex items-center gap-1.5 transition-all shadow-sm"
-                      >
-                        <Unlock className="w-3.5 h-3.5" />
-                        <span>Release Hold</span>
-                      </button>
-                    )}
-                  </div>
+                  )}
                 </div>
-              );
-            })}
+
+                {link.state !== 'released' && (
+                  <button
+                    onClick={() => releaseMutation.mutate(link.id)}
+                    disabled={releaseMutation.isPending}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-[#2a2b38] hover:bg-slate-100 dark:hover:bg-[#20212c] text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors"
+                  >
+                    <Unlock className="w-3.5 h-3.5 text-sky-500" />
+                    <span>Operator Release</span>
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>

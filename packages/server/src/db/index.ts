@@ -32,6 +32,9 @@ export function initDatabase(dbPath: string = ':memory:'): AppDatabase {
     if (reqCols.length > 0 && !reqCols.some((col) => col.name === 'workspace_id')) {
       db.exec("ALTER TABLE requirements ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'default' REFERENCES workspaces(id) ON DELETE CASCADE;");
     }
+    if (reqCols.length > 0 && !reqCols.some((col) => col.name === 'attachments')) {
+      db.exec("ALTER TABLE requirements ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]';");
+    }
   } catch (err) {
     // Already migrated or in-memory
   }

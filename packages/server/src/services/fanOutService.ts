@@ -14,11 +14,27 @@ export class FanOutService {
     private getAdapter: AdapterFactory
   ) {}
 
-  public formatGoalBody(reqId: string, title: string, project: string, requirementMd: string): string {
+  public formatGoalBody(
+    reqId: string,
+    title: string,
+    project: string,
+    requirementMd: string,
+    baseBranch: string = 'develop',
+    mergePolicy: string = 'manual_review_merge'
+  ): string {
+    const mergePolicyDesc =
+      mergePolicy === 'auto_merge_main'
+        ? 'Changes on develop branch will be automatically merged to main upon task completion & green tests.'
+        : 'All changes remain on develop branch and require human operator review and manual approval before merging into main.';
+
     return `# ${reqId} — ${title}  (project: ${project})
 
+## Branch & Implementation Rules
+- Target Branch: All changes must be developed on the \`${baseBranch}\` branch.
+- Merge Strategy: ${mergePolicyDesc}
+
 ## What to do
-1. Read the requirement below and inspect this codebase.
+1. Read the requirement below and inspect this codebase on the \`${baseBranch}\` branch.
 2. Write \`specs/${reqId}/spec.md\` (what THIS project must do, affected modules,
    data/API changes, edge cases, risks, test strategy) and \`specs/${reqId}/plan.md\`
    (ordered implementation steps).
@@ -43,6 +59,20 @@ ${requirementMd}
 
     this.requirementService.updateStatus(reqId, 'ready');
 
+    // Retrieve branch and merge settings
+    let defaultBaseBranch = 'develop';
+    let mergePolicy = 'manual_review_merge';
+    try {
+      const row = this.db.prepare("SELECT value FROM settings WHERE key = 'branch_merge_settings'").get() as any;
+      if (row?.value) {
+        const parsed = JSON.parse(row.value);
+        if (parsed.default_base_branch) defaultBaseBranch = parsed.default_base_branch;
+        if (parsed.merge_policy) mergePolicy = parsed.merge_policy;
+      }
+    } catch {
+      // Use fallback
+    }
+
     const createdTasks: BridgeTask[] = [];
 
     for (const projectName of req.affected_projects) {
@@ -64,8 +94,9 @@ ${requirementMd}
         continue;
       }
 
+      const baseBranch = project.base_branch || defaultBaseBranch;
       const title = `${req.id}: ${req.title}`;
-      const bodyMd = this.formatGoalBody(req.id, req.title, projectName, req.body_md);
+      const bodyMd = this.formatGoalBody(req.id, req.title, projectName, req.body_md, baseBranch, mergePolicy);
       const adapter = this.getAdapter(projectName);
 
       let engineTaskId: string | null = null;
@@ -79,44 +110,49 @@ ${requirementMd}
           const engineTask = await adapter.createGoal({ title, bodyMd });
           engineTaskId = engineTask.id;
           engineUrl = engineTask.url || null;
-          engineRawStatus = engineTask.rawStatus || 'ready';
+          engineRawStatus = engineTask.rawStatus || null;
+          lastError = null;
           break;
         } catch (err: any) {
-          lastError = err.message;
+          lastError = err.message || 'Unknown adapter error';
           if (attempt < 3) {
-            await new Promise((r) => setTimeout(r, 50 * attempt));
+            await new Promise((r) => setTimeout(r, attempt * 100));
           }
         }
       }
 
       const now = new Date().toISOString();
-      const info = this.db
+      const status = engineTaskId ? 'queued' : 'failed';
+
+      const res = this.db
         .prepare(`
           INSERT INTO bridge_tasks (
             req_id, project, role, engine_task_id, title, body_md,
-            depth, status, engine_status_raw, engine_url, last_error, revision, created_at, updated_at
-          ) VALUES (?, ?, 'goal', ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
+            depth, status, engine_status_raw, engine_url, last_error,
+            revision, created_at, updated_at
+          ) VALUES (
+            @req_id, @project, 'goal', @engine_task_id, @title, @body_md,
+            0, @status, @engine_status_raw, @engine_url, @last_error,
+            @revision, @created_at, @updated_at
+          )
         `)
-        .run(
-          reqId,
-          projectName,
-          engineTaskId,
+        .run({
+          req_id: reqId,
+          project: projectName,
+          engine_task_id: engineTaskId,
           title,
-          bodyMd,
-          engineTaskId ? 'queued' : 'failed',
-          engineRawStatus,
-          engineUrl,
-          lastError,
-          req.revision,
-          now,
-          now
-        );
+          body_md: bodyMd,
+          status,
+          engine_status_raw: engineRawStatus,
+          engine_url: engineUrl,
+          last_error: lastError,
+          revision: req.revision,
+          created_at: now,
+          updated_at: now,
+        });
 
-      const created = this.db
-        .prepare('SELECT * FROM bridge_tasks WHERE id = ?')
-        .get(info.lastInsertRowid) as BridgeTask;
-
-      createdTasks.push(created);
+      const task = this.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(res.lastInsertRowid) as BridgeTask;
+      createdTasks.push(task);
     }
 
     this.requirementService.updateStatus(reqId, 'in_progress');

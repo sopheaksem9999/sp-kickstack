@@ -5,6 +5,7 @@ export type NormStatus =
   | 'needs_human'
   | 'held'
   | 'in_review'
+  | 'qa'
   | 'done'
   | 'failed'
   | 'cancelled';
@@ -13,6 +14,7 @@ export type RequirementStatus =
   | 'draft'
   | 'ready'
   | 'in_progress'
+  | 'qa'
   | 'in_review'
   | 'done'
   | 'cancelled';
@@ -42,6 +44,21 @@ export type EventType =
   | 'requirement_done'
   | 'limit_hit'
   | 'task_status_changed';
+
+export type BranchMergePolicy = 'manual_review_merge' | 'auto_merge_main';
+
+export interface BranchMergeSettings {
+  default_base_branch: string;
+  merge_policy: BranchMergePolicy;
+  auto_delete_branch?: boolean;
+}
+
+export interface AttachmentItem {
+  name: string;
+  size?: number;
+  type?: string;
+  data_url?: string;
+}
 
 export interface Workspace {
   id: string;
@@ -82,6 +99,7 @@ export interface Requirement {
   file_path: string;
   revision: number;
   affected_projects: string[];
+  attachments?: AttachmentItem[];
   created_at: string;
   updated_at: string;
 }

@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS projects (
   engine_type   TEXT NOT NULL,
   engine_url    TEXT,
   engine_meta   TEXT NOT NULL DEFAULT '{}',
-  base_branch   TEXT NOT NULL DEFAULT 'main',
+  base_branch   TEXT NOT NULL DEFAULT 'develop',
   contract_path TEXT,
   done_means    TEXT NOT NULL DEFAULT 'merged',
   high_risk_paths TEXT NOT NULL DEFAULT '[]',
@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS requirements (
   body_md     TEXT NOT NULL,
   file_path   TEXT NOT NULL,
   revision    INTEGER NOT NULL DEFAULT 1,
+  attachments TEXT NOT NULL DEFAULT '[]',
   created_at  TEXT NOT NULL,
   updated_at  TEXT NOT NULL
 );
@@ -105,4 +106,7 @@ CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+INSERT OR IGNORE INTO settings (key, value)
+VALUES ('branch_merge_settings', '{"default_base_branch":"develop","merge_policy":"manual_review_merge","auto_delete_branch":false}');
 `;

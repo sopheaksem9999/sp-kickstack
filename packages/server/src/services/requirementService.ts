@@ -4,6 +4,7 @@ import {
   Requirement,
   RequirementStatus,
   NormStatus,
+  AttachmentItem,
 } from '@sp-kickstack/shared';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -30,7 +31,7 @@ export class RequirementService {
     revision: number = 1
   ): string {
     const criteria = input.acceptance_criteria.map((c) => `- [ ] ${c}`).join('\n');
-    return `---
+    let md = `---
 id: ${id}
 title: ${input.title}
 priority: ${input.priority}
@@ -47,16 +48,29 @@ ${input.user_story ? `## User story\n${input.user_story}\n` : ''}
 ${criteria}
 
 ${input.api_hints ? `## API hints\n${input.api_hints}\n` : ''}
-${input.notes ? `## Notes / links\n${input.notes}\n` : ''}
-`;
+${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
+
+    if (input.attachments && input.attachments.length > 0) {
+      md += `\n## Attachments\n${input.attachments
+        .map(
+          (a) =>
+            `- 📎 **${a.name}** (${a.size ? Math.round(a.size / 1024) + ' KB' : 'file'}${
+              a.type ? ', ' + a.type : ''
+            })`
+        )
+        .join('\n')}\n`;
+    }
+
+    return md;
   }
 
   public createRequirement(input: CreateRequirementInput): Requirement {
     const seq = this.getNextSeq();
     const id = this.formatId(seq);
     const now = new Date().toISOString();
-    const status: RequirementStatus = 'draft';
+    const status: RequirementStatus = input.status || 'draft';
     const revision = 1;
+    const attachments = input.attachments || [];
 
     const reqDir = path.join(this.workspaceDir, 'requirements');
     if (!fs.existsSync(reqDir)) {
@@ -69,8 +83,8 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}
 
     const insertTx = this.db.transaction(() => {
       this.db.prepare(`
-        INSERT INTO requirements (id, workspace_id, seq, title, status, priority, body_md, file_path, revision, created_at, updated_at)
-        VALUES (@id, @workspace_id, @seq, @title, @status, @priority, @body_md, @file_path, @revision, @created_at, @updated_at)
+        INSERT INTO requirements (id, workspace_id, seq, title, status, priority, body_md, file_path, revision, attachments, created_at, updated_at)
+        VALUES (@id, @workspace_id, @seq, @title, @status, @priority, @body_md, @file_path, @revision, @attachments, @created_at, @updated_at)
       `).run({
         id,
         workspace_id: input.workspace_id || 'default',
@@ -81,6 +95,7 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}
         body_md: bodyMd,
         file_path: filePath,
         revision,
+        attachments: JSON.stringify(attachments),
         created_at: now,
         updated_at: now,
       });
@@ -98,6 +113,15 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}
     return this.getRequirement(id)!;
   }
 
+  private parseAttachments(raw?: string): AttachmentItem[] {
+    if (!raw) return [];
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+
   public getRequirement(id: string): Requirement | null {
     const row = this.db.prepare('SELECT * FROM requirements WHERE id = ?').get(id) as any;
     if (!row) return null;
@@ -110,6 +134,7 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}
       ...row,
       workspace_id: row.workspace_id || 'default',
       affected_projects: projRows.map((p) => p.project),
+      attachments: this.parseAttachments(row.attachments),
     };
   }
 
@@ -128,6 +153,7 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}
         ...row,
         workspace_id: row.workspace_id || 'default',
         affected_projects: projRows.map((p) => p.project),
+        attachments: this.parseAttachments(row.attachments),
       };
     });
   }
@@ -138,11 +164,44 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}
     `).run(status, id);
   }
 
+  public updateRequirementStatus(id: string, status: RequirementStatus): Requirement | null {
+    this.updateStatus(id, status);
+    return this.getRequirement(id);
+  }
+
+  public mergeRequirementToMain(id: string): { ok: boolean; status: string; merged_branch: string } {
+    const req = this.getRequirement(id);
+    if (!req) throw new Error(`Requirement ${id} not found`);
+
+    // Complete the merge into main branch
+    this.updateStatus(id, 'done');
+
+    // Record event
+    this.db.prepare(`
+      INSERT INTO events (req_id, type, payload, read, at)
+      VALUES (?, 'merge_ready', ?, 0, datetime('now'))
+    `).run(
+      id,
+      JSON.stringify({
+        req_id: id,
+        source_branch: 'develop',
+        target_branch: 'main',
+        action: 'human_reviewed_and_merged',
+      })
+    );
+
+    return {
+      ok: true,
+      status: 'done',
+      merged_branch: 'main',
+    };
+  }
+
   public recalculateDerivedStatus(reqId: string): RequirementStatus {
     const req = this.getRequirement(reqId);
     if (!req) throw new Error(`Requirement ${reqId} not found`);
 
-    if (req.status === 'draft' || req.status === 'cancelled') {
+    if (req.status === 'draft' || req.status === 'cancelled' || req.status === 'qa') {
       return req.status;
     }
 
@@ -161,7 +220,7 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}
     }
 
     const nonTerminal = tasks.filter((t) => t.status !== 'done' && t.status !== 'cancelled');
-    const allInReview = nonTerminal.length > 0 && nonTerminal.every((t) => t.status === 'in_review');
+    const allInReview = nonTerminal.length > 0 && nonTerminal.every((t) => t.status === 'in_review' || t.status === 'qa');
     if (allInReview) {
       this.updateStatus(reqId, 'in_review');
       return 'in_review';

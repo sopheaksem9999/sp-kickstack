@@ -7,6 +7,7 @@ export const NormStatusSchema = z.enum([
   'needs_human',
   'held',
   'in_review',
+  'qa',
   'done',
   'failed',
   'cancelled',
@@ -16,6 +17,7 @@ export const RequirementStatusSchema = z.enum([
   'draft',
   'ready',
   'in_progress',
+  'qa',
   'in_review',
   'done',
   'cancelled',
@@ -54,6 +56,24 @@ export const EventTypeSchema = z.enum([
   'task_status_changed',
 ]);
 
+export const BranchMergePolicySchema = z.enum([
+  'manual_review_merge',
+  'auto_merge_main',
+]);
+
+export const BranchMergeSettingsSchema = z.object({
+  default_base_branch: z.string().default('develop'),
+  merge_policy: BranchMergePolicySchema.default('manual_review_merge'),
+  auto_delete_branch: z.boolean().default(false),
+});
+
+export const AttachmentItemSchema = z.object({
+  name: z.string().min(1),
+  size: z.number().optional(),
+  type: z.string().optional(),
+  data_url: z.string().optional(),
+});
+
 export const WorkspaceSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -87,7 +107,7 @@ export const ProjectSchema = z.object({
   engine_type: EngineTypeSchema,
   engine_url: z.string().url().optional().or(z.literal('')),
   engine_meta: z.record(z.unknown()).default({}),
-  base_branch: z.string().default('main'),
+  base_branch: z.string().default('develop'),
   contract_path: z.string().optional(),
   done_means: DoneMeansSchema.default('merged'),
   high_risk_paths: z.array(z.string()).default([]),
@@ -105,6 +125,8 @@ export const CreateRequirementInputSchema = z.object({
   acceptance_criteria: z.array(z.string().min(1)).min(1),
   affected_projects: z.array(z.string().min(1)).min(1),
   priority: PrioritySchema.default('normal'),
+  status: RequirementStatusSchema.optional().default('draft'),
+  attachments: z.array(AttachmentItemSchema).optional().default([]),
   api_hints: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -129,4 +151,3 @@ export type UpdateWorkspaceInput = z.input<typeof UpdateWorkspaceInputSchema>;
 export type CreateRequirementInput = z.input<typeof CreateRequirementInputSchema>;
 export type CreateTicketInput = z.input<typeof CreateTicketInputSchema>;
 export type TicketResponse = z.infer<typeof TicketResponseSchema>;
-

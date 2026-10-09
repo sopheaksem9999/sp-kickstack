@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchProjects, createRequirement, startRequirementFanOut } from '../lib/api.js';
@@ -16,8 +16,22 @@ import {
   FolderGit2,
   ArrowRight,
   Layers,
+  Paperclip,
+  Bold,
+  Italic,
+  Heading2,
+  List as ListIcon,
+  ListOrdered,
+  Code,
+  Quote,
+  Eye,
+  Edit3,
+  FileText,
+  FileSpreadsheet,
+  Image as ImageIcon,
+  FileCode,
 } from 'lucide-react';
-import { Priority } from '@sp-kickstack/shared';
+import { Priority, RequirementStatus, AttachmentItem } from '@sp-kickstack/shared';
 
 const priorityOptions: { value: Priority; label: string; color: string; bg: string }[] = [
   { value: 'urgent', label: 'Urgent', color: 'text-rose-500 fill-rose-500', bg: 'hover:bg-rose-500/10' },
@@ -26,11 +40,19 @@ const priorityOptions: { value: Priority; label: string; color: string; bg: stri
   { value: 'low', label: 'Low', color: 'text-slate-400 fill-slate-400', bg: 'hover:bg-slate-500/10' },
 ];
 
+const stateOptions: { value: RequirementStatus; label: string; dot: string; desc: string }[] = [
+  { value: 'draft', label: 'ToDo', dot: 'bg-slate-400', desc: 'Backlog / Ready for assignment' },
+  { value: 'in_progress', label: 'In-Progress', dot: 'bg-purple-500 animate-pulse', desc: 'Active implementation' },
+  { value: 'qa', label: 'QA', dot: 'bg-amber-400', desc: 'Quality assurance & testing' },
+  { value: 'done', label: 'Done', dot: 'bg-emerald-500', desc: 'Merged & completed' },
+];
+
 export function CreateRequirementSheet() {
   const { isOpen, closeSheet } = useCreateRequirement();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { activeWorkspaceId, workspaces } = useWorkspace();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [workspaceId, setWorkspaceId] = useState(
     activeWorkspaceId !== 'all' ? activeWorkspaceId : 'default'
@@ -43,12 +65,16 @@ export function CreateRequirementSheet() {
 
   const currentWorkspace = workspaces.find((w) => w.id === workspaceId);
 
+  // Form Fields
   const [title, setTitle] = useState('');
   const [goal, setGoal] = useState('');
   const [userStory, setUserStory] = useState('');
   const [priority, setPriority] = useState<Priority>('normal');
+  const [status, setStatus] = useState<RequirementStatus>('draft');
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [criteria, setCriteria] = useState<string[]>(['']);
+  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
+  const [activeGoalTab, setActiveGoalTab] = useState<'write' | 'preview'>('write');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Synchronize workspace when opening or workspace changes
@@ -74,8 +100,11 @@ export function CreateRequirementSheet() {
     setGoal('');
     setUserStory('');
     setPriority('normal');
+    setStatus('draft');
     setSelectedProjects([]);
     setCriteria(['']);
+    setAttachments([]);
+    setActiveGoalTab('write');
   };
 
   const handleClose = () => {
@@ -97,6 +126,65 @@ export function CreateRequirementSheet() {
   };
   const removeCriterion = (index: number) => {
     setCriteria(criteria.filter((_, i) => i !== index));
+  };
+
+  // Rich Text Formatting Action
+  const applyFormatting = (prefix: string, suffix: string = '') => {
+    const textarea = document.getElementById('goal-editor-textarea') as HTMLTextAreaElement | null;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = goal.substring(start, end);
+    const replacement = `${prefix}${selected || 'text'}${suffix}`;
+    const newGoal = goal.substring(0, start) + replacement + goal.substring(end);
+    setGoal(newGoal);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(
+        start + prefix.length,
+        start + prefix.length + (selected.length || 4)
+      );
+    }, 20);
+  };
+
+  // File Upload Handler (Images, Excel, MD, CSV, etc.)
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const item: AttachmentItem = {
+          name: file.name,
+          size: file.size,
+          type: file.type || file.name.split('.').pop() || 'file',
+          data_url: reader.result as string,
+        };
+        setAttachments((prev) => [...prev, item]);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    e.target.value = '';
+  };
+
+  const removeAttachment = (idx: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const getAttachmentIcon = (name: string, type?: string) => {
+    const lower = name.toLowerCase();
+    if (lower.endsWith('.xlsx') || lower.endsWith('.xls') || lower.endsWith('.csv')) {
+      return <FileSpreadsheet className="w-4 h-4 text-emerald-500" />;
+    }
+    if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.svg') || lower.endsWith('.gif') || type?.startsWith('image/')) {
+      return <ImageIcon className="w-4 h-4 text-sky-500" />;
+    }
+    if (lower.endsWith('.md') || lower.endsWith('.json') || lower.endsWith('.yaml') || lower.endsWith('.yml')) {
+      return <FileCode className="w-4 h-4 text-purple-500" />;
+    }
+    return <FileText className="w-4 h-4 text-slate-400" />;
   };
 
   const handleSubmit = async (andStart: boolean) => {
@@ -122,8 +210,10 @@ export function CreateRequirementSheet() {
         goal,
         user_story: userStory || undefined,
         priority,
+        status: andStart ? 'ready' : status,
         affected_projects: selectedProjects,
         acceptance_criteria: filteredCriteria,
+        attachments,
       });
 
       queryClient.invalidateQueries({ queryKey: ['requirements'] });
@@ -173,7 +263,7 @@ export function CreateRequirementSheet() {
                   New Cross-Repo Requirement
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Slide-over specification sheet
+                  Slide-over specification sheet & attachments
                 </p>
               </div>
             </div>
@@ -225,7 +315,7 @@ export function CreateRequirementSheet() {
             <div className="space-y-1.5">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center justify-between">
                 <span>Requirement Title *</span>
-                <span className="text-[11px] font-normal text-slate-400">Keep it clear and actionable</span>
+                <span className="text-[11px] font-normal text-slate-400">Clear, unambiguous feature goal</span>
               </label>
               <input
                 type="text"
@@ -237,31 +327,58 @@ export function CreateRequirementSheet() {
               />
             </div>
 
-            {/* Priority & Status Bar */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Priority
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {priorityOptions.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setPriority(opt.value)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
-                      priority === opt.value
-                        ? 'bg-white dark:bg-[#23242e] border-purple-400 dark:border-purple-600 shadow-sm text-slate-900 dark:text-white ring-1 ring-purple-400'
-                        : 'border-slate-200 dark:border-[#2a2b36] text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#20212a]'
-                    }`}
-                  >
-                    <Flag className={`w-3.5 h-3.5 ${opt.color}`} />
-                    <span>{opt.label}</span>
-                  </button>
-                ))}
+            {/* Input State & Priority Controls */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* State Selector (ToDo, In-Progress, QA, Done) */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Requirement State
+                </label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {stateOptions.map((st) => (
+                    <button
+                      key={st.value}
+                      type="button"
+                      onClick={() => setStatus(st.value)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-bold transition-all text-left ${
+                        status === st.value
+                          ? 'bg-purple-50 dark:bg-purple-950/40 border-[#7b68ee] text-[#7b68ee] dark:text-purple-300 shadow-sm ring-1 ring-[#7b68ee]'
+                          : 'border-slate-200 dark:border-[#2a2b36] bg-slate-50/60 dark:bg-[#1a1b22] text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#20212a]'
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${st.dot} shrink-0`} />
+                      <span className="truncate">{st.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Priority Selector */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Priority
+                </label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {priorityOptions.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setPriority(opt.value)}
+                      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-bold transition-all ${
+                        priority === opt.value
+                          ? 'bg-white dark:bg-[#23242e] border-purple-400 dark:border-purple-600 shadow-sm text-slate-900 dark:text-white ring-1 ring-purple-400'
+                          : 'border-slate-200 dark:border-[#2a2b36] bg-slate-50/60 dark:bg-[#1a1b22] text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#20212a]'
+                      }`}
+                    >
+                      <Flag className={`w-3.5 h-3.5 ${opt.color}`} />
+                      <span>{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* Affected Projects / Repositories */}
+            {/* Affected Repositories / Engines */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
@@ -300,7 +417,7 @@ export function CreateRequirementSheet() {
                             </span>
                           </div>
                           <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate mt-0.5">
-                            {proj.repo_path}
+                            {proj.repo_path} · <span className="font-semibold text-purple-600 dark:text-purple-400">{proj.base_branch || 'develop'}</span>
                           </div>
                         </div>
                         <div
@@ -319,18 +436,187 @@ export function CreateRequirementSheet() {
               )}
             </div>
 
-            {/* Goal & Problem Statement */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Goal & Problem Context *
-              </label>
-              <textarea
-                value={goal}
-                onChange={(e) => setGoal(e.target.value)}
-                rows={3}
-                placeholder="What problem are we solving? Explain the business context and technical background for the autonomous agents."
-                className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-[#2a2b36] bg-slate-50 dark:bg-[#1a1b22] text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] focus:border-transparent transition-all"
+            {/* Goal & Problem Context (Rich Text Editor + Attachments) */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <Edit3 className="w-3.5 h-3.5 text-purple-500" />
+                  <span>Goal & Problem Context (Rich Text) *</span>
+                </label>
+
+                {/* Tabs: Write vs Preview */}
+                <div className="flex items-center rounded-lg bg-slate-100 dark:bg-[#20212c] p-0.5 text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setActiveGoalTab('write')}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition-all ${
+                      activeGoalTab === 'write'
+                        ? 'bg-white dark:bg-[#282937] text-slate-900 dark:text-white shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <Edit3 className="w-3 h-3" />
+                    <span>Write</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveGoalTab('preview')}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition-all ${
+                      activeGoalTab === 'preview'
+                        ? 'bg-white dark:bg-[#282937] text-slate-900 dark:text-white shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <Eye className="w-3 h-3" />
+                    <span>Preview</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Rich Text Toolbar (when writing) */}
+              {activeGoalTab === 'write' && (
+                <div className="flex flex-wrap items-center gap-1 p-1.5 rounded-t-lg border border-b-0 border-slate-200 dark:border-[#2a2b36] bg-slate-100/80 dark:bg-[#20212c]/80 text-slate-600 dark:text-slate-300">
+                  <button
+                    type="button"
+                    onClick={() => applyFormatting('**', '**')}
+                    className="p-1 rounded hover:bg-slate-200 dark:hover:bg-[#2b2c3a] transition-colors"
+                    title="Bold (**text**)"
+                  >
+                    <Bold className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyFormatting('*', '*')}
+                    className="p-1 rounded hover:bg-slate-200 dark:hover:bg-[#2b2c3a] transition-colors"
+                    title="Italic (*text*)"
+                  >
+                    <Italic className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyFormatting('### ')}
+                    className="p-1 rounded hover:bg-slate-200 dark:hover:bg-[#2b2c3a] transition-colors"
+                    title="Heading (### Section)"
+                  >
+                    <Heading2 className="w-3.5 h-3.5" />
+                  </button>
+
+                  <div className="h-3 w-[1px] bg-slate-300 dark:bg-slate-700 mx-1" />
+
+                  <button
+                    type="button"
+                    onClick={() => applyFormatting('- ')}
+                    className="p-1 rounded hover:bg-slate-200 dark:hover:bg-[#2b2c3a] transition-colors"
+                    title="Bullet List (- item)"
+                  >
+                    <ListIcon className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyFormatting('1. ')}
+                    className="p-1 rounded hover:bg-slate-200 dark:hover:bg-[#2b2c3a] transition-colors"
+                    title="Numbered List (1. item)"
+                  >
+                    <ListOrdered className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyFormatting('> ')}
+                    className="p-1 rounded hover:bg-slate-200 dark:hover:bg-[#2b2c3a] transition-colors"
+                    title="Quote (> blockquote)"
+                  >
+                    <Quote className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyFormatting('```ts\n', '\n```')}
+                    className="p-1 rounded hover:bg-slate-200 dark:hover:bg-[#2b2c3a] transition-colors"
+                    title="Code Block"
+                  >
+                    <Code className="w-3.5 h-3.5" />
+                  </button>
+
+                  <div className="h-3 w-[1px] bg-slate-300 dark:bg-slate-700 mx-1" />
+
+                  {/* Add Attachment Button */}
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold text-[#7b68ee] hover:bg-purple-100 dark:hover:bg-purple-950/60 transition-colors ml-auto"
+                  >
+                    <Paperclip className="w-3.5 h-3.5" />
+                    <span>Attach Files</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Hidden File Input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,.xlsx,.xls,.csv,.md,.txt,.pdf,.json,.yaml"
+                onChange={handleFileUpload}
+                className="hidden"
               />
+
+              {activeGoalTab === 'write' ? (
+                <textarea
+                  id="goal-editor-textarea"
+                  value={goal}
+                  onChange={(e) => setGoal(e.target.value)}
+                  rows={4}
+                  placeholder="### Background & Problem&#10;Describe the business context and technical requirements here. Use Markdown for bold, headings, and code snippets."
+                  className="w-full px-3.5 py-2.5 rounded-b-lg border border-slate-200 dark:border-[#2a2b36] bg-slate-50 dark:bg-[#1a1b22] text-xs font-mono text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] focus:border-transparent transition-all leading-relaxed"
+                />
+              ) : (
+                <div className="min-h-[100px] p-4 rounded-lg border border-slate-200 dark:border-[#2a2b36] bg-slate-50 dark:bg-[#14151b] text-xs text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
+                  {goal.trim() ? goal : <span className="text-slate-400 italic">No goal text entered yet.</span>}
+                </div>
+              )}
+
+              {/* Attachments Section */}
+              {attachments.length > 0 && (
+                <div className="pt-2 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                    <span>Attached Assets ({attachments.length}):</span>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="text-[#7b68ee] hover:underline flex items-center gap-1 text-[11px]"
+                    >
+                      <Plus className="w-3 h-3" /> Add more
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {attachments.map((file, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between p-2 rounded-lg bg-slate-100 dark:bg-[#20212c] border border-slate-200 dark:border-[#2a2b38] text-xs"
+                      >
+                        <div className="flex items-center gap-2 min-w-0 pr-2">
+                          {getAttachmentIcon(file.name, file.type)}
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-800 dark:text-slate-200 truncate text-[11px]">
+                              {file.name}
+                            </p>
+                            <p className="text-[10px] text-slate-400">
+                              {file.size ? Math.round(file.size / 1024) + ' KB' : 'Document'}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeAttachment(idx)}
+                          className="p-1 text-slate-400 hover:text-rose-500 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* User Story (Optional) */}
@@ -412,7 +698,7 @@ export function CreateRequirementSheet() {
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-purple-200 dark:border-purple-900/50 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/30 hover:bg-purple-100 dark:hover:bg-purple-900/40 text-xs font-bold transition-all disabled:opacity-50"
               >
                 <Layers className="w-3.5 h-3.5" />
-                <span>Save Draft</span>
+                <span>Save State ({status === 'draft' ? 'ToDo' : status})</span>
               </button>
 
               <button

@@ -246,6 +246,12 @@ export function RequirementsPage() {
         match: (r: any) => r.status === 'in_review',
       },
       {
+        id: 'qa',
+        title: 'QA / TESTING',
+        color: 'bg-amber-400',
+        match: (r: any) => r.status === 'qa',
+      },
+      {
         id: 'done',
         title: 'COMPLETE',
         color: 'bg-emerald-500',
@@ -438,7 +444,7 @@ export function RequirementsPage() {
                   Status
                 </span>
                 <div className="flex flex-wrap gap-1.5">
-                  {(['draft', 'ready', 'in_progress', 'in_review', 'done'] as RequirementStatus[]).map((st) => {
+                  {(['draft', 'ready', 'in_progress', 'in_review', 'qa', 'done'] as RequirementStatus[]).map((st) => {
                     const active = selectedStatuses.includes(st);
                     return (
                       <button

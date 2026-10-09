@@ -8,6 +8,8 @@ import {
   CreateRequirementInput,
   CreateWorkspaceInput,
   UpdateWorkspaceInput,
+  BranchMergeSettings,
+  RequirementStatus,
 } from '@sp-kickstack/shared';
 
 const BASE = '/api';
@@ -111,5 +113,39 @@ export async function releaseLink(linkId: number): Promise<{ ok: boolean }> {
 
 export async function fetchNotifications(): Promise<BridgeEvent[]> {
   const res = await fetch(`${BASE}/notifications`);
+  return res.json();
+}
+
+export async function fetchSettings(): Promise<{ branch_merge: BranchMergeSettings }> {
+  const res = await fetch(`${BASE}/settings`);
+  if (!res.ok) throw new Error('Failed to fetch settings');
+  return res.json();
+}
+
+export async function updateBranchMergeSettings(settings: Partial<BranchMergeSettings>): Promise<BranchMergeSettings> {
+  const res = await fetch(`${BASE}/settings/branch-merge`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  if (!res.ok) throw new Error('Failed to update branch merge settings');
+  return res.json();
+}
+
+export async function updateRequirementStatus(id: string, status: RequirementStatus): Promise<Requirement> {
+  const res = await fetch(`${BASE}/requirements/${id}/status`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) throw new Error('Failed to update requirement status');
+  return res.json();
+}
+
+export async function mergeRequirementToMain(id: string): Promise<{ ok: boolean; status: string; merged_branch: string }> {
+  const res = await fetch(`${BASE}/requirements/${id}/merge-to-main`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error('Failed to merge requirement to main');
   return res.json();
 }

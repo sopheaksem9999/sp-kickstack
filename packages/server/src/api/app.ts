@@ -11,12 +11,14 @@ import { LinkService } from '../services/linkService.js';
 import { TicketService } from '../services/ticketService.js';
 import { SseBroadcaster } from '../sse/broadcaster.js';
 import { Notifier } from '../notify/notifier.js';
+import { SettingsService } from '../services/settingsService.js';
 import {
   CreateRequirementInputSchema,
   CreateTicketInputSchema,
   CreateWorkspaceInputSchema,
   UpdateWorkspaceInputSchema,
   ProjectSchema,
+  RequirementStatusSchema,
 } from '@sp-kickstack/shared';
 
 export interface AppDependencies {
@@ -156,6 +158,28 @@ export function createApp(deps: AppDependencies): Express {
     res.json({ ok: true });
   });
 
+  app.put('/api/requirements/:id/status', (req, res, next) => {
+    try {
+      const status = RequirementStatusSchema.parse(req.body.status);
+      const updated = deps.requirementService.updateRequirementStatus(req.params.id, status);
+      if (!updated) return res.status(404).json({ error: 'Requirement not found' });
+      deps.broadcaster.broadcast({ type: 'requirement_status_changed', payload: { id: req.params.id, status } });
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post('/api/requirements/:id/merge-to-main', (req, res, next) => {
+    try {
+      const result = deps.requirementService.mergeRequirementToMain(req.params.id);
+      deps.broadcaster.broadcast({ type: 'merge_ready', payload: { id: req.params.id, ...result } });
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  });
+
   app.get('/api/requirements/:id/graph', (req, res) => {
     const tasks = deps.db
       .prepare('SELECT * FROM bridge_tasks WHERE req_id = ?')
@@ -168,6 +192,25 @@ export function createApp(deps: AppDependencies): Express {
       `)
       .all(req.params.id);
     res.json({ tasks, links });
+  });
+
+  // Settings & Branch Merge Rules
+  const settingsService = new SettingsService(deps.db);
+
+  app.get('/api/settings', (_req, res) => {
+    res.json({
+      branch_merge: settingsService.getBranchMergeSettings(),
+    });
+  });
+
+  app.put('/api/settings/branch-merge', (req, res, next) => {
+    try {
+      const updated = settingsService.updateBranchMergeSettings(req.body);
+      deps.broadcaster.broadcast({ type: 'settings_updated', payload: { branch_merge: updated } });
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
   });
 
   // Tasks

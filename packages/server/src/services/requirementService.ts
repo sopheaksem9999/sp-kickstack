@@ -247,6 +247,9 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
       .all(id) as { status: NormStatus }[];
 
     if (tasks.length > 0) {
+      if (req.status === 'cancelled') {
+        throw conflict(`${id} was cancelled after dispatch; create a new requirement instead of reopening it`);
+      }
       const active = tasks.filter((t) => !TERMINAL_TASK_STATUSES.includes(t.status));
       if (status === 'done' && active.length > 0) {
         throw conflict(`${active.length} task(s) are still active; finish or cancel them before marking ${id} done`);

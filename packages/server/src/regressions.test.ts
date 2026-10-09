@@ -1627,3 +1627,36 @@ describe('Review fixes: a held source can always be released', () => {
     expect(engineStatus(mobileGoal.engine_task_id!)).toBe('queued');
   });
 });
+
+describe('Review fixes: cancelled requirements stay cancelled', () => {
+  let h: Harness;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => h.db.close());
+
+  async function cancelledWithFailedGoal() {
+    const req = h.createRequirement();
+    const original = h.adapters.backend.createGoal.bind(h.adapters.backend);
+    h.adapters.backend.createGoal = async () => { throw new Error('down'); };
+    const tasks = await h.fanOutService.execute(req.id);
+    h.adapters.backend.createGoal = original;
+    await h.fanOutService.cancel(req.id);
+    return { req, backendGoal: tasks.find((t) => t.project === 'backend')! };
+  }
+
+  it('rejects moving a dispatched, cancelled requirement to another status', async () => {
+    const { req } = await cancelledWithFailedGoal();
+    const res = await testRequest(h.app, 'PUT', `/api/requirements/${req.id}/status`, { body: { status: 'qa' } });
+    expect(res.status).toBe(409);
+    expect(h.requirementService.getRequirement(req.id)!.status).toBe('cancelled');
+  });
+
+  it('retires goals that never reached their engine, so nothing re-dispatches them', async () => {
+    const { req, backendGoal } = await cancelledWithFailedGoal();
+    expect(taskRow(h, backendGoal.id).status).toBe('cancelled');
+
+    h.requirementService.updateStatus(req.id, 'in_progress'); // even if something revives the requirement
+    await new RetrySweeper(h.db, h.fanOutService, h.ticketService, h.linkService, { now: () => Date.now() + 3600_000 }).sweepOnce();
+
+    expect(taskRow(h, backendGoal.id).engine_task_id).toBeNull();
+  });
+});

@@ -221,8 +221,14 @@ ${wrapUntrusted('requirement', requirementMd)}
       `)
       .run(reqId);
 
+    // Goals/tickets that never reached an engine (failed or still reserved) are retired too,
+    // so no retry can dispatch work for a cancelled requirement.
     const active = this.db
-      .prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND status NOT IN ('done', 'cancelled', 'failed')")
+      .prepare(`
+        SELECT * FROM bridge_tasks
+        WHERE req_id = ?
+          AND (status NOT IN ('done', 'cancelled', 'failed') OR (status = 'failed' AND engine_task_id IS NULL))
+      `)
       .all(reqId) as BridgeTask[];
 
     const cancelled: number[] = [];

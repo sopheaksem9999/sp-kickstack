@@ -1,6 +1,7 @@
 // Helpers for placing untrusted text (requirements, tickets, agent summaries) into engine prompts.
 
-const TAG = /<(\/?)untrusted_input/gi;
+// Also catches whitespace variants such as "</ untrusted_input" or "< /untrusted_input".
+const TAG = /<\s*(\/?)\s*untrusted_input/gi;
 
 /** Neutralize anything that looks like an untrusted_input tag so text cannot open or close a block. */
 function neutralizeTags(text: string): string {

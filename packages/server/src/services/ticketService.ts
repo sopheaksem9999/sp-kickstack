@@ -34,7 +34,7 @@ export class TicketService {
     reqId: string,
     input: CreateTicketInput
   ): string {
-    return `# Ticket from ${sourceProject} — ${oneLine(input.title)}  (${reqId})
+    return `# Ticket from ${oneLine(sourceProject)} — ${oneLine(input.title)}  (${reqId})
 
 Review feasibility against the current contract and tenant-isolation rules,
 write a short plan, implement, update the contract file, add tests.

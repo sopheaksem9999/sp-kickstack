@@ -16,6 +16,8 @@ import {
   updateRequirementMergePolicy,
   mergeRequirementToMain,
 } from '../lib/api.js';
+import { isMergeReady as computeMergeReady, mergeCopy } from '../lib/mergeReady.js';
+import { useDemoMode } from '../lib/useDemoMode.js';
 import { StatusBadge } from './StatusBadge.js';
 import { BridgeTask, RequirementStatus, BranchMergePolicy, Priority } from '@sp-kickstack/shared';
 import { toast } from 'sonner';
@@ -65,6 +67,8 @@ export function RequirementDetailSheet({
   onClose,
 }: RequirementDetailSheetProps) {
   const queryClient = useQueryClient();
+  const demoMode = useDemoMode();
+  const mergeText = mergeCopy(demoMode);
   const [isEditingProjects, setIsEditingProjects] = useState(false);
   const [editingProjectsList, setEditingProjectsList] = useState<string[]>([]);
 
@@ -136,7 +140,7 @@ export function RequirementDetailSheet({
   const mergeMutation = useMutation({
     mutationFn: () => mergeRequirementToMain(requirementId!),
     onSuccess: () => {
-      toast.success('Successfully reviewed and merged into main branch! 🎉');
+      toast.success(mergeText.success);
       queryClient.invalidateQueries();
     },
     onError: (err: any) => toast.error(err.message || 'Failed to merge to main'),
@@ -214,8 +218,7 @@ export function RequirementDetailSheet({
     }
   }
 
-  const isMergeReady =
-    req && (req.status === 'qa' || req.status === 'in_review' || req.status === 'done');
+  const isMergeReady = computeMergeReady(req?.status, graph?.tasks);
 
   const prio = req ? priorityConfig[req.priority] || priorityConfig.normal : null;
 
@@ -408,10 +411,14 @@ export function RequirementDetailSheet({
                     onClick={() => mergeMutation.mutate()}
                     disabled={mergeMutation.isPending}
                     className="flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-xs font-bold shadow-xs active:scale-[0.98] transition-all disabled:opacity-50"
-                    title="Review passed: Merge develop branch into main"
+                    title={
+                      demoMode
+                        ? 'Review passed: Merge develop branch into main'
+                        : 'Confirm the reviewed work was merged (the bridge runs no git command)'
+                    }
                   >
                     <GitMerge className="w-3 h-3" />
-                    <span>{mergeMutation.isPending ? 'Merging...' : 'Merge to Main'}</span>
+                    <span>{mergeMutation.isPending ? mergeText.pending : mergeText.action}</span>
                   </button>
                 )}
 

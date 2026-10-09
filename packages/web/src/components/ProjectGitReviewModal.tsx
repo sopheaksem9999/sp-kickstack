@@ -7,6 +7,8 @@ import {
   fetchFileContent,
   FileTreeNode,
 } from '../lib/api.js';
+import { mergeCopy } from '../lib/mergeReady.js';
+import { useDemoMode } from '../lib/useDemoMode.js';
 import {
   X,
   RefreshCw,
@@ -67,6 +69,7 @@ export const ProjectGitReviewModal: React.FC<ProjectGitReviewModalProps> = ({
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['', 'src']));
 
   const activeProject = selectedProject || allProjects[0] || '';
+  const mergeText = mergeCopy(useDemoMode());
 
   // 1. Fetch Review Summary (changed files & commits)
   const {
@@ -294,7 +297,7 @@ export const ProjectGitReviewModal: React.FC<ProjectGitReviewModalProps> = ({
                 className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-lg shadow-emerald-700/20 active:scale-95 transition-all disabled:opacity-50"
               >
                 <GitMerge className="w-3.5 h-3.5" />
-                <span>{isMerging ? 'Merging to Main...' : 'Approve & Merge to Main'}</span>
+                <span>{isMerging ? mergeText.pending : mergeText.action}</span>
               </button>
             )}
 

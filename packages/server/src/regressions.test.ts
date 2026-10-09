@@ -353,7 +353,9 @@ describe('K: task and link routes write valid SQL', () => {
     expect(h.linkService.getLink(link.id)!.state).toBe('cancelled');
   });
 
-  it('runs the CLI simulation without a SQL error', async () => {
+  it('runs the CLI simulation without a SQL error (demo mode)', async () => {
+    h.db.close();
+    h = makeHarness({ demoMode: true });
     const req = h.createRequirement();
     const [task] = await h.fanOutService.execute(req.id);
     const res = await testRequest(h.app, 'POST', `/api/tasks/${task.id}/run-cli`);
@@ -1038,5 +1040,76 @@ describe('F: manual-engine projects', () => {
 
     await expect(h.watcher.scanOnce()).resolves.toBe(0);
     expect(taskRow(h, id).status).toBe('in_review');
+  });
+});
+
+describe('O: simulated features only exist in DEMO_MODE', () => {
+  let h: Harness;
+  afterEach(() => h.db.close());
+
+  async function dispatched(demoMode: boolean) {
+    h = makeHarness({ demoMode });
+    const req = h.createRequirement();
+    const tasks = await h.fanOutService.execute(req.id);
+    return { req, tasks };
+  }
+
+  it('reports demo mode on /api/health', async () => {
+    h = makeHarness({ demoMode: true });
+    expect((await testRequest(h.app, 'GET', '/api/health')).body.demo_mode).toBe(true);
+    h.db.close();
+    h = makeHarness();
+    expect((await testRequest(h.app, 'GET', '/api/health')).body.demo_mode).toBe(false);
+  });
+
+  it('refuses the simulated CLI runner outside demo mode and writes nothing', async () => {
+    const { tasks } = await dispatched(false);
+    const res = await testRequest(h.app, 'POST', `/api/tasks/${tasks[0].id}/run-cli`);
+    expect(res.status).toBe(501);
+    expect(taskRow(h, tasks[0].id).pr_url).toBeNull();
+    expect(taskRow(h, tasks[0].id).status).toBe('queued');
+  });
+
+  it('returns only real logs outside demo mode', async () => {
+    const { tasks } = await dispatched(false);
+    const res = await testRequest(h.app, 'GET', `/api/tasks/${tasks[0].id}/logs`);
+    expect(res.status).toBe(200);
+    expect(res.body.logs).toEqual([]);
+    expect((h.db.prepare('SELECT COUNT(*) c FROM task_logs').get() as any).c).toBe(0);
+  });
+
+  it('still seeds the illustrative log lines in demo mode', async () => {
+    const { tasks } = await dispatched(true);
+    const res = await testRequest(h.app, 'GET', `/api/tasks/${tasks[0].id}/logs`);
+    expect(res.body.logs.length).toBeGreaterThan(0);
+  });
+
+  it('refuses to confirm a merge while tasks are still running', async () => {
+    const { req } = await dispatched(false);
+    const res = await testRequest(h.app, 'POST', `/api/requirements/${req.id}/merge-to-main`);
+    expect(res.status).toBe(409);
+    expect(h.requirementService.getRequirement(req.id)!.status).toBe('in_progress');
+  });
+
+  it('confirms a merge honestly once every task is in review or done', async () => {
+    const { req, tasks } = await dispatched(false);
+    h.db.prepare("UPDATE bridge_tasks SET status = 'in_review' WHERE id = ?").run(tasks[0].id);
+    h.db.prepare("UPDATE bridge_tasks SET status = 'done' WHERE id = ?").run(tasks[1].id);
+
+    const res = await testRequest(h.app, 'POST', `/api/requirements/${req.id}/merge-to-main`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, status: 'done', git_operation: false, merged_branch: null });
+    expect(h.requirementService.getRequirement(req.id)!.status).toBe('done');
+    const event = h.db.prepare("SELECT payload FROM events WHERE type = 'merge_confirmed'").get() as any;
+    expect(JSON.parse(event.payload)).toMatchObject({ action: 'operator_confirmed', git_operation: false });
+    expect((h.db.prepare("SELECT COUNT(*) c FROM events WHERE type = 'merge_ready'").get() as any).c).toBe(0);
+  });
+
+  it('refuses to confirm a merge for a requirement that was never dispatched', async () => {
+    h = makeHarness();
+    const req = h.createRequirement();
+    const res = await testRequest(h.app, 'POST', `/api/requirements/${req.id}/merge-to-main`);
+    expect(res.status).toBe(409);
   });
 });

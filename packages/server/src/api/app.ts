@@ -65,6 +65,8 @@ export interface AppDependencies {
   broadcaster: SseBroadcaster;
   notifier: Notifier;
   reactor?: TaskReactor;
+  /** DEMO_MODE=1: enables the simulated CLI runner, seeded logs and the demo "merge to main". */
+  demoMode?: boolean;
   agentToken?: string;
   webhookSecret?: string;
   webOrigins?: string[];
@@ -137,7 +139,7 @@ export function createApp(deps: AppDependencies): Express {
 
   // Health
   app.get('/api/health', (_req, res) => {
-    res.json({ ok: true, version: '0.2.0' });
+    res.json({ ok: true, version: '0.2.0', demo_mode: Boolean(deps.demoMode) });
   });
 
   // Workspaces
@@ -329,8 +331,15 @@ export function createApp(deps: AppDependencies): Express {
 
   app.post('/api/requirements/:id/merge-to-main', (req, res, next) => {
     try {
-      const result = deps.requirementService.mergeRequirementToMain(req.params.id);
-      deps.broadcaster.broadcast({ type: 'merge_ready', payload: { id: req.params.id, ...result } });
+      // Outside demo mode the bridge performs no git operation: the operator confirms
+      // that the reviewed work was merged, and the response says so.
+      const result = deps.demoMode
+        ? deps.requirementService.mergeRequirementToMain(req.params.id)
+        : deps.requirementService.confirmMerged(req.params.id);
+      deps.broadcaster.broadcast({
+        type: deps.demoMode ? 'merge_ready' : 'merge_confirmed',
+        payload: { id: req.params.id, ...result },
+      });
       res.json(result);
     } catch (err) {
       next(err);
@@ -546,7 +555,8 @@ export function createApp(deps: AppDependencies): Express {
       .prepare('SELECT * FROM task_logs WHERE task_id = ? ORDER BY id ASC')
       .all(taskId) as any[];
 
-    if (logs.length === 0) {
+    // Illustrative log lines are a demo feature; never invent history in normal mode.
+    if (logs.length === 0 && deps.demoMode) {
       const now = new Date().toISOString();
       const project = deps.projectService.getProject(task.project);
       const engineType = project?.engine_type || 'local-ai-cli';
@@ -600,6 +610,12 @@ export function createApp(deps: AppDependencies): Express {
 
   app.post('/api/tasks/:id/run-cli', async (req, res, next) => {
     try {
+      if (!deps.demoMode) {
+        return res
+          .status(501)
+          .json({ error: 'The CLI runner is a simulation; start the server with DEMO_MODE=1 to use it' });
+      }
+
       const taskId = Number(req.params.id);
       const task = deps.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(taskId) as any;
       if (!task) return res.status(404).json({ error: 'Task not found' });

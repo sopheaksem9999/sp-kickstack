@@ -6,7 +6,7 @@ import {
   NormStatus,
   AttachmentItem,
 } from '@sp-kickstack/shared';
-import { conflict } from '../lib/httpError.js';
+import { HttpError, conflict } from '../lib/httpError.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -260,6 +260,34 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
     return this.getRequirement(id);
   }
 
+  /**
+   * Operator confirms the reviewed work was merged (the bridge itself runs no git
+   * command). Allowed only when every goal/ticket task is in review or done.
+   */
+  public confirmMerged(id: string): { ok: boolean; status: string; merged_branch: null; git_operation: false } {
+    const req = this.getRequirement(id);
+    if (!req) throw new HttpError(404, `Requirement ${id} not found`);
+
+    const tasks = this.db
+      .prepare("SELECT status FROM bridge_tasks WHERE req_id = ? AND role IN ('goal', 'ticket') AND status <> 'cancelled'")
+      .all(id) as { status: NormStatus }[];
+    if (tasks.length === 0) {
+      throw conflict(`${id} has no dispatched work to confirm`);
+    }
+    const open = tasks.filter((t) => t.status !== 'in_review' && t.status !== 'done');
+    if (open.length > 0) {
+      throw conflict(`${open.length} task(s) of ${id} are not in review or done yet`);
+    }
+
+    this.updateStatus(id, 'done');
+    this.db
+      .prepare("INSERT INTO events (req_id, type, payload, read, at) VALUES (?, 'merge_confirmed', ?, 0, ?)")
+      .run(id, JSON.stringify({ req_id: id, action: 'operator_confirmed', git_operation: false }), new Date().toISOString());
+
+    return { ok: true, status: 'done', merged_branch: null, git_operation: false };
+  }
+
+  /** DEMO_MODE only: marks the requirement done as if merged; no git operation happens. */
   public mergeRequirementToMain(id: string): { ok: boolean; status: string; merged_branch: string } {
     const req = this.getRequirement(id);
     if (!req) throw new Error(`Requirement ${id} not found`);

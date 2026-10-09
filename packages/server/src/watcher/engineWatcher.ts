@@ -64,7 +64,8 @@ export class EngineWatcher {
 
       for (const [projectName, tasks] of tasksByProject.entries()) {
         const project = this.projectService.getProject(projectName);
-        if (!project || !project.enabled) continue;
+        // Manual projects have no engine to poll: people and webhooks move their tasks.
+        if (!project || !project.enabled || project.engine_type === 'manual') continue;
 
         const adapter = this.getAdapter(projectName);
 

@@ -295,15 +295,29 @@ export function createApp(deps: AppDependencies): Express {
     }
   });
 
-  app.post('/api/requirements/:id/cancel', (req, res) => {
-    deps.requirementService.updateStatus(req.params.id, 'cancelled');
-    deps.broadcaster.broadcast({ type: 'requirement_cancelled', payload: { id: req.params.id } });
-    res.json({ ok: true });
+  const cancelRequirement = async (id: string) => {
+    const result = await deps.fanOutService.cancel(id);
+    deps.broadcaster.broadcast({ type: 'requirement_cancelled', payload: { id, ...result } });
+    return result;
+  };
+
+  app.post('/api/requirements/:id/cancel', async (req, res, next) => {
+    try {
+      const result = await cancelRequirement(req.params.id);
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      next(err);
+    }
   });
 
-  app.put('/api/requirements/:id/status', (req, res, next) => {
+  app.put('/api/requirements/:id/status', async (req, res, next) => {
     try {
       const status = RequirementStatusSchema.parse(req.body.status);
+      if (status === 'cancelled') {
+        // Cancelling must also stop the engine agents, not just relabel the card.
+        await cancelRequirement(req.params.id);
+        return res.json(deps.requirementService.getRequirement(req.params.id));
+      }
       const updated = deps.requirementService.updateRequirementStatus(req.params.id, status);
       if (!updated) return res.status(404).json({ error: 'Requirement not found' });
       deps.broadcaster.broadcast({ type: 'requirement_status_changed', payload: { id: req.params.id, status } });

@@ -6,6 +6,7 @@ import { BridgeTask } from '@sp-kickstack/shared';
 import { oneLine, wrapUntrusted } from '../lib/promptSafety.js';
 import { HttpError, conflict } from '../lib/httpError.js';
 import { RequirementStatus } from '@sp-kickstack/shared';
+import { cancelOrphan } from './orphans.js';
 
 export type AdapterFactory = (projectName: string) => EngineAdapter;
 
@@ -161,14 +162,18 @@ ${wrapUntrusted('requirement', requirementMd)}
     let lastError = 'Unknown adapter error';
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        const engineTask = await this.getAdapter(task.project).createGoal({ title: task.title, bodyMd: task.body_md || '' });
-        this.db
+        const adapter = this.getAdapter(task.project);
+        const engineTask = await adapter.createGoal({ title: task.title, bodyMd: task.body_md || '' });
+        const stored = this.db
           .prepare(`
             UPDATE bridge_tasks
             SET engine_task_id = ?, status = 'queued', engine_status_raw = ?, engine_url = ?, last_error = NULL, updated_at = ?
             WHERE id = ? AND status = 'pending'
           `)
           .run(engineTask.id, engineTask.rawStatus || null, engineTask.url || null, new Date().toISOString(), taskId);
+        if (stored.changes === 0) {
+          await cancelOrphan(this.db, adapter, taskId, engineTask.id);
+        }
         return;
       } catch (err: any) {
         lastError = err?.message || lastError;
@@ -185,6 +190,57 @@ ${wrapUntrusted('requirement', requirementMd)}
     this.db
       .prepare("INSERT INTO events (req_id, task_id, type, payload, read, at) VALUES (?, ?, 'task_failed', ?, 0, ?)")
       .run(task.req_id, taskId, JSON.stringify({ taskId, project: task.project, error: lastError, stage: 'fan-out' }), now);
+  }
+
+  /**
+   * Cancel a requirement: cancel waiting links and every active task in its engine.
+   * A task whose engine refuses keeps its status and records last_error so it can be
+   * retried; tasks without an engine id (reserved goals, placeholders) are cancelled here.
+   */
+  public async cancel(reqId: string): Promise<{ cancelled: number[]; failed: number[] }> {
+    const req = this.requirementService.getRequirement(reqId);
+    if (!req) {
+      throw new HttpError(404, `Requirement ${reqId} not found`);
+    }
+
+    const now = new Date().toISOString();
+    this.requirementService.updateStatus(reqId, 'cancelled');
+    this.db
+      .prepare(`
+        UPDATE links SET state = 'cancelled'
+        WHERE state = 'waiting' AND task_id IN (SELECT id FROM bridge_tasks WHERE req_id = ?)
+      `)
+      .run(reqId);
+
+    const active = this.db
+      .prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND status NOT IN ('done', 'cancelled', 'failed')")
+      .all(reqId) as BridgeTask[];
+
+    const cancelled: number[] = [];
+    const failed: number[] = [];
+    const markCancelled = this.db.prepare(
+      "UPDATE bridge_tasks SET status = 'cancelled', last_error = NULL, updated_at = ? WHERE id = ?"
+    );
+
+    await Promise.allSettled(
+      active.map(async (task) => {
+        if (task.engine_task_id) {
+          try {
+            await this.getAdapter(task.project).cancelTask(task.engine_task_id);
+          } catch (err: any) {
+            this.db
+              .prepare('UPDATE bridge_tasks SET last_error = ?, updated_at = ? WHERE id = ?')
+              .run(`Cancel failed: ${err?.message || err}`, now, task.id);
+            failed.push(task.id);
+            return;
+          }
+        }
+        markCancelled.run(now, task.id);
+        cancelled.push(task.id);
+      })
+    );
+
+    return { cancelled, failed };
   }
 
   /**

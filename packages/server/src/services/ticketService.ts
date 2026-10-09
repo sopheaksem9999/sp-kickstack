@@ -10,6 +10,7 @@ import {
 import { oneLine, wrapUntrusted } from '../lib/promptSafety.js';
 import { HttpError, badRequest } from '../lib/httpError.js';
 import crypto from 'node:crypto';
+import { cancelOrphan } from './orphans.js';
 
 function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -163,17 +164,21 @@ ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input
     if (!ticket || ticket.status !== 'pending') return;
 
     try {
-      const engineTask = await this.getAdapter(ticket.project).createTask({
+      const adapter = this.getAdapter(ticket.project);
+      const engineTask = await adapter.createTask({
         title: ticket.title,
         bodyMd: ticket.body_md || '',
       });
-      this.db
+      const stored = this.db
         .prepare(`
           UPDATE bridge_tasks
           SET engine_task_id = ?, status = ?, engine_status_raw = ?, engine_url = ?, last_error = NULL, updated_at = ?
           WHERE id = ? AND status = 'pending'
         `)
         .run(engineTask.id, engineTask.status, engineTask.rawStatus, engineTask.url || null, new Date().toISOString(), ticketId);
+      if (stored.changes === 0) {
+        await cancelOrphan(this.db, adapter, ticketId, engineTask.id);
+      }
     } catch (err: any) {
       const message = err?.message || 'Unknown adapter error';
       const now = new Date().toISOString();

@@ -14,6 +14,7 @@ import { TicketService } from './services/ticketService.js';
 import { WorkspaceService } from './services/workspaceService.js';
 import { FakeEngineServer } from './adapters/fakeEngine.js';
 import { StoneforgeAdapter } from './adapters/stoneforgeAdapter.js';
+import { createAdapter } from './adapters/index.js';
 import { SseBroadcaster } from './sse/broadcaster.js';
 import { TaskReactor } from './services/taskReactor.js';
 import { EngineWatcher } from './watcher/engineWatcher.js';
@@ -938,5 +939,104 @@ describe('G: tickets are idempotent and the outbox never duplicates them', () =>
     const s = scanner();
     await Promise.all([s.scanOnce(), s.scanOnce()]);
     expect(calls).toBe(1);
+  });
+});
+
+describe('M: cancelling a requirement stops its agents', () => {
+  let h: Harness;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => h.db.close());
+
+  const engineTask = (project: 'backend' | 'mobile', id: string) =>
+    (project === 'backend' ? h.backendEngine : h.mobileEngine).getTaskData(id)!;
+
+  it('cancels engine tasks, placeholders and waiting links', async () => {
+    const { req, mobileGoal, tickets } = await blockMobileOn(h, ['GET /loc']);
+    const backendGoal = h.db.prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND project = 'backend' AND role = 'goal'").get(req.id) as any;
+    const ticket = taskRow(h, tickets[0].ticketId);
+
+    const res = await testRequest(h.app, 'POST', `/api/requirements/${req.id}/cancel`);
+
+    expect(res.status).toBe(200);
+    expect(engineTask('mobile', mobileGoal.engine_task_id!).status).toBe('cancelled');
+    expect(engineTask('backend', backendGoal.engine_task_id).status).toBe('cancelled');
+    expect(engineTask('backend', ticket.engine_task_id).status).toBe('cancelled');
+    const active = h.db.prepare("SELECT COUNT(*) c FROM bridge_tasks WHERE req_id = ? AND status <> 'cancelled'").get(req.id) as any;
+    expect(active.c).toBe(0);
+    expect(h.linkService.getLinksForTask(mobileGoal.id)[0].state).toBe('cancelled');
+    expect(h.requirementService.getRequirement(req.id)!.status).toBe('cancelled');
+  });
+
+  it('keeps a task active with the error when its engine refuses to cancel', async () => {
+    const req = h.createRequirement();
+    const tasks = await h.fanOutService.execute(req.id);
+    h.adapters.mobile.cancelTask = async () => { throw new Error('engine 503'); };
+
+    await testRequest(h.app, 'POST', `/api/requirements/${req.id}/cancel`);
+
+    const mobile = taskRow(h, tasks.find((t) => t.project === 'mobile')!.id);
+    expect(mobile.status).toBe('queued');
+    expect(mobile.last_error).toContain('Cancel failed');
+    expect(taskRow(h, tasks.find((t) => t.project === 'backend')!.id).status).toBe('cancelled');
+    expect(h.requirementService.getRequirement(req.id)!.status).toBe('cancelled');
+  });
+
+  it('routes a status change to cancelled through the same path', async () => {
+    const req = h.createRequirement(['backend']);
+    const [task] = await h.fanOutService.execute(req.id);
+    const res = await testRequest(h.app, 'PUT', `/api/requirements/${req.id}/status`, { body: { status: 'cancelled' } });
+    expect(res.status).toBe(200);
+    expect(engineTask('backend', task.engine_task_id!).status).toBe('cancelled');
+  });
+
+  it('cancels a goal in its engine when the engine accepts it after the requirement was cancelled', async () => {
+    const req = h.createRequirement(['backend']);
+    const original = h.adapters.backend.createGoal.bind(h.adapters.backend);
+    h.adapters.backend.createGoal = async (input) => {
+      await new Promise((r) => setTimeout(r, 50));
+      return original(input);
+    };
+
+    const fanOut = h.fanOutService.execute(req.id);
+    await h.fanOutService.cancel(req.id);
+    const [goal] = await fanOut.catch(() => [] as any[]).then(() =>
+      h.db.prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND role = 'goal'").all(req.id) as any[]
+    );
+
+    expect(goal.status).toBe('cancelled');
+    expect(goal.engine_task_id).toBeTruthy();
+    expect(engineTask('backend', goal.engine_task_id).status).toBe('cancelled');
+    expect(h.requirementService.getRequirement(req.id)!.status).toBe('cancelled');
+  });
+});
+
+describe('F: manual-engine projects', () => {
+  let h: Harness;
+  beforeEach(() => {
+    h = makeHarness();
+    const repo = path.join(h.ws, 'ops');
+    fs.mkdirSync(repo);
+    h.projectService.registerProject({ name: 'ops', repo_path: repo, engine_type: 'manual' });
+  });
+  afterEach(() => h.db.close());
+
+  it('gives every manual task a unique engine id', async () => {
+    const fanOut = new FanOutService(h.db, h.projectService, h.requirementService, (n) => createAdapter(h.projectService.getProject(n)!));
+    const first = await fanOut.execute(h.createRequirement(['ops']).id);
+    const second = await fanOut.execute(h.createRequirement(['ops']).id);
+    expect(first[0].engine_task_id).toBeTruthy();
+    expect(first[0].engine_task_id).not.toBe(second[0].engine_task_id);
+  });
+
+  it('is not polled by the watcher (status changes come from people or webhooks)', async () => {
+    const req = h.createRequirement(['ops']);
+    const now = new Date().toISOString();
+    const id = Number(h.db.prepare(`
+      INSERT INTO bridge_tasks (req_id, project, role, engine_task_id, title, status, created_at, updated_at)
+      VALUES (?, 'ops', 'goal', 'manual-x', 't', 'in_review', ?, ?)
+    `).run(req.id, now, now).lastInsertRowid);
+
+    await expect(h.watcher.scanOnce()).resolves.toBe(0);
+    expect(taskRow(h, id).status).toBe('in_review');
   });
 });

@@ -1,17 +1,18 @@
+import { randomUUID } from 'node:crypto';
 import { EngineTask, NormStatus } from '@sp-kickstack/shared';
 import { CreateEngineTaskInput, EngineAdapter } from './types.js';
 
 export class ManualAdapter implements EngineAdapter {
   public type = 'manual' as const;
   private tasks = new Map<string, EngineTask>();
-  private nextId = 1;
 
   public async health(): Promise<{ ok: boolean; version?: string }> {
     return { ok: true, version: 'manual-v1' };
   }
 
   public async createGoal(input: CreateEngineTaskInput): Promise<EngineTask> {
-    const id = `manual-${this.nextId++}`;
+    // Globally unique: adapters are created per call, so a counter would repeat ids.
+    const id = `manual-${randomUUID()}`;
     const task: EngineTask = {
       id,
       title: input.title,
@@ -23,7 +24,7 @@ export class ManualAdapter implements EngineAdapter {
   }
 
   public async createTask(input: CreateEngineTaskInput): Promise<EngineTask> {
-    const id = `manual-${this.nextId++}`;
+    const id = `manual-${randomUUID()}`;
     const task: EngineTask = {
       id,
       title: input.title,

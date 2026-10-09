@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { fetchRequirements } from '../lib/api.js';
+import { fetchRequirements, fetchProjects } from '../lib/api.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { useCreateRequirement } from '../lib/CreateRequirementContext.js';
@@ -14,6 +14,15 @@ import {
   Flag,
   ChevronDown,
   ChevronRight,
+  Filter,
+  SlidersHorizontal,
+  ArrowUpDown,
+  X,
+  FolderGit2,
+  Check,
+  RotateCcw,
+  EyeOff,
+  Eye,
 } from 'lucide-react';
 import { Priority, RequirementStatus } from '@sp-kickstack/shared';
 
@@ -24,43 +33,229 @@ const priorityConfig: Record<Priority, { color: string; label: string }> = {
   low: { color: 'text-slate-400 fill-slate-400', label: 'Low' },
 };
 
+type GroupByOption = 'status' | 'priority' | 'project';
+type SortByOption = 'newest' | 'oldest' | 'title' | 'priority';
+
 export function RequirementsPage() {
   const { activeWorkspaceId } = useWorkspace();
   const { openSheet } = useCreateRequirement();
+  
+  // View states
   const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
+  // Filter options state
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+  const [selectedStatuses, setSelectedStatuses] = useState<RequirementStatus[]>([]);
+  const [selectedPriorities, setSelectedPriorities] = useState<Priority[]>([]);
+  const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
+  const [hideDone, setHideDone] = useState(false);
+
+  // Group & Sort state
+  const [groupBy, setGroupBy] = useState<GroupByOption>('status');
+  const [sortBy, setSortBy] = useState<SortByOption>('newest');
+
+  // Queries
   const { data: requirements = [], isLoading } = useQuery({
     queryKey: ['requirements', activeWorkspaceId],
     queryFn: () => fetchRequirements(activeWorkspaceId),
   });
 
-  const filteredRequirements = useMemo(() => {
-    if (!searchQuery.trim()) return requirements;
-    const q = searchQuery.toLowerCase();
-    return requirements.filter(
-      (r) =>
-        r.title.toLowerCase().includes(q) ||
-        r.id.toLowerCase().includes(q) ||
-        r.affected_projects.some((p) => p.toLowerCase().includes(q))
-    );
-  }, [requirements, searchQuery]);
+  const { data: projects = [] } = useQuery({
+    queryKey: ['projects', activeWorkspaceId],
+    queryFn: () => fetchProjects(activeWorkspaceId),
+  });
 
-  const toggleGroup = (status: string) => {
-    setCollapsedGroups((prev) => ({ ...prev, [status]: !prev[status] }));
+  // Available project names for filtering
+  const allProjectNames = useMemo(() => {
+    const fromProjects = projects.map((p) => p.name);
+    const fromReqs = requirements.flatMap((r) => r.affected_projects);
+    return Array.from(new Set([...fromProjects, ...fromReqs])).sort();
+  }, [projects, requirements]);
+
+  // Active filter count
+  const activeFilterCount =
+    selectedStatuses.length +
+    selectedPriorities.length +
+    selectedProjects.length +
+    (hideDone ? 1 : 0);
+
+  // Filter and Sort requirements
+  const filteredRequirements = useMemo(() => {
+    let list = [...requirements];
+
+    // Search query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (r) =>
+          r.title.toLowerCase().includes(q) ||
+          r.id.toLowerCase().includes(q) ||
+          r.affected_projects.some((p) => p.toLowerCase().includes(q))
+      );
+    }
+
+    // Hide Done
+    if (hideDone) {
+      list = list.filter((r) => r.status !== 'done');
+    }
+
+    // Status multi-filter
+    if (selectedStatuses.length > 0) {
+      list = list.filter((r) => selectedStatuses.includes(r.status));
+    }
+
+    // Priority multi-filter
+    if (selectedPriorities.length > 0) {
+      list = list.filter((r) => selectedPriorities.includes(r.priority));
+    }
+
+    // Project multi-filter
+    if (selectedProjects.length > 0) {
+      list = list.filter((r) =>
+        r.affected_projects.some((p) => selectedProjects.includes(p))
+      );
+    }
+
+    // Sorting
+    list.sort((a, b) => {
+      if (sortBy === 'newest') {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+      if (sortBy === 'oldest') {
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      }
+      if (sortBy === 'title') {
+        return a.title.localeCompare(b.title);
+      }
+      if (sortBy === 'priority') {
+        const rank: Record<Priority, number> = { urgent: 4, high: 3, normal: 2, low: 1 };
+        return (rank[b.priority] || 0) - (rank[a.priority] || 0);
+      }
+      return 0;
+    });
+
+    return list;
+  }, [
+    requirements,
+    searchQuery,
+    hideDone,
+    selectedStatuses,
+    selectedPriorities,
+    selectedProjects,
+    sortBy,
+  ]);
+
+  const toggleGroup = (id: string) => {
+    setCollapsedGroups((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const statusGroups: { status: RequirementStatus; title: string; color: string }[] = [
-    { status: 'draft', title: 'TO DO / DRAFT', color: 'bg-slate-500' },
-    { status: 'ready', title: 'READY FOR DISPATCH', color: 'bg-sky-500' },
-    { status: 'in_progress', title: 'IN PROGRESS', color: 'bg-[#7b68ee]' },
-    { status: 'in_review', title: 'IN REVIEW', color: 'bg-blue-500' },
-    { status: 'done', title: 'COMPLETE', color: 'bg-emerald-500' },
-  ];
+  const toggleStatusFilter = (st: RequirementStatus) => {
+    setSelectedStatuses((prev) =>
+      prev.includes(st) ? prev.filter((s) => s !== st) : [...prev, st]
+    );
+  };
+
+  const togglePriorityFilter = (pr: Priority) => {
+    setSelectedPriorities((prev) =>
+      prev.includes(pr) ? prev.filter((p) => p !== pr) : [...prev, pr]
+    );
+  };
+
+  const toggleProjectFilter = (proj: string) => {
+    setSelectedProjects((prev) =>
+      prev.includes(proj) ? prev.filter((p) => p !== proj) : [...prev, proj]
+    );
+  };
+
+  const clearAllFilters = () => {
+    setSelectedStatuses([]);
+    setSelectedPriorities([]);
+    setSelectedProjects([]);
+    setHideDone(false);
+    setSearchQuery('');
+  };
+
+  // Group Definitions based on `groupBy`
+  const groups = useMemo(() => {
+    if (groupBy === 'priority') {
+      return [
+        {
+          id: 'urgent',
+          title: 'URGENT',
+          color: 'bg-rose-500',
+          match: (r: any) => r.priority === 'urgent',
+        },
+        {
+          id: 'high',
+          title: 'HIGH PRIORITY',
+          color: 'bg-amber-500',
+          match: (r: any) => r.priority === 'high',
+        },
+        {
+          id: 'normal',
+          title: 'NORMAL PRIORITY',
+          color: 'bg-blue-500',
+          match: (r: any) => r.priority === 'normal',
+        },
+        {
+          id: 'low',
+          title: 'LOW PRIORITY',
+          color: 'bg-slate-400',
+          match: (r: any) => r.priority === 'low',
+        },
+      ];
+    }
+
+    if (groupBy === 'project') {
+      const activeProjNames =
+        allProjectNames.length > 0 ? allProjectNames : ['default-project'];
+      return activeProjNames.map((proj) => ({
+        id: proj,
+        title: proj.toUpperCase(),
+        color: 'bg-purple-500',
+        match: (r: any) => r.affected_projects.includes(proj),
+      }));
+    }
+
+    // Default: group by status
+    return [
+      {
+        id: 'draft',
+        title: 'TO DO / DRAFT',
+        color: 'bg-slate-500',
+        match: (r: any) => r.status === 'draft',
+      },
+      {
+        id: 'ready',
+        title: 'READY FOR DISPATCH',
+        color: 'bg-sky-500',
+        match: (r: any) => r.status === 'ready',
+      },
+      {
+        id: 'in_progress',
+        title: 'IN PROGRESS',
+        color: 'bg-[#7b68ee]',
+        match: (r: any) => r.status === 'in_progress',
+      },
+      {
+        id: 'in_review',
+        title: 'IN REVIEW',
+        color: 'bg-blue-500',
+        match: (r: any) => r.status === 'in_review',
+      },
+      {
+        id: 'done',
+        title: 'COMPLETE',
+        color: 'bg-emerald-500',
+        match: (r: any) => r.status === 'done',
+      },
+    ];
+  }, [groupBy, allProjectNames]);
 
   return (
-    <div className="max-w-7xl mx-auto space-y-5">
+    <div className="max-w-7xl mx-auto space-y-4">
       {/* ClickUp Title & Top Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -87,50 +282,288 @@ export function RequirementsPage() {
         </div>
       </div>
 
-      {/* ClickUp View Bar (Tabs + Search + Filter) */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-1.5 rounded-xl bg-white dark:bg-[#16171d] border border-slate-200 dark:border-[#262732] shadow-sm">
-        {/* View Switchers */}
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setViewMode('list')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              viewMode === 'list'
-                ? 'bg-purple-100 dark:bg-purple-950/60 text-[#7b68ee] dark:text-purple-300 shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#20212c]'
-            }`}
-          >
-            <List className="w-3.5 h-3.5" />
-            <span>List</span>
-          </button>
+      {/* ClickUp View & Filter Bar */}
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2.5 p-1.5 rounded-xl bg-white dark:bg-[#16171d] border border-slate-200 dark:border-[#262732] shadow-sm">
+          {/* Left: View Switchers (List / Board) */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                viewMode === 'list'
+                  ? 'bg-purple-100 dark:bg-purple-950/60 text-[#7b68ee] dark:text-purple-300 shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#20212c]'
+              }`}
+            >
+              <List className="w-3.5 h-3.5" />
+              <span>List</span>
+            </button>
 
-          <button
-            onClick={() => setViewMode('board')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              viewMode === 'board'
-                ? 'bg-purple-100 dark:bg-purple-950/60 text-[#7b68ee] dark:text-purple-300 shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#20212c]'
-            }`}
-          >
-            <Kanban className="w-3.5 h-3.5" />
-            <span>Board</span>
-          </button>
-        </div>
+            <button
+              onClick={() => setViewMode('board')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                viewMode === 'board'
+                  ? 'bg-purple-100 dark:bg-purple-950/60 text-[#7b68ee] dark:text-purple-300 shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#20212c]'
+              }`}
+            >
+              <Kanban className="w-3.5 h-3.5" />
+              <span>Board</span>
+            </button>
 
-        {/* Search and Filters */}
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search requirements..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 pr-3 py-1 bg-slate-100 dark:bg-[#20212c] border border-slate-200 dark:border-[#2e303d] rounded-lg text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-[#7b68ee] w-48 sm:w-60"
-            />
+            <div className="h-4 w-[1px] bg-slate-200 dark:bg-[#2d2f3d] mx-1" />
+
+            {/* Filter Toggle Button */}
+            <button
+              onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                isFilterPanelOpen || activeFilterCount > 0
+                  ? 'bg-purple-50 dark:bg-purple-950/40 text-[#7b68ee] dark:text-purple-300 border border-purple-200 dark:border-purple-800/60'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#20212c] border border-transparent'
+              }`}
+            >
+              <Filter className="w-3.5 h-3.5" />
+              <span>Filters</span>
+              {activeFilterCount > 0 && (
+                <span className="w-4 h-4 rounded-full bg-[#7b68ee] text-white text-[10px] font-bold flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+
+            {/* Hide Done Quick Toggle */}
+            <button
+              onClick={() => setHideDone(!hideDone)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                hideDone
+                  ? 'bg-slate-100 dark:bg-[#242531] text-slate-800 dark:text-slate-200 font-semibold'
+                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#20212c]'
+              }`}
+              title="Toggle completed requirements"
+            >
+              {hideDone ? (
+                <EyeOff className="w-3.5 h-3.5 text-purple-500" />
+              ) : (
+                <Eye className="w-3.5 h-3.5" />
+              )}
+              <span>{hideDone ? 'Done Hidden' : 'Show Done'}</span>
+            </button>
+          </div>
+
+          {/* Right: Group, Sort & Search */}
+          <div className="flex items-center gap-2">
+            {/* Group By Select */}
+            <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+              <SlidersHorizontal className="w-3 h-3 text-slate-400" />
+              <select
+                value={groupBy}
+                onChange={(e) => setGroupBy(e.target.value as GroupByOption)}
+                className="bg-transparent font-medium text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer pr-1"
+              >
+                <option value="status" className="bg-white dark:bg-[#1e1f26]">Group: Status</option>
+                <option value="priority" className="bg-white dark:bg-[#1e1f26]">Group: Priority</option>
+                <option value="project" className="bg-white dark:bg-[#1e1f26]">Group: Repo</option>
+              </select>
+            </div>
+
+            {/* Sort By Select */}
+            <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+              <ArrowUpDown className="w-3 h-3 text-slate-400" />
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortByOption)}
+                className="bg-transparent font-medium text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer pr-1"
+              >
+                <option value="newest" className="bg-white dark:bg-[#1e1f26]">Sort: Newest</option>
+                <option value="oldest" className="bg-white dark:bg-[#1e1f26]">Sort: Oldest</option>
+                <option value="title" className="bg-white dark:bg-[#1e1f26]">Sort: Name (A-Z)</option>
+                <option value="priority" className="bg-white dark:bg-[#1e1f26]">Sort: Priority</option>
+              </select>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 pr-7 py-1 bg-slate-100 dark:bg-[#20212c] border border-slate-200 dark:border-[#2e303d] rounded-lg text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-[#7b68ee] w-36 sm:w-52"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* ClickUp Dedicated Filter Options Drawer / Popover Panel */}
+        {(isFilterPanelOpen || activeFilterCount > 0) && (
+          <div className="p-3.5 rounded-xl bg-white dark:bg-[#16171d] border border-purple-100 dark:border-[#262732] shadow-sm space-y-3 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#22232e] pb-2">
+              <div className="flex items-center gap-2">
+                <Filter className="w-3.5 h-3.5 text-[#7b68ee]" />
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+                  Filter Options
+                </span>
+                {activeFilterCount > 0 && (
+                  <span className="text-[11px] text-slate-400">
+                    ({activeFilterCount} active)
+                  </span>
+                )}
+              </div>
+
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={clearAllFilters}
+                  className="flex items-center gap-1 text-[11px] font-semibold text-purple-600 dark:text-purple-400 hover:underline"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Clear All Filters</span>
+                </button>
+              )}
+            </div>
+
+            {/* Filter Criteria Rows */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Status Multi-Filter */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  Status
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {(['draft', 'ready', 'in_progress', 'in_review', 'done'] as RequirementStatus[]).map((st) => {
+                    const active = selectedStatuses.includes(st);
+                    return (
+                      <button
+                        key={st}
+                        onClick={() => toggleStatusFilter(st)}
+                        className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${
+                          active
+                            ? 'bg-[#7b68ee] text-white shadow-sm'
+                            : 'bg-slate-100 dark:bg-[#20212c] text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-[#282937]'
+                        }`}
+                      >
+                        {active && <Check className="w-3 h-3" />}
+                        <span className="uppercase">{st.replace('_', ' ')}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Priority Multi-Filter */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  Priority
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {(['urgent', 'high', 'normal', 'low'] as Priority[]).map((pr) => {
+                    const active = selectedPriorities.includes(pr);
+                    const prio = priorityConfig[pr];
+                    return (
+                      <button
+                        key={pr}
+                        onClick={() => togglePriorityFilter(pr)}
+                        className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${
+                          active
+                            ? 'bg-[#7b68ee] text-white shadow-sm'
+                            : 'bg-slate-100 dark:bg-[#20212c] text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-[#282937]'
+                        }`}
+                      >
+                        <Flag className={`w-3 h-3 ${active ? 'fill-white text-white' : prio.color}`} />
+                        <span>{prio.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Affected Repositories Multi-Filter */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  Affected Repositories
+                </span>
+                {allProjectNames.length === 0 ? (
+                  <p className="text-[11px] text-slate-400">No repos registered</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {allProjectNames.map((proj) => {
+                      const active = selectedProjects.includes(proj);
+                      return (
+                        <button
+                          key={proj}
+                          onClick={() => toggleProjectFilter(proj)}
+                          className={`flex items-center gap-1 px-2.5 py-1 rounded-md font-mono text-[11px] font-semibold transition-all ${
+                            active
+                              ? 'bg-[#7b68ee] text-white shadow-sm'
+                              : 'bg-slate-100 dark:bg-[#20212c] text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-[#282937]'
+                          }`}
+                        >
+                          <FolderGit2 className="w-3 h-3" />
+                          <span>{proj}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Active Filter Chips Summary */}
+            {activeFilterCount > 0 && (
+              <div className="pt-2 border-t border-slate-100 dark:border-[#22232e] flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="text-[10px] font-bold uppercase text-slate-400">Active:</span>
+
+                {hideDone && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 text-[11px] font-medium">
+                    Hide Done
+                    <X className="w-3 h-3 cursor-pointer" onClick={() => setHideDone(false)} />
+                  </span>
+                )}
+
+                {selectedStatuses.map((st) => (
+                  <span
+                    key={st}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 text-[11px] font-medium uppercase"
+                  >
+                    Status: {st}
+                    <X className="w-3 h-3 cursor-pointer" onClick={() => toggleStatusFilter(st)} />
+                  </span>
+                ))}
+
+                {selectedPriorities.map((pr) => (
+                  <span
+                    key={pr}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 text-[11px] font-medium capitalize"
+                  >
+                    Priority: {pr}
+                    <X className="w-3 h-3 cursor-pointer" onClick={() => togglePriorityFilter(pr)} />
+                  </span>
+                ))}
+
+                {selectedProjects.map((proj) => (
+                  <span
+                    key={proj}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 text-[11px] font-medium"
+                  >
+                    Repo: {proj}
+                    <X className="w-3 h-3 cursor-pointer" onClick={() => toggleProjectFilter(proj)} />
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
+      {/* Main Content Area */}
       {isLoading ? (
         <div className="p-16 text-center text-slate-400 dark:text-slate-500 text-sm">
           Loading requirements...
@@ -138,31 +571,44 @@ export function RequirementsPage() {
       ) : filteredRequirements.length === 0 ? (
         <div className="p-12 text-center border border-dashed border-slate-300 dark:border-[#2c2d38] rounded-2xl bg-white dark:bg-[#16171d]/60 shadow-sm">
           <p className="text-slate-500 dark:text-slate-400 mb-3 text-sm font-medium">
-            No requirements found for this workspace.
+            {activeFilterCount > 0
+              ? 'No requirements match your active filter options.'
+              : 'No cross-repo requirements found in this workspace.'}
           </p>
-          <Link
-            to="/requirements/new"
-            className="text-xs font-bold text-[#7b68ee] hover:underline inline-flex items-center gap-1"
-          >
-            Create your first requirement <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
+          {activeFilterCount > 0 ? (
+            <button
+              onClick={clearAllFilters}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 dark:bg-[#20212a] text-slate-700 dark:text-slate-300 hover:bg-slate-200"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Clear Filter Options</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={openSheet}
+              className="inline-flex items-center gap-2 text-xs font-bold text-[#7b68ee] hover:text-[#6c5ce7]"
+            >
+              <span>Create your first requirement</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       ) : viewMode === 'list' ? (
-        /* ClickUp Grouped List View */
-        <div className="space-y-6">
-          {statusGroups.map((group) => {
-            const groupReqs = filteredRequirements.filter((r) => r.status === group.status);
-            if (groupReqs.length === 0) return null;
-            const isCollapsed = collapsedGroups[group.status];
+        /* ClickUp High-Density List View */
+        <div className="space-y-4">
+          {groups.map((group) => {
+            const groupReqs = filteredRequirements.filter(group.match);
+            const isCollapsed = collapsedGroups[group.id];
 
             return (
               <div
-                key={group.status}
-                className="bg-white dark:bg-[#181922] border border-slate-200 dark:border-[#262732] rounded-xl overflow-hidden shadow-sm transition-colors"
+                key={group.id}
+                className="bg-white dark:bg-[#16171d] rounded-xl border border-slate-200 dark:border-[#262732] overflow-hidden shadow-sm transition-all"
               >
-                {/* Group Status Header */}
+                {/* Group Header */}
                 <div
-                  onClick={() => toggleGroup(group.status)}
+                  onClick={() => toggleGroup(group.id)}
                   className="px-4 py-2.5 bg-slate-50/80 dark:bg-[#1c1d27] border-b border-slate-200 dark:border-[#262732] flex items-center justify-between cursor-pointer select-none"
                 >
                   <div className="flex items-center gap-2">
@@ -256,6 +702,8 @@ export function RequirementsPage() {
                         })}
                       </tbody>
                     </table>
+
+                    {/* Table Footer Quick Add */}
                     <div className="px-4 py-2 bg-slate-50/30 dark:bg-[#14151b] border-t border-slate-100 dark:border-[#22232e]">
                       <button
                         type="button"
@@ -275,11 +723,11 @@ export function RequirementsPage() {
       ) : (
         /* ClickUp Kanban Board View */
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 items-start">
-          {statusGroups.map((group) => {
-            const groupReqs = filteredRequirements.filter((r) => r.status === group.status);
+          {groups.map((group) => {
+            const groupReqs = filteredRequirements.filter(group.match);
             return (
               <div
-                key={group.status}
+                key={group.id}
                 className="bg-white dark:bg-[#181922] border border-slate-200 dark:border-[#262732] rounded-xl flex flex-col max-h-[80vh] shadow-sm overflow-hidden"
               >
                 {/* Column Header */}

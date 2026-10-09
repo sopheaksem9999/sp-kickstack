@@ -388,9 +388,18 @@ export function createApp(deps: AppDependencies): Express {
 
   // Error handling middleware
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || 500;
+    let status = err.status || 500;
+    let message = err.message || 'Internal Server Error';
+
+    if (err.issues && Array.isArray(err.issues)) {
+      status = 400;
+      message = err.issues
+        .map((issue: any) => `${issue.path.join('.') || 'field'}: ${issue.message}`)
+        .join('; ');
+    }
+
     res.status(status).json({
-      error: err.message || 'Internal Server Error',
+      error: message,
     });
   });
 

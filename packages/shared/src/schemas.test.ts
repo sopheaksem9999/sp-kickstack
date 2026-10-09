@@ -66,5 +66,18 @@ describe('Shared Schemas Validation', () => {
     };
     expect(CreateWorkspaceInputSchema.safeParse(invalid).success).toBe(false);
   });
+
+  it('validates requirement without acceptance_criteria and with short goal', () => {
+    const minimal = {
+      title: 'test',
+      goal: 'test',
+      affected_projects: ['api'],
+    };
+    const parsed = CreateRequirementInputSchema.safeParse(minimal);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.acceptance_criteria).toEqual([]);
+    }
+  });
 });
 

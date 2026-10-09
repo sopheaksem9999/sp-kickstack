@@ -188,10 +188,6 @@ export function CreateRequirementSheet() {
       return;
     }
     const filteredCriteria = criteria.filter((c) => c.trim().length > 0);
-    if (filteredCriteria.length === 0) {
-      toast.error('At least one acceptance criterion is required');
-      return;
-    }
     if (selectedProjects.length === 0) {
       toast.error('Please select at least one affected project');
       return;
@@ -649,7 +645,7 @@ export function CreateRequirementSheet() {
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-purple-500" />
-                  <span>Acceptance Criteria *</span>
+                  <span>Acceptance Criteria (Optional)</span>
                 </label>
                 <button
                   type="button"
@@ -671,7 +667,7 @@ export function CreateRequirementSheet() {
                       type="text"
                       value={item}
                       onChange={(e) => updateCriterion(idx, e.target.value)}
-                      placeholder="e.g. GET /drivers/nearby returns list of lat/lng coordinates"
+                      placeholder="e.g. Implementation complete and verified (optional)"
                       className="flex-1 px-3 py-2 rounded-lg border border-slate-200 dark:border-[#2a2b36] bg-slate-50 dark:bg-[#1a1b22] text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] focus:border-transparent transition-all"
                     />
                     {criteria.length > 1 && (

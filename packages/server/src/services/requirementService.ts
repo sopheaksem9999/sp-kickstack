@@ -30,7 +30,10 @@ export class RequirementService {
     status: RequirementStatus = 'draft',
     revision: number = 1
   ): string {
-    const criteria = input.acceptance_criteria.map((c) => `- [ ] ${c}`).join('\n');
+    const list = input.acceptance_criteria && input.acceptance_criteria.length > 0
+      ? input.acceptance_criteria
+      : ['Implementation complete and verified with tests'];
+    const criteria = list.map((c) => `- [ ] ${c}`).join('\n');
     let md = `---
 id: ${id}
 title: ${input.title}

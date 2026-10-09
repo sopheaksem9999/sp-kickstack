@@ -119,10 +119,10 @@ export const ProjectSchema = z.object({
 
 export const CreateRequirementInputSchema = z.object({
   workspace_id: z.string().default('default'),
-  title: z.string().min(3).max(200),
-  goal: z.string().min(5),
+  title: z.string().min(1).max(200),
+  goal: z.string().min(1),
   user_story: z.string().optional(),
-  acceptance_criteria: z.array(z.string().min(1)).min(1),
+  acceptance_criteria: z.array(z.string()).optional().default([]),
   affected_projects: z.array(z.string().min(1)).min(1),
   priority: PrioritySchema.default('normal'),
   status: RequirementStatusSchema.optional().default('draft'),

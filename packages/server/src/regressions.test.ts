@@ -1351,30 +1351,30 @@ describe('T12: faster, observable watcher', () => {
 describe('T12: one scheduler tick', () => {
   afterEach(() => vi.useRealTimers());
 
-  it('runs jobs in order each tick, skips overlapping ticks, and survives a failing job', async () => {
+  it('runs each job every tick without one slow job delaying the others, never overlapping itself', async () => {
     vi.useFakeTimers();
-    const calls: string[] = [];
+    const calls: Record<string, number> = { watcher: 0, retry: 0, outbox: 0 };
     let release!: () => void;
     const slow = new Promise<void>((r) => { release = r; });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const stop = startScheduler(
       [
-        ['watcher', async () => { calls.push('watcher'); await slow; }],
-        ['retry', async () => { calls.push('retry'); throw new Error('boom'); }],
-        ['outbox', async () => { calls.push('outbox'); }],
+        ['watcher', async () => { calls.watcher++; await slow; }],
+        ['retry', async () => { calls.retry++; throw new Error('boom'); }],
+        ['outbox', async () => { calls.outbox++; }],
       ],
       1000
     );
 
     await vi.advanceTimersByTimeAsync(1000);
-    await vi.advanceTimersByTimeAsync(1000); // overlapping tick: skipped while watcher is still running
-    expect(calls).toEqual(['watcher']);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(calls).toEqual({ watcher: 1, retry: 2, outbox: 2 }); // watcher still running: not restarted
+    expect(warn).toHaveBeenCalled();
 
     release();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(calls).toEqual(['watcher', 'retry', 'outbox']);
-    expect(warn).toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(calls.watcher).toBe(2);
     stop();
     warn.mockRestore();
   });
@@ -1491,5 +1491,71 @@ describe('Review fixes: every retried side effect has backoff and a cap', () => 
     for (let i = 0; i < 20; i++) { clock += 3600_000; await sweeper.sweepOnce(); }
 
     expect(releaseCalls).toBeLessThanOrEqual(6);
+  });
+});
+
+describe('Review fixes: one stuck engine cannot stall the retry sweep', () => {
+  let h: Harness;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => h.db.close());
+
+  const later = () => Date.now() + 3600_000;
+
+  async function failedGoals(project: 'backend' | 'mobile', count: number) {
+    const original = h.adapters[project].createGoal.bind(h.adapters[project]);
+    h.adapters[project].createGoal = async () => { throw new Error('down'); };
+    const ids: number[] = [];
+    for (let i = 0; i < count; i++) {
+      const [goal] = await h.fanOutService.execute(h.createRequirement([project]).id);
+      ids.push(goal.id);
+    }
+    h.adapters[project].createGoal = original;
+    return ids;
+  }
+
+  it('dispatches retries in parallel', async () => {
+    await failedGoals('backend', 3);
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const original = h.adapters.backend.createGoal.bind(h.adapters.backend);
+    h.adapters.backend.createGoal = async (input) => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, 30));
+      inFlight--;
+      return original(input);
+    };
+
+    await new RetrySweeper(h.db, h.fanOutService, h.ticketService, h.linkService, { now: later }).sweepOnce();
+
+    expect(maxInFlight).toBeGreaterThan(1);
+  });
+
+  it('skips engines the watcher marked down', async () => {
+    const [id] = await failedGoals('backend', 1);
+    h.projectService.updateEngineStatus('backend', 'down');
+
+    await new RetrySweeper(h.db, h.fanOutService, h.ticketService, h.linkService, { now: later }).sweepOnce();
+
+    expect(taskRow(h, id).engine_task_id).toBeNull();
+  });
+
+  it('keeps sweeping later stages when one stage throws', async () => {
+    await failedGoals('backend', 1);
+    const req = h.createRequirement();
+    const originalTask = h.adapters.backend.createTask.bind(h.adapters.backend);
+    h.adapters.backend.createTask = async () => { throw new Error('down'); };
+    await h.ticketService
+      .createTicket({ to: 'backend', type: 'api_request', title: 'GET /x', body: 'Provide it please', blocking: false, req_id: req.id }, 'manual')
+      .catch(() => {});
+    h.adapters.backend.createTask = originalTask;
+    h.fanOutService.applyFanOutStatus = () => { throw new Error('boom'); };
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await new RetrySweeper(h.db, h.fanOutService, h.ticketService, h.linkService, { now: later }).sweepOnce();
+
+    const ticket = h.db.prepare("SELECT * FROM bridge_tasks WHERE role = 'ticket'").get() as any;
+    expect(ticket.engine_task_id).toBeTruthy();
+    vi.restoreAllMocks();
   });
 });

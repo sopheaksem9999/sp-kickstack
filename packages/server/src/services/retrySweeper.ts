@@ -4,6 +4,10 @@ import { FanOutService } from './fanOutService.js';
 import { TicketService } from './ticketService.js';
 import { LinkService } from './linkService.js';
 import { MAX_DISPATCH_ATTEMPTS, shouldNotifyFailure } from '../lib/retryPolicy.js';
+import { forEachLimit } from '../lib/concurrency.js';
+
+/** Engine calls in flight per sweep stage: one hung engine cannot serialize the rest. */
+const DISPATCHES_IN_FLIGHT = 4;
 
 export interface RetrySweeperOptions {
   /** Clock, injectable for tests. */
@@ -49,13 +53,23 @@ export class RetrySweeper {
     this.isSweeping = true;
     try {
       return {
-        goals: await this.retryGoals(),
-        tickets: await this.retryTickets(),
-        releases: await this.retryReleases(),
-        cancels: await this.retryCancels(),
+        goals: await this.stage('goals', () => this.retryGoals()),
+        tickets: await this.stage('tickets', () => this.retryTickets()),
+        releases: await this.stage('releases', () => this.retryReleases()),
+        cancels: await this.stage('cancels', () => this.retryCancels()),
       };
     } finally {
       this.isSweeping = false;
+    }
+  }
+
+  /** A failing stage is logged and does not skip the stages after it. */
+  private async stage(name: string, run: () => Promise<number>): Promise<number> {
+    try {
+      return await run();
+    } catch (err: any) {
+      console.warn(`[retry] ${name} sweep failed: ${err?.message || err}`);
+      return 0;
     }
   }
 
@@ -72,8 +86,10 @@ export class RetrySweeper {
       .prepare(`
         SELECT t.id, t.req_id, t.status, t.updated_at, t.attempts FROM bridge_tasks t
         JOIN requirements r ON r.id = t.req_id
+        JOIN projects p ON p.name = t.project
         WHERE t.role = ? AND t.engine_task_id IS NULL AND t.status IN ('failed', 'pending')
           AND t.attempts < ? AND r.status NOT IN ('cancelled', 'done')
+          AND p.enabled = 1 AND p.engine_status <> 'down'
         ORDER BY t.id
       `)
       .all(role, this.maxAttempts) as RetryRow[];
@@ -106,33 +122,28 @@ export class RetrySweeper {
   }
 
   private async retryGoals(): Promise<number> {
-    let retried = 0;
-    const requirements = new Set<string>();
-    for (const row of this.undispatched('goal')) {
-      if (!this.claim(row)) continue;
-      await this.fanOutService.dispatchGoal(row.id, { recordFailure: shouldNotifyFailure(row.attempts + 1) });
-      requirements.add(row.req_id);
-      retried++;
-    }
+    const claimed = this.undispatched('goal').filter((row) => this.claim(row));
+    await forEachLimit(claimed, DISPATCHES_IN_FLIGHT, (row) =>
+      this.fanOutService.dispatchGoal(row.id, { recordFailure: shouldNotifyFailure(row.attempts + 1) })
+    );
+    const requirements = new Set(claimed.map((row) => row.req_id));
     for (const reqId of requirements) {
       const goals = this.db
         .prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND role = 'goal' AND status <> 'cancelled'")
         .all(reqId) as BridgeTask[];
       this.fanOutService.applyFanOutStatus(reqId, goals);
     }
-    return retried;
+    return claimed.length;
   }
 
   private async retryTickets(): Promise<number> {
-    let retried = 0;
-    for (const row of this.undispatched('ticket')) {
-      if (!this.claim(row)) continue;
-      await this.ticketService
+    const claimed = this.undispatched('ticket').filter((row) => this.claim(row));
+    await forEachLimit(claimed, DISPATCHES_IN_FLIGHT, (row) =>
+      this.ticketService
         .dispatchTicket(row.id, { recordFailure: shouldNotifyFailure(row.attempts + 1) })
-        .catch(() => {});
-      retried++;
-    }
-    return retried;
+        .catch(() => {})
+    );
+    return claimed.length;
   }
 
   /**

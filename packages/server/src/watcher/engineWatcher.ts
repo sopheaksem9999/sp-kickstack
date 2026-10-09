@@ -5,6 +5,7 @@ import { AdapterFactory } from '../services/fanOutService.js';
 import { BridgeTask, NormStatus } from '@sp-kickstack/shared';
 import { TaskReactor } from '../services/taskReactor.js';
 import { LinkService } from '../services/linkService.js';
+import { forEachLimit } from '../lib/concurrency.js';
 
 export type EventCallback = (event: {
   type: string;
@@ -15,17 +16,6 @@ export type EventCallback = (event: {
 
 const TASKS_IN_FLIGHT_PER_ENGINE = 4;
 const MAX_DOWN_BACKOFF_MS = 5 * 60 * 1000;
-
-/** Run `fn` over `items` with at most `limit` calls in flight. */
-async function forEachLimit<T>(items: T[], limit: number, fn: (item: T) => Promise<void>) {
-  let next = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      await fn(items[next++]);
-    }
-  });
-  await Promise.all(workers);
-}
 
 export class EngineWatcher {
   private timer: NodeJS.Timeout | null = null;

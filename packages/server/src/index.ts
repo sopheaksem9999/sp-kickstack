@@ -100,8 +100,9 @@ const app = createApp({
 
 const server = app.listen(PORT, HOST, () => {
   console.log(`🚀 SP Kickstack DevFlow Bridge running at http://${HOST}:${PORT}`);
-  // One tick: sync engine state, retry failed side effects (also recovers reservations
-  // left pending by a crash), then pick up agent outbox tickets.
+  // Each tick starts every job that is not still running: sync engine state, retry failed
+  // side effects (also recovers reservations left pending by a crash), pick up outbox tickets.
+  // A slow job never delays the others.
   startScheduler(
     [
       ['watcher', () => watcher.scanOnce()],

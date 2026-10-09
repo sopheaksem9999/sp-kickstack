@@ -1,31 +1,29 @@
 export type ScheduledJob = [name: string, run: () => Promise<unknown>];
 
 /**
- * One periodic tick running each job in order. A tick is skipped while the previous one is
- * still running, and a failing job is logged without stopping the others.
- * Returns a function that stops the schedule.
+ * Start every job on each tick. A job is skipped while its previous run is still going,
+ * so a slow job (e.g. a hung engine) never delays the others, and a failing job is logged
+ * without affecting the rest. Returns a function that stops the schedule.
  */
 export function startScheduler(jobs: ScheduledJob[], intervalMs: number): () => void {
-  let running = false;
+  const running = new Set<string>();
 
-  const tick = async () => {
-    if (running) return;
-    running = true;
+  const runJob = async (name: string, run: () => Promise<unknown>) => {
+    if (running.has(name)) return;
+    running.add(name);
     try {
-      for (const [name, run] of jobs) {
-        try {
-          await run();
-        } catch (err: any) {
-          console.warn(`[scheduler] ${name} failed: ${err?.message || err}`);
-        }
-      }
+      await run();
+    } catch (err: any) {
+      console.warn(`[scheduler] ${name} failed: ${err?.message || err}`);
     } finally {
-      running = false;
+      running.delete(name);
     }
   };
 
   const timer = setInterval(() => {
-    void tick();
+    for (const [name, run] of jobs) {
+      void runJob(name, run);
+    }
   }, intervalMs);
   return () => clearInterval(timer);
 }

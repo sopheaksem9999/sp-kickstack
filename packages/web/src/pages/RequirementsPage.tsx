@@ -1,6 +1,5 @@
 import { useState, useMemo, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
 import {
   fetchRequirements,
   fetchProjects,
@@ -13,6 +12,7 @@ import { StatusBadge } from '../components/StatusBadge.js';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { useCreateRequirement } from '../lib/CreateRequirementContext.js';
 import { CreateSprintModal } from '../components/CreateSprintModal.js';
+import { RequirementDetailSheet } from '../components/RequirementDetailSheet.js';
 import { toast } from 'sonner';
 import {
   Plus,
@@ -56,8 +56,9 @@ export function RequirementsPage() {
   const [scrumTab, setScrumTab] = useState<'sprint' | 'backlog' | 'all'>('sprint');
   const [isCreateSprintOpen, setIsCreateSprintOpen] = useState(false);
   
-  // View states
-  const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
+  // View states - active Board by default
+  const [viewMode, setViewMode] = useState<'list' | 'board'>('board');
+  const [selectedRequirementId, setSelectedRequirementId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
@@ -1010,17 +1011,22 @@ export function RequirementsPage() {
                         className="hover:bg-purple-50/30 dark:hover:bg-[#1f202b] transition-colors group"
                       >
                         <td className="px-4 py-3 font-mono font-bold text-[#7b68ee] whitespace-nowrap">
-                          <Link to={`/requirements/${req.id}`} className="hover:underline">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedRequirementId(req.id)}
+                            className="hover:underline cursor-pointer text-left"
+                          >
                             {req.id}
-                          </Link>
+                          </button>
                         </td>
                         <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">
-                          <Link
-                            to={`/requirements/${req.id}`}
-                            className="hover:text-[#7b68ee] transition-colors font-semibold block"
+                          <button
+                            type="button"
+                            onClick={() => setSelectedRequirementId(req.id)}
+                            className="hover:text-[#7b68ee] transition-colors font-semibold block text-left cursor-pointer truncate max-w-xs md:max-w-md"
                           >
                             {req.title}
-                          </Link>
+                          </button>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[10px] bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700/60">
@@ -1104,13 +1110,14 @@ export function RequirementsPage() {
                           {new Date(req.created_at).toLocaleDateString()}
                         </td>
                         <td className="px-4 py-3 text-center whitespace-nowrap">
-                          <Link
-                            to={`/requirements/${req.id}`}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-[#7b68ee] hover:bg-purple-50 dark:hover:bg-[#262738] inline-flex items-center justify-center transition-colors"
-                            title="View Details"
+                          <button
+                            type="button"
+                            onClick={() => setSelectedRequirementId(req.id)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-[#7b68ee] hover:bg-purple-50 dark:hover:bg-[#262738] inline-flex items-center justify-center transition-colors cursor-pointer"
+                            title="View Details in Sheet"
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
-                          </Link>
+                          </button>
                         </td>
                       </tr>
                     );
@@ -1159,17 +1166,22 @@ export function RequirementsPage() {
                                   className="hover:bg-purple-50/30 dark:hover:bg-[#1f202b] transition-colors group"
                                 >
                                   <td className="px-4 py-3 font-mono font-bold text-[#7b68ee] whitespace-nowrap">
-                                    <Link to={`/requirements/${req.id}`} className="hover:underline">
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedRequirementId(req.id)}
+                                      className="hover:underline cursor-pointer text-left"
+                                    >
                                       {req.id}
-                                    </Link>
+                                    </button>
                                   </td>
                                   <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">
-                                    <Link
-                                      to={`/requirements/${req.id}`}
-                                      className="hover:text-[#7b68ee] transition-colors font-semibold block"
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedRequirementId(req.id)}
+                                      className="hover:text-[#7b68ee] transition-colors font-semibold block text-left cursor-pointer truncate max-w-xs md:max-w-md"
                                     >
                                       {req.title}
-                                    </Link>
+                                    </button>
                                   </td>
                                   <td className="px-4 py-3 whitespace-nowrap">
                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[10px] bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700/60">
@@ -1256,13 +1268,14 @@ export function RequirementsPage() {
                                     {new Date(req.created_at).toLocaleDateString()}
                                   </td>
                                   <td className="px-4 py-3 text-center whitespace-nowrap">
-                                    <Link
-                                      to={`/requirements/${req.id}`}
-                                      className="p-1.5 rounded-lg text-slate-400 hover:text-[#7b68ee] hover:bg-purple-50 dark:hover:bg-[#262738] inline-flex items-center justify-center transition-colors"
-                                      title="View Details"
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedRequirementId(req.id)}
+                                      className="p-1.5 rounded-lg text-slate-400 hover:text-[#7b68ee] hover:bg-purple-50 dark:hover:bg-[#262738] inline-flex items-center justify-center transition-colors cursor-pointer"
+                                      title="View Details in Sheet"
                                     >
                                       <ExternalLink className="w-3.5 h-3.5" />
-                                    </Link>
+                                    </button>
                                   </td>
                                 </tr>
                               );
@@ -1328,13 +1341,13 @@ export function RequirementsPage() {
                     const reqSprint = req.sprint_id ? sprints.find((s) => s.id === req.sprint_id) : null;
 
                     return (
-                      <Link
+                      <div
                         key={req.id}
-                        to={`/requirements/${req.id}`}
-                        className="block p-3 rounded-lg bg-slate-50 dark:bg-[#1f202b] hover:bg-purple-50/50 dark:hover:bg-[#252736] border border-slate-200 dark:border-[#2e303d] shadow-sm transition-all group"
+                        onClick={() => setSelectedRequirementId(req.id)}
+                        className="block p-3 rounded-lg bg-slate-50 dark:bg-[#1f202b] hover:bg-purple-50/50 dark:hover:bg-[#252736] border border-slate-200 dark:border-[#2e303d] shadow-sm transition-all group cursor-pointer"
                       >
                         <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 mb-1">
-                          <span className="text-[#7b68ee] font-bold">{req.id}</span>
+                          <span className="text-[#7b68ee] font-bold group-hover:underline">{req.id}</span>
                           <span className="flex items-center gap-1 text-[10px]">
                             <Flag className={`w-3 h-3 ${prio.color}`} />
                             <span className="capitalize">{prio.label}</span>
@@ -1360,7 +1373,7 @@ export function RequirementsPage() {
                             {reqSprint ? reqSprint.name : 'Backlog'}
                           </span>
                         </div>
-                      </Link>
+                      </div>
                     );
                   })}
                 </div>
@@ -1394,6 +1407,13 @@ export function RequirementsPage() {
             setScrumTab('sprint');
           }
         }}
+      />
+
+      {/* Requirement Detail Slide-over Sheet */}
+      <RequirementDetailSheet
+        requirementId={selectedRequirementId}
+        isOpen={Boolean(selectedRequirementId)}
+        onClose={() => setSelectedRequirementId(null)}
       />
     </div>
   );

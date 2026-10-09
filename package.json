@@ -10,7 +10,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run --workspace=@sp-kickstack/shared build && npm run --workspaces --if-present build",
+    "build": "npm run --workspace=@sp-kickstack/shared build && npm run --workspace=@sp-kickstack/server build && npm run --workspace=@sp-kickstack/web build && npm run --workspace=@sp-kickstack/xticket build",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "npm run --workspaces --if-present typecheck",

@@ -312,4 +312,14 @@ export interface StartIdeInput {
   port?: number;
 }
 
+export interface ProjectTerminalStatus {
+  projectName: string;
+  repoPath: string;
+  running: boolean;
+  pid?: number;
+  buffer: string;
+  startedAt?: string;
+  lastCommand?: string;
+}
+
 

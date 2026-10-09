@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchProjects,
@@ -21,10 +21,20 @@ import {
   Copy,
   Check,
   ExternalLink,
-  AlertTriangle,
   Code2,
+  Terminal,
+  Search,
+  LayoutGrid,
+  Columns,
+  GitBranch,
+  Laptop,
+  Server,
+  Smartphone,
 } from 'lucide-react';
 import { ProjectGitReviewModal } from '../components/ProjectGitReviewModal.js';
+import { ProjectTerminalModal } from '../components/ProjectTerminalModal.js';
+import { ProjectGitReviewView } from '../components/ProjectGitReviewView.js';
+import { ProjectTerminalView } from '../components/ProjectTerminalView.js';
 
 export function ProjectsPage() {
   const queryClient = useQueryClient();
@@ -52,8 +62,11 @@ export function ProjectsPage() {
   // Open Details modal state
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
-  // Embedded IDE Review state
+  // Embedded Git Review modal state
   const [ideReviewProject, setIdeReviewProject] = useState<Project | null>(null);
+
+  // Project Shell Terminal state
+  const [terminalProject, setTerminalProject] = useState<Project | null>(null);
 
   // Edit Project modal state
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -71,6 +84,44 @@ export function ProjectsPage() {
 
   // Copy feedback state
   const [copiedPath, setCopiedPath] = useState(false);
+
+  // Split View (In-Container Chat-like layout) state
+  const [viewMode, setViewMode] = useState<'grid' | 'split'>('grid');
+  const [activeSplitProjectName, setActiveSplitProjectName] = useState<string>('');
+  const [splitRightTab, setSplitRightTab] = useState<'review' | 'terminal'>('review');
+  const [splitSearch, setSplitSearch] = useState('');
+
+  const activeSplitProject = useMemo(() => {
+    if (activeSplitProjectName) {
+      const found = projects.find((p) => p.name === activeSplitProjectName);
+      if (found) return found;
+    }
+    return projects[0] || null;
+  }, [projects, activeSplitProjectName]);
+
+  const filteredSplitProjects = useMemo(() => {
+    if (!splitSearch.trim()) return projects;
+    const q = splitSearch.toLowerCase();
+    return projects.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.kind && p.kind.toLowerCase().includes(q)) ||
+        (p.repo_path && p.repo_path.toLowerCase().includes(q))
+    );
+  }, [projects, splitSearch]);
+
+  const getProjectKindIcon = (kind?: string) => {
+    switch (kind) {
+      case 'frontend':
+        return <Laptop className="w-3.5 h-3.5 text-blue-400 shrink-0" />;
+      case 'backend':
+        return <Server className="w-3.5 h-3.5 text-emerald-400 shrink-0" />;
+      case 'mobile':
+        return <Smartphone className="w-3.5 h-3.5 text-purple-400 shrink-0" />;
+      default:
+        return <FolderGit2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />;
+    }
+  };
 
   useEffect(() => {
     if (activeWorkspaceId !== 'all') {
@@ -128,6 +179,7 @@ export function ProjectsPage() {
       setRepoPath('');
       setEngineUrl('');
       setContractPath('');
+      setTestCommand('');
       queryClient.invalidateQueries();
     },
     onError: (err: any) => toast.error(err.message || 'Failed to create project'),
@@ -197,10 +249,6 @@ export function ProjectsPage() {
   const handleUpdate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProject) return;
-    if (!editRepoPath.trim()) {
-      toast.error('Repository Path is required');
-      return;
-    }
 
     updateMutation.mutate({
       name: editingProject.name,
@@ -212,211 +260,459 @@ export function ProjectsPage() {
         engine_url: editEngineUrl.trim() || undefined,
         base_branch: editBaseBranch.trim() || 'main',
         contract_path: editContractPath.trim() || undefined,
-        test_command: editTestCommand.trim() || null,
+        test_command: editTestCommand.trim() || undefined,
       },
     });
   };
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-semibold text-purple-600 dark:text-purple-400 uppercase tracking-wider">
-            <span>Repositories & Engines</span>
-          </div>
-          <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-            Connected Projects & Agent Runtimes
-          </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Decoupled per-repo agent engines orchestrated across workspaces
-          </p>
-        </div>
+    <div className="w-full h-full flex flex-col min-h-0 overflow-hidden">
+      {viewMode === 'split' ? (
+        /* ======================================================= */
+        /* IN-CONTAINER SPLIT VIEW (Similar to AI Chat Layout)     */
+        /* ======================================================= */
+        <div className="flex-1 flex min-h-0 overflow-hidden bg-slate-50 dark:bg-[#0c0d12]">
+          {/* Column 1: Projects List Sidebar (Like AI Chat Sessions) */}
+          <aside className="w-72 sm:w-80 shrink-0 bg-[#0c0d12] border-r border-slate-800/90 flex flex-col">
+            {/* Header & Filter */}
+            <div className="p-3 bg-[#11131a] border-b border-slate-800/80 space-y-2 shrink-0">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FolderGit2 className="w-4 h-4 text-purple-400" />
+                  <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">Projects</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-900 border border-slate-700 text-slate-300">
+                    {filteredSplitProjects.length} repos
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('grid')}
+                    className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                    title="Switch to Cards Grid View"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
 
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-[#7b68ee] to-[#ec4899] hover:from-[#6c5ce7] hover:to-[#db2777] text-white rounded-lg text-xs font-bold shadow-md shadow-purple-500/20 active:scale-[0.98] transition-all"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>Add Project</span>
-        </button>
-      </div>
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  value={splitSearch}
+                  onChange={(e) => setSplitSearch(e.target.value)}
+                  placeholder="Filter projects..."
+                  className="w-full pl-8 pr-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-900/90 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-500 font-mono"
+                />
+              </div>
+            </div>
 
-      {isLoading ? (
-        <div className="p-16 text-center text-slate-400 text-sm">Loading projects...</div>
-      ) : projects.length === 0 ? (
-        <div className="p-12 text-center border border-dashed border-slate-300 dark:border-[#2d2d2d] rounded-2xl bg-white dark:bg-[#1e1e1e] shadow-sm">
-          <p className="text-slate-500 dark:text-slate-400 mb-3 text-sm font-medium">
-            No projects registered in this workspace yet.
-          </p>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="text-xs font-bold text-[#7b68ee] hover:underline inline-flex items-center gap-1"
-          >
-            Register your first project <Plus className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {projects.map((proj) => (
-            <div
-              key={proj.name}
-              className="bg-white dark:bg-[#242424] border border-slate-200 dark:border-[#2d2d2d] rounded-xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-4 group"
-            >
-              <div>
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <div className="flex items-center gap-2.5">
+            {/* Project List */}
+            <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+              {filteredSplitProjects.length === 0 ? (
+                <div className="p-8 text-center text-xs text-slate-500 space-y-2">
+                  <FolderGit2 className="w-6 h-6 mx-auto text-slate-600" />
+                  <p>No matching projects found</p>
+                </div>
+              ) : (
+                filteredSplitProjects.map((p) => {
+                  const isActive = p.name === activeSplitProject?.name;
+                  return (
                     <div
-                      onClick={() => setSelectedProject(proj)}
-                      className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-[#7b68ee] dark:text-purple-300 flex items-center justify-center font-bold cursor-pointer hover:scale-105 transition"
-                      title="Open Details"
+                      key={p.name}
+                      onClick={() => setActiveSplitProjectName(p.name)}
+                      className={`group relative flex items-start justify-between p-2.5 rounded-xl cursor-pointer transition-all border ${
+                        isActive
+                          ? 'bg-purple-600/20 border-purple-500/50 text-white shadow-sm ring-1 ring-purple-500/30'
+                          : 'hover:bg-slate-900/90 bg-slate-900/30 border-slate-800/60 text-slate-300 hover:border-slate-700'
+                      }`}
                     >
+                      <div className="min-w-0 flex-1 pr-1.5">
+                        <div className="flex items-center gap-1.5">
+                          {getProjectKindIcon(p.kind)}
+                          <span className={`text-xs font-bold truncate ${isActive ? 'text-white' : 'text-slate-200'}`}>
+                            {p.name}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 mt-1.5 text-[10px] text-slate-400 font-mono truncate">
+                          <span className="px-1.5 py-0.2 rounded bg-slate-950 border border-slate-800/80 text-slate-300">
+                            {p.kind || 'repo'}
+                          </span>
+                          <span className="flex items-center gap-1 text-purple-300 truncate">
+                            <GitBranch className="w-2.5 h-2.5 shrink-0" />
+                            <span className="truncate">{p.base_branch || 'main'}</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveSplitProjectName(p.name);
+                          setSplitRightTab('terminal');
+                        }}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-300 hover:bg-emerald-950/60 transition shrink-0 opacity-80 group-hover:opacity-100"
+                        title={`Open terminal for ${p.name}`}
+                      >
+                        <Terminal className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Sidebar Footer */}
+            <div className="p-2.5 border-t border-slate-800/80 bg-[#11131a] flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(true)}
+                className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-200 hover:text-white text-xs font-semibold transition"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add New Project</span>
+              </button>
+            </div>
+          </aside>
+
+          {/* Right Main Container */}
+          <main className="flex-1 flex flex-col min-w-0 bg-[#090a0f] overflow-hidden">
+            {activeSplitProject ? (
+              <>
+                {/* Context Header Bar */}
+                <header className="px-5 py-2.5 bg-[#111218] border-b border-slate-800/90 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="p-2 rounded-xl bg-purple-600/20 text-[#7b68ee] border border-purple-500/30 shrink-0">
                       <FolderGit2 className="w-4 h-4" />
                     </div>
-                    <div>
-                      <h3
-                        onClick={() => setSelectedProject(proj)}
-                        className="font-bold text-sm text-slate-900 dark:text-white capitalize cursor-pointer hover:text-[#7b68ee] transition-colors"
-                      >
-                        {proj.name}
-                      </h3>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 dark:bg-[#2e2e2e] text-slate-600 dark:text-slate-400">
-                          {proj.kind}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-sm text-white capitalize">{activeSplitProject.name}</span>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-950/60 text-purple-300 border border-purple-800/40">
+                          {activeSplitProject.kind}
                         </span>
-                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40">
-                          📁 {proj.workspace_id || 'default'}
+                        <span className="text-xs text-slate-400 font-mono truncate max-w-xs hidden md:inline">
+                          • {activeSplitProject.repo_path}
                         </span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Header Actions: Engine Status & Action Buttons */}
-                  <div className="flex items-center gap-1">
-                    {/* Status Pill */}
-                    {proj.engine_status === 'ok' ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Online
-                      </span>
-                    ) : proj.engine_status === 'down' ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60">
-                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Down
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 dark:bg-[#2a2a2a] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-[#333333]">
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span> {proj.engine_type}
-                      </span>
-                    )}
+                  {/* Right Container View Tabs & Actions */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {/* Tab Selector: Git Review vs Terminal */}
+                    <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-bold text-slate-400">
+                      <button
+                        type="button"
+                        onClick={() => setSplitRightTab('review')}
+                        className={`flex items-center gap-1 px-3 py-1 rounded-md transition-all ${
+                          splitRightTab === 'review'
+                            ? 'bg-purple-600 text-white shadow-xs'
+                            : 'hover:text-white'
+                        }`}
+                      >
+                        <Code2 className="w-3.5 h-3.5" />
+                        <span>Git Review</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSplitRightTab('terminal')}
+                        className={`flex items-center gap-1 px-3 py-1 rounded-md transition-all ${
+                          splitRightTab === 'terminal'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'hover:text-white'
+                        }`}
+                      >
+                        <Terminal className="w-3.5 h-3.5" />
+                        <span>Terminal</span>
+                      </button>
+                    </div>
 
-                    {/* Action Icon Buttons */}
                     <button
-                      onClick={() => setSelectedProject(proj)}
-                      className="p-1 rounded-md text-slate-400 hover:text-[#7b68ee] hover:bg-slate-100 dark:hover:bg-[#2e2e2e] transition"
-                      title="Open Project Details"
-                    >
-                      <FolderOpen className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleOpenEdit(proj)}
-                      className="p-1 rounded-md text-slate-400 hover:text-blue-500 hover:bg-slate-100 dark:hover:bg-[#2e2e2e] transition"
-                      title="Edit Project"
+                      type="button"
+                      onClick={() => handleOpenEdit(activeSplitProject)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/80 transition"
+                      title="Edit Project Settings"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
+
                     <button
-                      onClick={() => setDeletingProject(proj)}
-                      className="p-1 rounded-md text-slate-400 hover:text-rose-500 hover:bg-slate-100 dark:hover:bg-[#2e2e2e] transition"
-                      title="Delete Project"
+                      type="button"
+                      onClick={() => setViewMode('grid')}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
+                      title="Switch to Cards Grid"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <LayoutGrid className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Cards View</span>
                     </button>
                   </div>
-                </div>
+                </header>
 
-                {/* Metadata List */}
-                <div className="space-y-1.5 text-xs font-mono text-slate-500 dark:text-slate-400 bg-slate-50/70 dark:bg-[#1a1a1a] p-3 rounded-lg border border-slate-100 dark:border-[#2d2d2d]">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400 dark:text-slate-500">Engine:</span>
-                    <span className="text-slate-800 dark:text-slate-200 font-semibold">{proj.engine_type}</span>
-                  </div>
-                  <div className="flex justify-between truncate">
-                    <span className="text-slate-400 dark:text-slate-500">URL:</span>
-                    <span className="text-[#7b68ee] truncate max-w-[170px]">{proj.engine_url || 'local/manual'}</span>
-                  </div>
-                  <div className="flex justify-between truncate">
-                    <span className="text-slate-400 dark:text-slate-500">Repo:</span>
-                    <span className="text-slate-700 dark:text-slate-300 truncate max-w-[170px]" title={proj.repo_path}>
-                      {proj.repo_path}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400 dark:text-slate-500">Branch:</span>
-                    <span className="text-slate-700 dark:text-slate-300">{proj.base_branch}</span>
-                  </div>
-                  {proj.contract_path && (
-                    <div className="flex justify-between">
-                      <span className="text-slate-400 dark:text-slate-500">Contract:</span>
-                      <span className="text-purple-600 dark:text-purple-300 font-semibold">{proj.contract_path}</span>
-                    </div>
+                {/* Main Container Body */}
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  {splitRightTab === 'review' ? (
+                    <ProjectGitReviewView
+                      projectName={activeSplitProject.name}
+                      repoPath={activeSplitProject.repo_path}
+                      baseBranch={activeSplitProject.base_branch || 'develop'}
+                      targetBranch="main"
+                      onToggleTerminal={() => setSplitRightTab('terminal')}
+                      isTerminalOpen={false}
+                    />
+                  ) : (
+                    <ProjectTerminalView
+                      projectName={activeSplitProject.name}
+                      project={activeSplitProject}
+                      repoPath={activeSplitProject.repo_path}
+                      showHeader={false}
+                      className="h-full border-none rounded-none"
+                    />
                   )}
                 </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-slate-500 space-y-2 p-8">
+                <FolderGit2 className="w-12 h-12 text-slate-700" />
+                <p className="text-sm font-bold text-slate-300">Select a project to inspect</p>
+                <p className="text-xs">Choose any repository from the left sidebar to review code or run terminal commands.</p>
+              </div>
+            )}
+          </main>
+        </div>
+      ) : (
+        /* ======================================================= */
+        /* CARDS GRID VIEW                                         */
+        /* ======================================================= */
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+          <div className="w-full max-w-[1600px] mx-auto space-y-6">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-semibold text-purple-600 dark:text-purple-400 uppercase tracking-wider">
+                  <span>Repositories & Engines</span>
+                </div>
+                <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                  Connected Projects & Agent Runtimes
+                </h1>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Decoupled per-repo agent engines orchestrated across workspaces
+                </p>
               </div>
 
-              {/* Card Footer Actions */}
-              <div className="pt-2.5 border-t border-slate-100 dark:border-[#2d2d2d] flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2.5">
+                {/* View Mode Switcher */}
+                <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-[#202128] border border-slate-200 dark:border-[#2d2f3d] text-xs font-semibold">
                   <button
-                    onClick={() => setSelectedProject(proj)}
-                    className="flex items-center gap-1 text-xs font-semibold text-[#7b68ee] hover:underline"
-                    title="Open full project specifications"
+                    type="button"
+                    onClick={() => setViewMode('grid')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+                      viewMode === 'grid'
+                        ? 'bg-white dark:bg-[#2a2b36] text-purple-600 dark:text-purple-300 shadow-xs font-bold'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
                   >
-                    <FolderOpen className="w-3.5 h-3.5" />
-                    <span>Open</span>
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                    <span>Cards</span>
                   </button>
-                  <span className="text-slate-300 dark:text-slate-600">|</span>
                   <button
-                    onClick={() => setIdeReviewProject(proj)}
-                    className="flex items-center gap-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
-                    title="Review project code and git diffs"
+                    type="button"
+                    onClick={() => {
+                      if (!activeSplitProjectName && projects[0]) {
+                        setActiveSplitProjectName(projects[0].name);
+                      }
+                      setViewMode('split');
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all"
                   >
-                    <Code2 className="w-3.5 h-3.5" />
-                    <span>Git Review</span>
-                  </button>
-                  <span className="text-slate-300 dark:text-slate-600">|</span>
-                  <button
-                    onClick={() => handleOpenEdit(proj)}
-                    className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition"
-                  >
-                    <Pencil className="w-3 h-3" />
-                    <span>Edit</span>
-                  </button>
-                  <span className="text-slate-300 dark:text-slate-600">|</span>
-                  <button
-                    onClick={() => setDeletingProject(proj)}
-                    className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-rose-500 transition"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    <span>Delete</span>
+                    <Columns className="w-3.5 h-3.5" />
+                    <span>Git Review (Split)</span>
                   </button>
                 </div>
 
                 <button
-                  onClick={() => testMutation.mutate(proj.name)}
-                  disabled={testMutation.isPending}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-[#2a2a2a] hover:bg-slate-200 dark:hover:bg-[#333333] transition-colors disabled:opacity-50"
-                  title="Test Connection"
+                  onClick={() => setIsModalOpen(true)}
+                  className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-[#7b68ee] to-[#ec4899] hover:from-[#6c5ce7] hover:to-[#db2777] text-white rounded-lg text-xs font-bold shadow-md shadow-purple-500/20 active:scale-[0.98] transition-all"
                 >
-                  <RefreshCw className={`w-3 h-3 ${testMutation.isPending ? 'animate-spin' : ''}`} />
-                  <span>Test</span>
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Project</span>
                 </button>
               </div>
             </div>
-          ))}
+
+            {isLoading ? (
+              <div className="p-16 text-center text-slate-400 text-sm">Loading projects...</div>
+            ) : projects.length === 0 ? (
+              <div className="p-12 text-center border border-dashed border-slate-300 dark:border-[#2d2d2d] rounded-2xl bg-white dark:bg-[#1e1e1e] shadow-sm">
+                <p className="text-slate-500 dark:text-slate-400 mb-3 text-sm font-medium">
+                  No projects registered in this workspace yet.
+                </p>
+                <button
+                  onClick={() => setIsModalOpen(true)}
+                  className="text-xs font-bold text-[#7b68ee] hover:underline inline-flex items-center gap-1"
+                >
+                  Register your first project <Plus className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {projects.map((proj) => (
+                  <div
+                    key={proj.name}
+                    className="bg-white dark:bg-[#242424] border border-slate-200 dark:border-[#2d2d2d] rounded-xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-4 group"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-2 mb-3">
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            onClick={() => setSelectedProject(proj)}
+                            className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-[#7b68ee] dark:text-purple-300 flex items-center justify-center font-bold cursor-pointer hover:scale-105 transition"
+                            title="Open Details"
+                          >
+                            <FolderGit2 className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h3
+                              onClick={() => setSelectedProject(proj)}
+                              className="font-bold text-sm text-slate-900 dark:text-white capitalize cursor-pointer hover:text-[#7b68ee] transition-colors"
+                            >
+                              {proj.name}
+                            </h3>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 dark:bg-[#2e2e2e] text-slate-600 dark:text-slate-400">
+                                {proj.kind}
+                              </span>
+                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40">
+                                📁 {proj.workspace_id || 'default'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Header Actions: Engine Status & Top Action Buttons */}
+                        <div className="flex items-center gap-1">
+                          {/* Status Pill */}
+                          {proj.engine_status === 'ok' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Online
+                            </span>
+                          ) : proj.engine_status === 'down' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Down
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 dark:bg-[#2a2a2a] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-[#333333]">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span> {proj.engine_type}
+                            </span>
+                          )}
+
+                          {/* Top Action Icon Buttons: Open, Edit, Delete */}
+                          <button
+                            onClick={() => setSelectedProject(proj)}
+                            className="p-1 rounded-md text-slate-400 hover:text-[#7b68ee] hover:bg-slate-100 dark:hover:bg-[#2e2e2e] transition"
+                            title="Open Project Details"
+                          >
+                            <FolderOpen className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleOpenEdit(proj)}
+                            className="p-1 rounded-md text-slate-400 hover:text-blue-500 hover:bg-slate-100 dark:hover:bg-[#2e2e2e] transition"
+                            title="Edit Project"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setDeletingProject(proj)}
+                            className="p-1 rounded-md text-slate-400 hover:text-rose-500 hover:bg-slate-100 dark:hover:bg-[#2e2e2e] transition"
+                            title="Delete Project"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Metadata List */}
+                      <div className="space-y-1.5 text-xs font-mono text-slate-500 dark:text-slate-400 bg-slate-50/70 dark:bg-[#1a1a1a] p-3 rounded-lg border border-slate-100 dark:border-[#2d2d2d]">
+                        <div className="flex justify-between">
+                          <span className="text-slate-400 dark:text-slate-500">Engine:</span>
+                          <span className="text-slate-800 dark:text-slate-200 font-semibold">{proj.engine_type}</span>
+                        </div>
+                        <div className="flex justify-between truncate">
+                          <span className="text-slate-400 dark:text-slate-500">URL:</span>
+                          <span className="text-[#7b68ee] truncate max-w-[170px]">{proj.engine_url || 'local/manual'}</span>
+                        </div>
+                        <div className="flex justify-between truncate">
+                          <span className="text-slate-400 dark:text-slate-500">Repo:</span>
+                          <span className="text-slate-700 dark:text-slate-300 truncate max-w-[170px]" title={proj.repo_path}>
+                            {proj.repo_path}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400 dark:text-slate-500">Branch:</span>
+                          <span className="text-slate-700 dark:text-slate-300">{proj.base_branch}</span>
+                        </div>
+                        {proj.contract_path && (
+                          <div className="flex justify-between">
+                            <span className="text-slate-400 dark:text-slate-500">Contract:</span>
+                            <span className="text-purple-600 dark:text-purple-300 font-semibold">{proj.contract_path}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Card Footer Actions: Only Git Review, Terminal, and Test */}
+                    <div className="pt-2.5 border-t border-slate-100 dark:border-[#2d2d2d] flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            setActiveSplitProjectName(proj.name);
+                            setSplitRightTab('review');
+                            setViewMode('split');
+                          }}
+                          className="flex items-center gap-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                          title="Review project code and git diffs in container"
+                        >
+                          <Code2 className="w-3.5 h-3.5" />
+                          <span>Git Review</span>
+                        </button>
+                        <span className="text-slate-300 dark:text-slate-600">|</span>
+                        <button
+                          onClick={() => {
+                            setActiveSplitProjectName(proj.name);
+                            setSplitRightTab('terminal');
+                            setViewMode('split');
+                          }}
+                          className="flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
+                          title="Open persistent project shell terminal in container"
+                        >
+                          <Terminal className="w-3.5 h-3.5" />
+                          <span>Terminal</span>
+                        </button>
+                      </div>
+
+                      <button
+                        onClick={() => testMutation.mutate(proj.name)}
+                        disabled={testMutation.isPending}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-[#2a2a2a] hover:bg-slate-200 dark:hover:bg-[#333333] transition-colors disabled:opacity-50"
+                        title="Test Connection"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${testMutation.isPending ? 'animate-spin' : ''}`} />
+                        <span>Test</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {/* ======================================================== */}
-      {/* 1. Open Project Details Modal */}
+      {/* 1. Open Project Details Modal                            */}
       {/* ======================================================== */}
       {selectedProject && (
         <div className="fixed inset-0 z-50 bg-black/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
@@ -506,22 +802,28 @@ export function ProjectsPage() {
                 </div>
                 <div className="p-3 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-200 dark:border-[#2d2d2d] space-y-1">
                   <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500">Engine URL</span>
-                  <p className="font-mono text-[#7b68ee] truncate">{selectedProject.engine_url || 'local/manual'}</p>
+                  <p className="font-semibold text-[#7b68ee] truncate">{selectedProject.engine_url || 'local / manual'}</p>
                 </div>
                 <div className="p-3 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-200 dark:border-[#2d2d2d] space-y-1">
                   <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500">Base Branch</span>
-                  <p className="font-mono text-slate-800 dark:text-slate-200">{selectedProject.base_branch || 'main'}</p>
+                  <p className="font-semibold text-slate-800 dark:text-slate-200">{selectedProject.base_branch}</p>
                 </div>
                 <div className="p-3 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-200 dark:border-[#2d2d2d] space-y-1">
                   <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500">Contract Path</span>
-                  <p className="font-mono text-purple-600 dark:text-purple-300 truncate">
-                    {selectedProject.contract_path || 'None'}
+                  <p className="font-semibold text-purple-600 dark:text-purple-300 truncate">
+                    {selectedProject.contract_path || 'None specified'}
                   </p>
                 </div>
               </div>
 
-              {/* Timestamps */}
-              <div className="flex justify-between text-[11px] text-slate-400 dark:text-slate-500 px-1 pt-1 font-mono">
+              {selectedProject.test_command && (
+                <div className="p-3 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-200 dark:border-[#2d2d2d] space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500">Test Command</span>
+                  <p className="font-semibold text-slate-800 dark:text-slate-200 font-mono">{selectedProject.test_command}</p>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between pt-2 text-[11px] text-slate-400">
                 <span>Created: {new Date(selectedProject.created_at).toLocaleDateString()}</span>
                 <span>Updated: {new Date(selectedProject.updated_at).toLocaleDateString()}</span>
               </div>
@@ -558,6 +860,19 @@ export function ProjectsPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => {
+                    const proj = selectedProject;
+                    setSelectedProject(null);
+                    setTerminalProject(proj);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm transition"
+                  title="Open interactive project shell terminal"
+                >
+                  <Terminal className="w-3.5 h-3.5" />
+                  <span>Terminal</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => testMutation.mutate(selectedProject.name)}
                   disabled={testMutation.isPending}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-[#2a2a2a] hover:bg-slate-200 dark:hover:bg-[#333333] transition"
@@ -575,7 +890,7 @@ export function ProjectsPage() {
                   className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-[#7b68ee] hover:bg-[#6c5ce7] text-white shadow-sm transition"
                 >
                   <Pencil className="w-3.5 h-3.5" />
-                  <span>Edit Project</span>
+                  <span>Edit</span>
                 </button>
               </div>
             </div>
@@ -584,25 +899,18 @@ export function ProjectsPage() {
       )}
 
       {/* ======================================================== */}
-      {/* 2. Edit Project Modal */}
+      {/* 2. Edit Project Modal Dialog                             */}
       {/* ======================================================== */}
       {editingProject && (
         <div className="fixed inset-0 z-50 bg-black/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-[#2d2d2d] rounded-2xl p-6 w-full max-w-lg space-y-5 shadow-2xl">
+          <div className="bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-[#2d2d2d] rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-[#2d2d2d]">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-blue-500 text-white flex items-center justify-center font-bold text-xs">
-                  <Pencil className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                    Edit Project: <span className="capitalize">{editingProject.name}</span>
-                  </h3>
-                </div>
-              </div>
+              <h3 className="text-base font-black text-slate-900 dark:text-white">
+                Edit: {editingProject.name}
+              </h3>
               <button
                 onClick={() => setEditingProject(null)}
-                className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1 rounded-lg"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white transition"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -616,8 +924,9 @@ export function ProjectsPage() {
                 <select
                   value={editWorkspaceId}
                   onChange={(e) => setEditWorkspaceId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-semibold focus:outline-none focus:border-[#7b68ee]"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee]"
                 >
+                  <option value="default">📁 default</option>
                   {workspaces.map((ws) => (
                     <option key={ws.id} value={ws.id}>
                       📁 {ws.name} ({ws.id})
@@ -628,48 +937,61 @@ export function ProjectsPage() {
 
               <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                  Kind
-                </label>
-                <select
-                  value={editKind}
-                  onChange={(e) => setEditKind(e.target.value as any)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee]"
-                >
-                  <option value="backend">backend</option>
-                  <option value="frontend">frontend</option>
-                  <option value="mobile">mobile</option>
-                  <option value="other">other</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                  Repository Path
+                  Repository Path (Absolute)
                 </label>
                 <input
                   type="text"
+                  required
                   value={editRepoPath}
                   onChange={(e) => setEditRepoPath(e.target.value)}
-                  placeholder="/Users/sopheak/projects/my-repo"
                   className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
-                  required
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Kind
+                  </label>
+                  <select
+                    value={editKind}
+                    onChange={(e) => setEditKind(e.target.value as any)}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee]"
+                  >
+                    <option value="backend">Backend</option>
+                    <option value="frontend">Frontend</option>
+                    <option value="mobile">Mobile</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
                     Engine Type
                   </label>
                   <select
                     value={editEngineType}
-                    onChange={(e) => setEditEngineType(e.target.value as any)}
+                    onChange={(e) => setEditEngineType(e.target.value as EngineType)}
                     className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee]"
                   >
-                    <option value="manual">manual (human / simulated)</option>
-                    <option value="stoneforge">stoneforge</option>
-                    <option value="clinekanban">clinekanban</option>
+                    <option value="manual">Manual</option>
+                    <option value="stoneforge">Stoneforge</option>
+                    <option value="command">Command</option>
                   </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Base Branch
+                  </label>
+                  <input
+                    type="text"
+                    value={editBaseBranch}
+                    onChange={(e) => setEditBaseBranch(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
+                  />
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
@@ -679,10 +1001,22 @@ export function ProjectsPage() {
                     type="text"
                     value={editEngineUrl}
                     onChange={(e) => setEditEngineUrl(e.target.value)}
-                    placeholder="http://127.0.0.1:3457"
                     className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Contract Path
+                </label>
+                <input
+                  type="text"
+                  value={editContractPath}
+                  onChange={(e) => setEditContractPath(e.target.value)}
+                  placeholder="api/openapi.yaml"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
+                />
               </div>
 
               <div>
@@ -696,36 +1030,6 @@ export function ProjectsPage() {
                   placeholder="npm ci && npm test"
                   className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
                 />
-                <p className="mt-1 text-[10px] text-slate-400">
-                  Runs in a fresh checkout of the merge result before the base branch moves; it must install what it needs.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                    Base Branch
-                  </label>
-                  <input
-                    type="text"
-                    value={editBaseBranch}
-                    onChange={(e) => setEditBaseBranch(e.target.value)}
-                    placeholder="main"
-                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                    Contract Path (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={editContractPath}
-                    onChange={(e) => setEditContractPath(e.target.value)}
-                    placeholder="api/openapi.yaml"
-                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
-                  />
-                </div>
               </div>
 
               <div className="pt-3 border-t border-slate-200 dark:border-[#2d2d2d] flex justify-end gap-2.5">
@@ -739,9 +1043,9 @@ export function ProjectsPage() {
                 <button
                   type="submit"
                   disabled={updateMutation.isPending}
-                  className="px-4 py-2 rounded-lg text-xs font-bold bg-[#7b68ee] hover:bg-[#6c5ce7] text-white shadow-md shadow-purple-600/20 disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg text-xs font-bold bg-gradient-to-r from-[#7b68ee] to-[#6c5ce7] hover:from-[#6c5ce7] hover:to-[#5f3dc4] text-white shadow-md shadow-purple-600/20 disabled:opacity-50"
                 >
-                  {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+                  Save Changes
                 </button>
               </div>
             </form>
@@ -750,34 +1054,21 @@ export function ProjectsPage() {
       )}
 
       {/* ======================================================== */}
-      {/* 3. Delete Project Confirmation Dialog */}
+      {/* 3. Delete Project Modal Dialog                           */}
       {/* ======================================================== */}
       {deletingProject && (
         <div className="fixed inset-0 z-50 bg-black/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-[#2d2d2d] rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Delete Project "{deletingProject.name}"?
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  This will unregister the repository and remove associated bridge task bindings.
-                </p>
-              </div>
-            </div>
-
-            <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 text-xs text-rose-700 dark:text-rose-300">
-              ⚠️ Are you sure? This action cannot be undone.
-            </div>
-
-            <div className="pt-2 flex justify-end gap-2.5">
+          <div className="bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-[#2d2d2d] rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-2xl">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">Delete Project</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              Are you sure you want to unregister <span className="font-bold text-slate-900 dark:text-white">{deletingProject.name}</span>?
+              This removes the engine configuration from SP-Kickstack. Local files on disk will NOT be touched.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setDeletingProject(null)}
-                className="px-3.5 py-2 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#2a2a2a]"
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"
               >
                 Cancel
               </button>
@@ -785,9 +1076,9 @@ export function ProjectsPage() {
                 type="button"
                 onClick={() => deleteMutation.mutate(deletingProject.name)}
                 disabled={deleteMutation.isPending}
-                className="px-4 py-2 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-600/20 disabled:opacity-50"
+                className="px-4 py-1.5 rounded-lg text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-sm disabled:opacity-50"
               >
-                {deleteMutation.isPending ? 'Deleting...' : 'Delete Project'}
+                Delete
               </button>
             </div>
           </div>
@@ -795,21 +1086,16 @@ export function ProjectsPage() {
       )}
 
       {/* ======================================================== */}
-      {/* 4. Add Project Modal */}
+      {/* 4. Create Project Modal Dialog                           */}
       {/* ======================================================== */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-[#2d2d2d] rounded-2xl p-6 w-full max-w-lg space-y-5 shadow-2xl">
+          <div className="bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-[#2d2d2d] rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-[#2d2d2d]">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-[#7b68ee] to-[#ec4899] text-white flex items-center justify-center font-bold text-xs">
-                  <Plus className="w-4 h-4" />
-                </div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Register New Project</h3>
-              </div>
+              <h3 className="text-base font-black text-slate-900 dark:text-white">Register Project</h3>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1 rounded-lg"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white transition"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -823,33 +1109,46 @@ export function ProjectsPage() {
                 <select
                   value={workspaceId}
                   onChange={(e) => setWorkspaceId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-semibold focus:outline-none focus:border-[#7b68ee]"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee]"
                 >
+                  <option value="default">📁 default</option>
                   {workspaces.map((ws) => (
                     <option key={ws.id} value={ws.id}>
                       📁 {ws.name} ({ws.id})
                     </option>
                   ))}
-                  {!workspaces.some((ws) => ws.id === workspaceId) && (
-                    <option value={workspaceId}>📁 {workspaceId}</option>
-                  )}
                 </select>
               </div>
 
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Project Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. backend, web-app, mobile"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee]"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Repository Path (Absolute)
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={repoPath}
+                  onChange={(e) => setRepoPath(e.target.value)}
+                  placeholder="/Users/username/dev/my-project"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                    Name
-                  </label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. backend"
-                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
-                    required
-                  />
-                </div>
                 <div>
                   <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
                     Kind
@@ -859,71 +1158,27 @@ export function ProjectsPage() {
                     onChange={(e) => setKind(e.target.value as any)}
                     className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee]"
                   >
-                    <option value="backend">backend</option>
-                    <option value="frontend">frontend</option>
-                    <option value="mobile">mobile</option>
-                    <option value="other">other</option>
+                    <option value="backend">Backend</option>
+                    <option value="frontend">Frontend</option>
+                    <option value="mobile">Mobile</option>
+                    <option value="other">Other</option>
                   </select>
                 </div>
-              </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                  Repository Path
-                </label>
-                <input
-                  type="text"
-                  value={repoPath}
-                  onChange={(e) => setRepoPath(e.target.value)}
-                  placeholder="/Users/sopheak/projects/my-repo"
-                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
                     Engine Type
                   </label>
                   <select
                     value={engineType}
-                    onChange={(e) => setEngineType(e.target.value as any)}
+                    onChange={(e) => setEngineType(e.target.value as EngineType)}
                     className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee]"
                   >
-                    <option value="manual">manual (human / simulated)</option>
-                    <option value="stoneforge">stoneforge</option>
-                    <option value="clinekanban">clinekanban</option>
+                    <option value="manual">Manual</option>
+                    <option value="stoneforge">Stoneforge</option>
+                    <option value="command">Command</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                    Engine URL
-                  </label>
-                  <input
-                    type="text"
-                    value={engineUrl}
-                    onChange={(e) => setEngineUrl(e.target.value)}
-                    placeholder="http://127.0.0.1:3457"
-                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                  Test Command (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={testCommand}
-                  onChange={(e) => setTestCommand(e.target.value)}
-                  placeholder="npm ci && npm test"
-                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
-                />
-                <p className="mt-1 text-[10px] text-slate-400">
-                  Runs in a fresh checkout of the merge result before the base branch moves; it must install what it needs.
-                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -939,18 +1194,45 @@ export function ProjectsPage() {
                     className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
                   />
                 </div>
+
                 <div>
                   <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                    Contract Path (Optional)
+                    Engine URL (Optional)
                   </label>
                   <input
                     type="text"
-                    value={contractPath}
-                    onChange={(e) => setContractPath(e.target.value)}
-                    placeholder="api/openapi.yaml"
+                    value={engineUrl}
+                    onChange={(e) => setEngineUrl(e.target.value)}
+                    placeholder="http://127.0.0.1:3457"
                     className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Contract Path (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={contractPath}
+                  onChange={(e) => setContractPath(e.target.value)}
+                  placeholder="api/openapi.yaml"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Test Command (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={testCommand}
+                  onChange={(e) => setTestCommand(e.target.value)}
+                  placeholder="npm ci && npm test"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
+                />
               </div>
 
               <div className="pt-3 border-t border-slate-200 dark:border-[#2d2d2d] flex justify-end gap-2.5">
@@ -974,13 +1256,30 @@ export function ProjectsPage() {
         </div>
       )}
 
-      {/* In-App Native Git Review Modal (100% Self-Contained) */}
+      {/* ======================================================== */}
+      {/* 5. In-App Git Review Modal (Split view with project list)*/}
+      {/* ======================================================== */}
       <ProjectGitReviewModal
         isOpen={Boolean(ideReviewProject)}
         onClose={() => setIdeReviewProject(null)}
         projectName={ideReviewProject?.name}
+        projects={projects}
         baseBranch={ideReviewProject?.base_branch || 'develop'}
         targetBranch="main"
+        onOpenTerminal={(pName) => {
+          const p = projects.find((x) => x.name === pName);
+          if (p) setTerminalProject(p);
+        }}
+      />
+
+      {/* ======================================================== */}
+      {/* 6. Persistent Project Shell Terminal Modal              */}
+      {/* ======================================================== */}
+      <ProjectTerminalModal
+        isOpen={Boolean(terminalProject)}
+        onClose={() => setTerminalProject(null)}
+        initialProjectName={terminalProject?.name}
+        projects={projects}
       />
     </div>
   );

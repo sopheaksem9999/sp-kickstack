@@ -19,6 +19,7 @@ import { AssetService } from '../services/assetService.js';
 import { SprintService } from '../services/sprintService.js';
 import {
   CreateRequirementInputSchema,
+  UpdateRequirementInputSchema,
   CreateTicketInputSchema,
   CreateWorkspaceInputSchema,
   UpdateWorkspaceInputSchema,
@@ -43,6 +44,7 @@ import { AiDraftService } from '../services/aiDraftService.js';
 import { AiChatService } from '../services/aiChatService.js';
 import { IdeService } from '../services/ideService.js';
 import { GitReviewService } from '../services/gitReviewService.js';
+import { TerminalService } from '../services/terminalService.js';
 import { requestGuard, resolveAllowedHosts, resolveWebOrigins } from './requestGuard.js';
 import { TaskReactor } from '../services/taskReactor.js';
 import { MergeGateService } from '../services/mergeGate.js';
@@ -60,6 +62,7 @@ export interface AppDependencies {
   aiDraftService?: AiDraftService;
   aiChatService?: AiChatService;
   ideService?: IdeService;
+  terminalService?: TerminalService;
   fanOutService: FanOutService;
   linkService: LinkService;
   ticketService: TicketService;
@@ -91,6 +94,10 @@ export function createApp(deps: AppDependencies): Express {
     new IdeService(settingsService, deps.projectService);
 
   const gitReviewService = new GitReviewService(deps.projectService);
+
+  const terminalService =
+    deps.terminalService ||
+    new TerminalService(deps.projectService);
 
   const reactor =
     deps.reactor ||
@@ -131,7 +138,7 @@ export function createApp(deps: AppDependencies): Express {
 
   const aiChatService =
     deps.aiChatService ||
-    new AiChatService(deps.db, deps.projectService, settingsService);
+    new AiChatService(deps.db, deps.projectService, settingsService, deps.requirementService);
 
   const webOrigins = deps.webOrigins || resolveWebOrigins();
   const allowedHosts = deps.allowedHosts || resolveAllowedHosts();
@@ -301,6 +308,17 @@ export function createApp(deps: AppDependencies): Express {
       return res.status(404).json({ error: 'Requirement not found' });
     }
     res.json(reqData);
+  });
+
+  app.put('/api/requirements/:id', (req, res, next) => {
+    try {
+      const validated = UpdateRequirementInputSchema.parse(req.body);
+      const updated = deps.requirementService.updateRequirement(req.params.id, validated);
+      deps.broadcaster.broadcast({ type: 'requirement_updated', payload: updated });
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
   });
 
   app.post('/api/requirements/:id/ready', async (req, res, next) => {
@@ -893,6 +911,19 @@ export function createApp(deps: AppDependencies): Express {
     }
   });
 
+  app.post('/api/ai/chat/sessions/:id/create-requirement', async (req, res, next) => {
+    try {
+      const extraInstructions = typeof req.body?.instructions === 'string' ? req.body.instructions : undefined;
+      const result = await aiChatService.createRequirementFromSession(req.params.id, extraInstructions);
+      res.json(result);
+    } catch (err: any) {
+      if (err.message?.includes('not found')) {
+        return res.status(404).json({ error: err.message });
+      }
+      next(err);
+    }
+  });
+
   // Notifications & Events
   app.get('/api/notifications', (_req, res) => {
     const events = deps.db
@@ -1023,6 +1054,75 @@ export function createApp(deps: AppDependencies): Express {
     } catch (err) {
       next(err);
     }
+  });
+
+  // Project Persistent Terminal Endpoints
+  app.get('/api/projects/:name/terminal', (req, res, next) => {
+    try {
+      const status = terminalService.getSession(req.params.name);
+      res.json(status);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post('/api/projects/:name/terminal/input', (req, res, next) => {
+    try {
+      const input = typeof req.body?.input === 'string' ? req.body.input : '';
+      const status = terminalService.sendInput(req.params.name, input);
+      res.json(status);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post('/api/projects/:name/terminal/interrupt', (req, res, next) => {
+    try {
+      const ok = terminalService.interrupt(req.params.name);
+      res.json({ ok });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post('/api/projects/:name/terminal/restart', (req, res, next) => {
+    try {
+      const status = terminalService.restart(req.params.name);
+      res.json(status);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post('/api/projects/:name/terminal/clear', (req, res, next) => {
+    try {
+      const ok = terminalService.clear(req.params.name);
+      res.json({ ok });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.get('/api/projects/:name/terminal/stream', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    const current = terminalService.getSession(req.params.name);
+    res.write(`data: ${JSON.stringify({ type: 'init', session: current })}\n\n`);
+
+    const unsubscribe = terminalService.subscribe(req.params.name, (chunk) => {
+      res.write(`data: ${JSON.stringify({ type: 'chunk', chunk })}\n\n`);
+    });
+
+    req.on('close', () => {
+      unsubscribe();
+    });
+  });
+
+  app.get('/api/terminals/active', (_req, res) => {
+    res.json(terminalService.getActiveProjects());
   });
 
   // Error handling middleware

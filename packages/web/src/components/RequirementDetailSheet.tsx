@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -11,6 +11,7 @@ import {
   cancelRequirement,
   markTaskDone,
   releaseLink,
+  updateRequirement,
   updateRequirementStatus,
   updateRequirementProjects,
   updateRequirementMergePolicy,
@@ -20,7 +21,7 @@ import {
 import { mergeCopy, mergeGateAction } from '../lib/mergeReady.js';
 import { useDemoMode } from '../lib/useDemoMode.js';
 import { StatusBadge } from './StatusBadge.js';
-import { BridgeTask, RequirementStatus, BranchMergePolicy, Priority } from '@sp-kickstack/shared';
+import { BridgeTask, RequirementStatus, BranchMergePolicy, Priority, UpdateRequirementInput } from '@sp-kickstack/shared';
 import { toast } from 'sonner';
 import {
   X,
@@ -39,8 +40,24 @@ import {
   GitFork,
   GitBranch,
   Flag,
+  Bot,
+  Eye,
+  Code2,
+  Maximize2,
+  Minimize2,
+  Copy,
+  Lock,
 } from 'lucide-react';
-import { Sheet, SheetContent } from './ui/sheet.js';
+import { Sheet, SheetContent, SheetClose } from './ui/sheet.js';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from './ui/dialog.js';
+import { MarkdownMessage } from './MarkdownMessage.js';
 
 interface RequirementDetailSheetProps {
   requirementId: string | null;
@@ -72,6 +89,12 @@ export function RequirementDetailSheet({
   const mergeText = mergeCopy(demoMode);
   const [isEditingProjects, setIsEditingProjects] = useState(false);
   const [editingProjectsList, setEditingProjectsList] = useState<string[]>([]);
+  const [specViewMode, setSpecViewMode] = useState<'rich' | 'raw' | 'edit'>('rich');
+  const [isSpecExpanded, setIsSpecExpanded] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editBodyMd, setEditBodyMd] = useState('');
 
   const { data: req, isLoading: reqLoading } = useQuery({
     queryKey: ['requirement', requirementId],
@@ -98,7 +121,37 @@ export function RequirementDetailSheet({
     enabled: Boolean(req && isOpen),
   });
 
+  const isEditable = req?.status === 'draft' || req?.status === 'ready';
+
+  useEffect(() => {
+    if (req) {
+      setEditTitle(req.title);
+      setEditBodyMd(req.body_md);
+    }
+  }, [req]);
+
+  useEffect(() => {
+    if (!isEditable) {
+      setIsEditingTitle(false);
+      if (specViewMode === 'edit') {
+        setSpecViewMode('rich');
+      }
+    }
+  }, [isEditable]);
+
   // Mutations
+  const updateMutation = useMutation({
+    mutationFn: (data: UpdateRequirementInput) => updateRequirement(requirementId!, data),
+    onSuccess: () => {
+      toast.success('Requirement updated successfully');
+      setIsEditingTitle(false);
+      if (specViewMode === 'edit') setSpecViewMode('rich');
+      queryClient.invalidateQueries({ queryKey: ['requirement', requirementId] });
+      queryClient.invalidateQueries({ queryKey: ['requirements'] });
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to update requirement'),
+  });
+
   const fanOutMutation = useMutation({
     mutationFn: () => startRequirementFanOut(requirementId!),
     onSuccess: () => {
@@ -113,6 +166,7 @@ export function RequirementDetailSheet({
     onSuccess: () => {
       toast.info('Requirement cancelled');
       queryClient.invalidateQueries();
+      onClose();
     },
   });
 
@@ -265,6 +319,17 @@ export function RequirementDetailSheet({
           </div>
 
           <div className="flex items-center gap-2">
+            {req?.session_id && (
+              <Link
+                to={`/ai-chat?session=${req.session_id}`}
+                className="p-1.5 rounded-lg text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 transition-colors inline-flex items-center gap-1.5 text-xs font-semibold"
+                title="View original AI chat discussion"
+              >
+                <Bot className="w-4 h-4" />
+                <span className="hidden sm:inline">AI Chat Origin</span>
+              </Link>
+            )}
+
             {requirementId && (
               <Link
                 to={`/requirements/${requirementId}`}
@@ -276,13 +341,17 @@ export function RequirementDetailSheet({
               </Link>
             )}
 
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#282828] transition-colors"
-              title="Close panel"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <SheetClose asChild>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-2 py-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#282828] transition-colors flex items-center gap-1 text-xs font-medium cursor-pointer"
+                title="Close panel (Esc)"
+              >
+                <X className="w-4 h-4" />
+                <span>Close</span>
+              </button>
+            </SheetClose>
           </div>
         </div>
 
@@ -323,16 +392,32 @@ export function RequirementDetailSheet({
                   </select>
                 </div>
 
-                {/* Priority Display */}
+                {/* Priority Display / Switcher */}
                 {prio && (
                   <div
                     className="flex items-center gap-1.5 bg-white dark:bg-[#2a2a2a] px-2 py-1 rounded-lg border border-slate-200 dark:border-[#333333] shadow-2xs"
-                    title={`Priority: ${prio.label}`}
+                    title={isEditable ? 'Click to change priority' : `Priority: ${prio.label} (Locked)`}
                   >
                     <Flag className={`w-3.5 h-3.5 ${prio.color}`} />
-                    <span className="capitalize text-slate-700 dark:text-slate-300 font-semibold text-[11px]">
-                      {prio.label}
-                    </span>
+                    {isEditable ? (
+                      <select
+                        value={req.priority}
+                        onChange={(e) =>
+                          updateMutation.mutate({ priority: e.target.value as Priority })
+                        }
+                        className="bg-transparent text-[11px] font-bold text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer capitalize"
+                        title="Change Priority"
+                      >
+                        <option value="urgent" className="bg-white dark:bg-[#242424]">Urgent</option>
+                        <option value="high" className="bg-white dark:bg-[#242424]">High</option>
+                        <option value="normal" className="bg-white dark:bg-[#242424]">Normal</option>
+                        <option value="low" className="bg-white dark:bg-[#242424]">Low</option>
+                      </select>
+                    ) : (
+                      <span className="capitalize text-slate-700 dark:text-slate-300 font-semibold text-[11px]">
+                        {prio.label}
+                      </span>
+                    )}
                   </div>
                 )}
 
@@ -408,6 +493,61 @@ export function RequirementDetailSheet({
 
               {/* Action Buttons */}
               <div className="flex items-center gap-2">
+                {/* Stage Lock or Edit Trigger Button */}
+                {isEditable ? (
+                  specViewMode === 'edit' || isEditingTitle ? (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditingTitle(false);
+                          setSpecViewMode('rich');
+                          setEditTitle(req.title);
+                          setEditBodyMd(req.body_md);
+                        }}
+                        className="px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateMutation.mutate({
+                            title: editTitle,
+                            body_md: editBodyMd,
+                          })
+                        }
+                        disabled={updateMutation.isPending || !editTitle.trim()}
+                        className="flex items-center gap-1 px-3 py-1 bg-[#7b68ee] hover:bg-[#6c5ce7] text-white rounded-lg text-xs font-bold shadow-xs active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>{updateMutation.isPending ? 'Saving...' : 'Save All'}</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditingTitle(true);
+                        setSpecViewMode('edit');
+                      }}
+                      className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-[#242424] hover:bg-purple-50 dark:hover:bg-[#2e263d] text-purple-600 dark:text-purple-400 rounded-lg text-xs font-bold border border-purple-200 dark:border-purple-900/60 transition-colors cursor-pointer shadow-2xs"
+                      title="Edit requirement title & specification"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>Edit Spec</span>
+                    </button>
+                  )
+                ) : (
+                  <span
+                    className="flex items-center gap-1 px-2.5 py-1 bg-slate-100 dark:bg-[#20212b] text-slate-500 dark:text-slate-400 rounded-lg text-[11px] font-semibold border border-slate-200 dark:border-[#2d2f3d]"
+                    title="Active work has begun or finished: specification is view-only"
+                  >
+                    <Lock className="w-3 h-3 text-slate-400" />
+                    <span>View Only</span>
+                  </span>
+                )}
+
                 {(req.status === 'draft' || req.status === 'ready') && (
                   <button
                     onClick={() => fanOutMutation.mutate()}
@@ -464,9 +604,11 @@ export function RequirementDetailSheet({
 
                 {req.status !== 'cancelled' && req.status !== 'done' && (
                   <button
-                    onClick={() => cancelMutation.mutate()}
+                    type="button"
+                    onClick={() => setShowCancelConfirm(true)}
                     disabled={cancelMutation.isPending}
-                    className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-[#242424] hover:bg-slate-100 dark:hover:bg-[#2e2e2e] text-slate-600 dark:text-slate-300 rounded-lg text-xs font-semibold border border-slate-200 dark:border-[#303030] transition-colors"
+                    className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-[#242424] hover:bg-slate-100 dark:hover:bg-[#2e2e2e] text-slate-600 dark:text-slate-300 rounded-lg text-xs font-semibold border border-slate-200 dark:border-[#303030] transition-colors cursor-pointer"
+                    title="Cancel requirement"
                   >
                     <XCircle className="w-3.5 h-3.5 text-rose-500" />
                     <span>Cancel</span>
@@ -477,28 +619,188 @@ export function RequirementDetailSheet({
 
             {/* Scrollable Body Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Title */}
+              {/* Title Section */}
               <div>
-                <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight leading-snug">
-                  {req.title}
-                </h2>
+                {isEditingTitle && isEditable ? (
+                  <div className="space-y-1.5 p-3 rounded-xl bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/50">
+                    <label className="text-[10px] font-mono uppercase tracking-wider text-purple-600 dark:text-purple-400 font-bold block">
+                      Edit Requirement Title
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        className="flex-1 text-base font-bold px-3 py-1.5 rounded-lg border border-purple-300 dark:border-purple-800 bg-white dark:bg-[#1a1b24] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#7b68ee]"
+                        placeholder="Requirement Title"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => updateMutation.mutate({ title: editTitle })}
+                        disabled={updateMutation.isPending || !editTitle.trim()}
+                        className="px-3 py-1.5 bg-[#7b68ee] text-white rounded-lg text-xs font-bold hover:bg-[#6c5ce7] disabled:opacity-50 transition-all cursor-pointer"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditingTitle(false);
+                          setEditTitle(req.title);
+                        }}
+                        className="px-2.5 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between gap-3">
+                    <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight leading-snug">
+                      {req.title}
+                    </h2>
+                    {isEditable && (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingTitle(true)}
+                        className="px-2 py-1 text-xs font-semibold text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 rounded-lg border border-purple-200 dark:border-purple-800/40 flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                        title="Edit title"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Edit Title</span>
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Requirement Document & Spec Preview */}
-              <div className="border border-slate-200 dark:border-[#2d2d2d] rounded-xl overflow-hidden bg-white dark:bg-[#242424] shadow-2xs space-y-2">
-                <div className="px-4 py-2.5 border-b border-slate-200 dark:border-[#2d2d2d] bg-slate-50/80 dark:bg-[#202020] flex items-center justify-between text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
+              {/* Requirement Document & Spec Preview or Editor */}
+              <div className="border border-slate-200 dark:border-[#2d2d2d] rounded-xl overflow-hidden bg-white dark:bg-[#242424] shadow-2xs space-y-0">
+                <div className="px-4 py-2 border-b border-slate-200 dark:border-[#2d2d2d] bg-slate-50/80 dark:bg-[#202020] flex items-center justify-between text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
                   <div className="flex items-center gap-2">
                     <BookOpen className="w-3.5 h-3.5" />
-                    <span>Specification & Details</span>
+                    <span>{specViewMode === 'edit' ? 'Editing Specification' : 'Specification & Details'}</span>
                   </div>
-                  <span className="font-mono text-slate-400 text-[11px] font-normal lowercase">
-                    base: <strong className="text-purple-600 dark:text-purple-400 font-mono">develop</strong>
-                  </span>
+                  <div className="flex items-center gap-1.5 normal-case">
+                    {/* View Toggle */}
+                    <div className="flex items-center p-0.5 rounded-lg bg-slate-200/70 dark:bg-[#2d2f3d] text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => setSpecViewMode('rich')}
+                        className={`flex items-center gap-1 px-2 py-0.5 rounded-md font-semibold transition-all ${
+                          specViewMode === 'rich'
+                            ? 'bg-white dark:bg-[#1a1b24] text-purple-600 dark:text-purple-300 shadow-2xs'
+                            : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                        }`}
+                        title="Rich Document View"
+                      >
+                        <Eye className="w-3 h-3" />
+                        <span>Rich</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSpecViewMode('raw')}
+                        className={`flex items-center gap-1 px-2 py-0.5 rounded-md font-semibold transition-all ${
+                          specViewMode === 'raw'
+                            ? 'bg-white dark:bg-[#1a1b24] text-purple-600 dark:text-purple-300 shadow-2xs'
+                            : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                        }`}
+                        title="Raw Markdown View"
+                      >
+                        <Code2 className="w-3 h-3" />
+                        <span>Raw</span>
+                      </button>
+                      {isEditable && (
+                        <button
+                          type="button"
+                          onClick={() => setSpecViewMode('edit')}
+                          className={`flex items-center gap-1 px-2 py-0.5 rounded-md font-semibold transition-all ${
+                            specViewMode === 'edit'
+                              ? 'bg-[#7b68ee] text-white shadow-2xs'
+                              : 'text-purple-600 dark:text-purple-400 hover:text-purple-800'
+                          }`}
+                          title="Edit Markdown Specification"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                          <span>Edit</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Copy Spec Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(req.body_md);
+                        toast.success('Specification markdown copied to clipboard');
+                      }}
+                      className="p-1 rounded-md text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-[#2d2f3d] transition-colors"
+                      title="Copy Specification Markdown"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+
+                    {/* Expand / Collapse Button */}
+                    <button
+                      type="button"
+                      onClick={() => setIsSpecExpanded(!isSpecExpanded)}
+                      className="p-1 rounded-md text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-[#2d2f3d] transition-colors"
+                      title={isSpecExpanded ? 'Collapse View' : 'Expand View'}
+                    >
+                      {isSpecExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 </div>
 
-                <div className="p-4 text-xs font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap max-h-56 overflow-y-auto leading-relaxed bg-slate-50/40 dark:bg-[#171717]">
-                  {req.body_md}
-                </div>
+                {specViewMode === 'edit' && isEditable ? (
+                  <div className="p-4 bg-slate-50/50 dark:bg-[#181920] space-y-3">
+                    <textarea
+                      value={editBodyMd}
+                      onChange={(e) => setEditBodyMd(e.target.value)}
+                      rows={12}
+                      className="w-full p-3.5 font-mono text-xs rounded-xl border border-slate-300 dark:border-[#333333] bg-white dark:bg-[#14151b] text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] leading-relaxed resize-y"
+                      placeholder="Write specification in markdown..."
+                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSpecViewMode('rich');
+                          setEditBodyMd(req.body_md);
+                        }}
+                        className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateMutation.mutate({ body_md: editBodyMd })}
+                        disabled={updateMutation.isPending}
+                        className="px-3.5 py-1.5 bg-[#7b68ee] hover:bg-[#6c5ce7] text-white rounded-lg text-xs font-bold shadow-xs active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
+                      >
+                        {updateMutation.isPending ? 'Saving...' : 'Save Specification'}
+                      </button>
+                    </div>
+                  </div>
+                ) : specViewMode === 'rich' ? (
+                  <div
+                    className={`p-4 text-xs text-slate-800 dark:text-slate-200 overflow-y-auto leading-relaxed bg-white dark:bg-[#181920] transition-all ${
+                      isSpecExpanded ? 'max-h-[750px]' : 'max-h-80'
+                    }`}
+                  >
+                    <MarkdownMessage
+                      content={req.body_md.replace(/^---\s*[\s\S]*?---\s*/, '').trim() || req.body_md}
+                    />
+                  </div>
+                ) : (
+                  <div
+                    className={`p-4 text-xs font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap overflow-y-auto leading-relaxed bg-slate-50/60 dark:bg-[#14151b] transition-all ${
+                      isSpecExpanded ? 'max-h-[750px]' : 'max-h-80'
+                    }`}
+                  >
+                    {req.body_md}
+                  </div>
+                )}
               </div>
 
               {/* Attached Files & Assets (if any) */}
@@ -545,16 +847,18 @@ export function RequirementDetailSheet({
                   <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     Per-Repo Agent Engines ({req.affected_projects.length})
                   </h3>
-                  <button
-                    onClick={() => {
-                      setEditingProjectsList([...req.affected_projects]);
-                      setIsEditingProjects(true);
-                    }}
-                    className="flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-lg bg-purple-50 dark:bg-purple-950/40 text-[#7b68ee] dark:text-purple-300 hover:bg-purple-100 border border-purple-200 dark:border-purple-800/40 transition-all shadow-2xs"
-                  >
-                    <Edit3 className="w-3 h-3" />
-                    <span>Edit Repos</span>
-                  </button>
+                  {isEditable && (
+                    <button
+                      onClick={() => {
+                        setEditingProjectsList([...req.affected_projects]);
+                        setIsEditingProjects(true);
+                      }}
+                      className="flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-lg bg-purple-50 dark:bg-purple-950/40 text-[#7b68ee] dark:text-purple-300 hover:bg-purple-100 border border-purple-200 dark:border-purple-800/40 transition-all shadow-2xs cursor-pointer"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                      <span>Edit Repos</span>
+                    </button>
+                  )}
                 </div>
 
                 {/* Edit Projects Modal/Inline Panel */}
@@ -738,6 +1042,42 @@ export function RequirementDetailSheet({
           </>
         )}
       </SheetContent>
+
+      {/* Radix UI Cancel Confirmation Dialog */}
+      <Dialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="w-10 h-10 rounded-2xl bg-rose-100 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/40 flex items-center justify-center text-rose-600 dark:text-rose-400 mb-2">
+              <XCircle className="w-5 h-5" />
+            </div>
+            <DialogTitle>Cancel Requirement #{req?.id}?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to cancel <strong className="text-slate-900 dark:text-white">"{req?.title}"</strong>?
+              This will stop active execution and mark the requirement as cancelled.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2 pt-3">
+            <button
+              type="button"
+              onClick={() => setShowCancelConfirm(false)}
+              className="px-4 py-2 rounded-xl border border-slate-200 dark:border-[#2d2f3d] bg-slate-50 dark:bg-[#20212b] text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#282937] transition-colors cursor-pointer"
+            >
+              Keep Requirement
+            </button>
+            <button
+              type="button"
+              disabled={cancelMutation.isPending}
+              onClick={() => {
+                setShowCancelConfirm(false);
+                cancelMutation.mutate();
+              }}
+              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-semibold shadow-sm transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+            >
+              {cancelMutation.isPending ? 'Cancelling...' : 'Yes, Cancel Requirement'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Sheet>
   );
 }

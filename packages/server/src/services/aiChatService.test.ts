@@ -223,5 +223,99 @@ Let me know if you would like to proceed!`;
     expect(fetchedUserMsg?.attachments?.length).toBe(2);
     expect(fetchedUserMsg?.attachments?.[0].name).toBe('openapi-spec.json');
   });
+
+  it('extracts rich architectural details, SQL tables, and contracts directly from chat messages', () => {
+    const rawArchitecturalChat = `### Architectural Assessment: Multilingual Translation Module for \`services\` and \`pages\` (API)
+
+To implement a clean, maintainable translation module in your backend API for dynamic content (such as \`services\` and \`pages\`), here are the recommended architectural approaches and standard best practices.
+
+---
+
+### 1. Database Schema Strategies
+
+#### **Approach A: Dedicated Translation Tables (Recommended for Clean Normalization & Scale)**
+Separate core business logic/metadata from localized text attributes.
+
+\`\`\`sql
+-- 1. Services Base Table
+CREATE TABLE services (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    slug VARCHAR(255) UNIQUE NOT NULL,
+    price DECIMAL(10, 2),
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 2. Services Translation Table
+CREATE TABLE service_translations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    service_id UUID NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+    locale VARCHAR(10) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    meta_keywords VARCHAR(255),
+    CONSTRAINT uq_service_locale UNIQUE (service_id, locale)
+);
+
+-- 3. Pages Base Table
+CREATE TABLE pages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    slug VARCHAR(255) UNIQUE NOT NULL,
+    is_published BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 4. Pages Translation Table
+CREATE TABLE page_translations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    page_id UUID NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+    locale VARCHAR(10) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    meta_title VARCHAR(255),
+    meta_description TEXT,
+    CONSTRAINT uq_page_locale UNIQUE (page_id, locale)
+);
+\`\`\`
+
+---
+
+### 2. API Contract & Content Negotiation
+
+#### **Header-based Resolution with Fallback**
+The API should accept the desired language via standard headers or query parameters:
+- \`Accept-Language: km, en;q=0.9\` or \`?locale=km\`
+- **Fallback Rule:** If the requested locale translation doesn't exist, fall back to the default locale (e.g., \`en\`).`;
+
+    const messages: AiChatMessage[] = [
+      {
+        id: 'msg-u1',
+        role: 'user',
+        content: 'give me idea the implement the translate services and pages on api',
+        timestamp: new Date().toISOString(),
+      },
+      {
+        id: 'msg-a1',
+        role: 'assistant',
+        content: rawArchitecturalChat,
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    const extracted = chatService.extractRichArchitectureFromMessages(messages, 'Translation Discussion', [
+      'api',
+      'frontend',
+    ]);
+
+    expect(extracted.title).toBe('Multilingual Translation Module for services and pages (API)');
+    expect(extracted.goal).toContain('To implement a clean, maintainable translation module in your backend API');
+    expect(extracted.affected_projects).toContain('api');
+    expect(extracted.api_hints).toContain('Accept-Language');
+    expect(extracted.acceptance_criteria.some((c) => c.includes('service_translations'))).toBe(true);
+    expect(extracted.acceptance_criteria.some((c) => c.includes('page_translations'))).toBe(true);
+    expect(extracted.notes).toContain('CREATE TABLE service_translations');
+  });
 });
 

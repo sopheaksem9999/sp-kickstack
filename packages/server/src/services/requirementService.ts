@@ -1,6 +1,7 @@
 import { AppDatabase } from '../db/index.js';
 import {
   CreateRequirementInput,
+  UpdateRequirementInput,
   Requirement,
   RequirementStatus,
   NormStatus,
@@ -55,7 +56,7 @@ ${input.user_story ? `## User story\n${input.user_story}\n` : ''}
 ${criteria}
 
 ${input.api_hints ? `## API hints\n${input.api_hints}\n` : ''}
-${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
+${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : ''}`;
 
     if (input.attachments && input.attachments.length > 0) {
       md += `\n## Attachments\n${input.attachments
@@ -190,6 +191,66 @@ ${input.notes ? `## Notes / links\n${input.notes}\n` : ''}`;
         sprint_id: row.sprint_id || null,
       };
     });
+  }
+
+  public updateRequirement(id: string, input: UpdateRequirementInput): Requirement {
+    const existing = this.getRequirement(id);
+    if (!existing) throw new Error(`Requirement ${id} not found`);
+
+    if (existing.status !== 'draft' && existing.status !== 'ready') {
+      throw new HttpError(
+        400,
+        `Cannot edit requirement in status "${existing.status}". Only ToDo and Ready for Dispatch stages can be edited.`
+      );
+    }
+
+    const updateTx = this.db.transaction(() => {
+      if (input.title !== undefined) {
+        this.db
+          .prepare("UPDATE requirements SET title = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(input.title, id);
+      }
+      if (input.body_md !== undefined) {
+        this.db
+          .prepare("UPDATE requirements SET body_md = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(input.body_md, id);
+        const reqDir = path.join(this.workspaceDir, '.bridge', 'requirements');
+        const filePath = path.join(reqDir, `${id}.md`);
+        try {
+          fs.writeFileSync(filePath, input.body_md, 'utf-8');
+        } catch {}
+      }
+      if (input.priority !== undefined) {
+        this.db
+          .prepare("UPDATE requirements SET priority = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(input.priority, id);
+      }
+      if (input.sprint_id !== undefined) {
+        this.db
+          .prepare("UPDATE requirements SET sprint_id = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(input.sprint_id, id);
+      }
+      if (input.merge_policy !== undefined) {
+        this.db
+          .prepare("UPDATE requirements SET merge_policy = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(input.merge_policy, id);
+      }
+      if (input.affected_projects && input.affected_projects.length > 0) {
+        this.db.prepare('DELETE FROM requirement_projects WHERE req_id = ?').run(id);
+        const insertProj = this.db.prepare(
+          'INSERT INTO requirement_projects (req_id, project) VALUES (?, ?)'
+        );
+        for (const proj of input.affected_projects) {
+          insertProj.run(id, proj);
+        }
+        this.db
+          .prepare("UPDATE requirements SET updated_at = datetime('now') WHERE id = ?")
+          .run(id);
+      }
+    });
+    updateTx();
+
+    return this.getRequirement(id)!;
   }
 
   public updateRequirementSprint(id: string, sprintId: string | null): Requirement {

@@ -41,7 +41,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     { label: 'Requirements', path: '/requirements', icon: Layers, badge: 'Tasks' },
     { label: 'AI Architect Chat', path: '/chat', icon: Sparkles, badge: 'AI Hub' },
     { label: 'Attachments Hub', path: '/attachments', icon: Paperclip, badge: 'Files' },
-    { label: 'Projects & Engines', path: '/projects', icon: FolderGit2, badge: 'Repos' },
+    { label: 'Repositories', path: '/projects', icon: FolderGit2, badge: 'Git' },
     { label: 'Telemetry & Sprints', path: '/metrics', icon: BarChart3, badge: 'Stats' },
     { label: 'Settings', path: '/settings', icon: Settings },
   ];
@@ -52,7 +52,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     if (location.pathname === '/requirements') return 'Requirements';
     if (location.pathname === '/chat') return 'AI Architect Chat';
     if (location.pathname === '/attachments') return 'Attachments & Assets';
-    if (location.pathname === '/projects') return 'Projects & Engines';
+    if (location.pathname === '/projects') return 'Repositories';
     if (location.pathname === '/metrics') return 'Telemetry & Sprints';
     if (location.pathname === '/settings') return 'Settings';
     return 'Home';
@@ -390,6 +390,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
           className={`flex-1 min-h-0 ${
             location.pathname.startsWith('/settings')
               ? 'p-4 md:p-6 overflow-hidden flex flex-col'
+              : location.pathname.startsWith('/chat') || location.pathname.startsWith('/projects')
+              ? 'p-0 overflow-hidden flex flex-col'
               : 'p-4 overflow-y-auto'
           }`}
         >

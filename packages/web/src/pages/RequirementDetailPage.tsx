@@ -43,9 +43,22 @@ import {
   X,
   Terminal,
   Code2,
+  Eye,
+  Maximize2,
+  Minimize2,
+  Copy,
 } from 'lucide-react';
 import { LiveTaskLogsDrawer } from '../components/LiveTaskLogsDrawer.js';
 import { ProjectGitReviewModal } from '../components/ProjectGitReviewModal.js';
+import { MarkdownMessage } from '../components/MarkdownMessage.js';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '../components/ui/dialog.js';
 
 const stateOptions: { value: RequirementStatus; label: string }[] = [
   { value: 'draft', label: 'ToDo' },
@@ -63,6 +76,7 @@ export function RequirementDetailPage() {
   // Embedded VS Code Review Modal state
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [selectedReviewProject, setSelectedReviewProject] = useState<string | undefined>(undefined);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const { data: req, isLoading: reqLoading } = useQuery({
     queryKey: ['requirement', id],
@@ -142,6 +156,8 @@ export function RequirementDetailPage() {
 
   const [isEditingProjects, setIsEditingProjects] = useState(false);
   const [editingProjectsList, setEditingProjectsList] = useState<string[]>([]);
+  const [specViewMode, setSpecViewMode] = useState<'rich' | 'raw'>('rich');
+  const [isSpecExpanded, setIsSpecExpanded] = useState(false);
   const [viewTab, setViewTab] = useState<'board' | 'dag'>('board');
   const [logTask, setLogTask] = useState<BridgeTask | null>(null);
 
@@ -392,9 +408,10 @@ export function RequirementDetailPage() {
 
           {req.status !== 'cancelled' && req.status !== 'done' && (
             <button
-              onClick={() => cancelMutation.mutate()}
+              type="button"
+              onClick={() => setShowCancelConfirm(true)}
               disabled={cancelMutation.isPending}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 dark:bg-[#20212c] hover:bg-slate-200 dark:hover:bg-[#2a2b38] text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold border border-slate-200 dark:border-[#2e303d] transition-colors"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 dark:bg-[#20212c] hover:bg-slate-200 dark:hover:bg-[#2a2b38] text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold border border-slate-200 dark:border-[#2e303d] transition-colors cursor-pointer"
             >
               <XCircle className="w-3.5 h-3.5 text-rose-500" />
               <span>Cancel</span>
@@ -408,16 +425,87 @@ export function RequirementDetailPage() {
         <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
           <div className="flex items-center gap-2">
             <BookOpen className="w-4 h-4" />
-            <span>Requirement Document & Spec</span>
+            <span>Specification & Details</span>
           </div>
-          <span className="font-mono text-slate-400 text-[11px] font-normal">
-            Base Branch: <strong className="text-purple-600 dark:text-purple-400">develop</strong>
-          </span>
+          <div className="flex items-center gap-2 normal-case">
+            <span className="font-mono text-slate-400 text-[11px] font-normal mr-1">
+              Base: <strong className="text-purple-600 dark:text-purple-400">develop</strong>
+            </span>
+
+            {/* View Toggle */}
+            <div className="flex items-center p-0.5 rounded-lg bg-slate-200/70 dark:bg-[#262732] text-[10px]">
+              <button
+                type="button"
+                onClick={() => setSpecViewMode('rich')}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-md font-semibold transition-all ${
+                  specViewMode === 'rich'
+                    ? 'bg-white dark:bg-[#14151b] text-purple-600 dark:text-purple-300 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                }`}
+                title="Rich Document View"
+              >
+                <Eye className="w-3 h-3" />
+                <span>Rich</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSpecViewMode('raw')}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-md font-semibold transition-all ${
+                  specViewMode === 'raw'
+                    ? 'bg-white dark:bg-[#14151b] text-purple-600 dark:text-purple-300 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                }`}
+                title="Raw Markdown View"
+              >
+                <Code2 className="w-3 h-3" />
+                <span>Raw</span>
+              </button>
+            </div>
+
+            {/* Copy Button */}
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(req.body_md);
+                toast.success('Specification markdown copied to clipboard');
+              }}
+              className="p-1 rounded-md text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#262732] transition-colors"
+              title="Copy Specification Markdown"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Expand / Collapse Button */}
+            <button
+              type="button"
+              onClick={() => setIsSpecExpanded(!isSpecExpanded)}
+              className="p-1 rounded-md text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#262732] transition-colors"
+              title={isSpecExpanded ? 'Collapse View' : 'Expand View'}
+            >
+              {isSpecExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            </button>
+          </div>
         </div>
 
-        <div className="bg-slate-50 dark:bg-[#14151b] p-4 rounded-xl border border-slate-200 dark:border-[#22232e] text-xs font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed">
-          {req.body_md}
-        </div>
+        {specViewMode === 'rich' ? (
+          <div
+            className={`bg-white dark:bg-[#14151b] p-5 rounded-xl border border-slate-200 dark:border-[#22232e] text-xs text-slate-800 dark:text-slate-200 overflow-y-auto leading-relaxed transition-all ${
+              isSpecExpanded ? 'max-h-[800px]' : 'max-h-96'
+            }`}
+          >
+            <MarkdownMessage
+              content={req.body_md.replace(/^---\s*[\s\S]*?---\s*/, '').trim() || req.body_md}
+            />
+          </div>
+        ) : (
+          <div
+            className={`bg-slate-50 dark:bg-[#14151b] p-4 rounded-xl border border-slate-200 dark:border-[#22232e] text-xs font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap overflow-y-auto leading-relaxed transition-all ${
+              isSpecExpanded ? 'max-h-[800px]' : 'max-h-96'
+            }`}
+          >
+            {req.body_md}
+          </div>
+        )}
 
         {/* Attached Files & Spreadsheets (if any) */}
         {req.attachments && req.attachments.length > 0 && (
@@ -775,6 +863,42 @@ export function RequirementDetailPage() {
         onMergeToMain={isMergeReady ? () => mergeMutation.mutate() : undefined}
         isMerging={mergeMutation.isPending}
       />
+
+      {/* Radix UI Cancel Confirmation Dialog */}
+      <Dialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="w-10 h-10 rounded-2xl bg-rose-100 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/40 flex items-center justify-center text-rose-600 dark:text-rose-400 mb-2">
+              <XCircle className="w-5 h-5" />
+            </div>
+            <DialogTitle>Cancel Requirement #{req?.id}?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to cancel <strong className="text-slate-900 dark:text-white">"{req?.title}"</strong>?
+              This will stop active execution and mark the requirement as cancelled.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2 pt-3">
+            <button
+              type="button"
+              onClick={() => setShowCancelConfirm(false)}
+              className="px-4 py-2 rounded-xl border border-slate-200 dark:border-[#2d2f3d] bg-slate-50 dark:bg-[#20212b] text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#282937] transition-colors cursor-pointer"
+            >
+              Keep Requirement
+            </button>
+            <button
+              type="button"
+              disabled={cancelMutation.isPending}
+              onClick={() => {
+                setShowCancelConfirm(false);
+                cancelMutation.mutate();
+              }}
+              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-semibold shadow-sm transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+            >
+              {cancelMutation.isPending ? 'Cancelling...' : 'Yes, Cancel Requirement'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

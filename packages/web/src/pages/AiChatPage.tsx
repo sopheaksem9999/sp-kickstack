@@ -29,6 +29,9 @@ import {
   Layers,
   CheckSquare,
   Download,
+  Reply,
+  Copy,
+  Info,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
@@ -39,7 +42,7 @@ import {
   updateAiChatSession,
   deleteAiChatSession,
   sendAiSessionMessage,
-  createRequirement,
+  createRequirementFromSession,
   fetchProjects,
   fetchSettings,
   fetchAssets,
@@ -47,13 +50,14 @@ import {
 } from '../lib/api.js';
 import {
   AiChatSession,
-  DraftRequirementResult,
+  AiChatMessage,
   ReasoningEffort,
   ChatAttachmentItem,
   SharedAsset,
   Requirement,
 } from '@sp-kickstack/shared';
 import { MarkdownMessage, renderInlineMarkdown } from '../components/MarkdownMessage.js';
+import { RequirementDetailSheet } from '../components/RequirementDetailSheet.js';
 import { Popover, PopoverTrigger, PopoverContent } from '../components/ui/popover.js';
 import {
   Dialog,
@@ -139,6 +143,9 @@ export function AiChatPage() {
   // Right sidebar inspector drawer (tickets created + attachments)
   const [showInspector, setShowInspector] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<AiChatSession | null>(null);
+  const [replyingToMessage, setReplyingToMessage] = useState<AiChatMessage | null>(null);
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [isSynthesizingTicket, setIsSynthesizingTicket] = useState(false);
 
   // Radix popovers open states
   const [isEngineOpen, setIsEngineOpen] = useState(false);
@@ -393,35 +400,46 @@ export function AiChatPage() {
     },
   });
 
-  // Convert spec to requirement with session linkage
-  const handleQuickCreateRequirement = async (spec: DraftRequirementResult) => {
+  // Request AI to synthesize full conversation context and create requirement ticket
+  const handleSynthesizeRequirement = async (extraInstructions?: string) => {
+    if (!activeSessionId) {
+      toast.error('No active chat session to create requirement from.');
+      return;
+    }
+
+    if (inProgressSessions[activeSessionId] || isSynthesizingTicket) {
+      toast.warning('AI is already processing a response for this session.');
+      return;
+    }
+
+    setIsSynthesizingTicket(true);
+    setInProgressSessions((prev) => ({ ...prev, [activeSessionId]: true }));
+    const loadingToastId = toast.loading('Synthesizing full discussion context with AI into requirement ticket...');
+
     try {
-      const created = await createRequirement({
-        workspace_id: activeWorkspaceId,
-        session_id: activeSessionId,
-        title: spec.title || 'Architectural Requirement',
-        goal: spec.goal || '',
-        user_story: spec.user_story || '',
-        priority: 'high',
-        status: 'draft',
-        affected_projects: spec.affected_projects || projects.map((p) => p.name),
-        acceptance_criteria: spec.acceptance_criteria || [],
-      });
-
+      const result = await createRequirementFromSession(activeSessionId, extraInstructions);
+      queryClient.setQueryData(['ai-chat-session', activeSessionId], result.session);
+      queryClient.invalidateQueries({ queryKey: ['ai-chat-sessions', activeWorkspaceId] });
       queryClient.invalidateQueries({ queryKey: ['requirements'] });
-      toast.success(`Requirement "${created.title}" (#${created.id}) created & linked to this chat!`);
 
-      // Append assistant confirmation message into active chat
-      if (activeSessionId) {
-        sendAiSessionMessage(activeSessionId, {
-          content: `Requirement created: #${created.id} - "${created.title}". Dispatched across repos: ${created.affected_projects.join(', ')}.`,
-          provider: 'heuristic',
-        }).then((res) => {
-          queryClient.setQueryData(['ai-chat-session', activeSessionId], res.session);
-        });
-      }
+      toast.dismiss(loadingToastId);
+      toast.success(
+        `🎯 Ticket #${result.requirement.id} "${result.requirement.title}" created with full context!`,
+        {
+          action: {
+            label: 'Open Info',
+            onClick: () => setSelectedTicketId(result.requirement.id),
+          },
+        }
+      );
+      // Auto-open inspector to display the newly created ticket
+      setShowInspector(true);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to create requirement from spec');
+      toast.dismiss(loadingToastId);
+      toast.error(err.message || 'Failed to synthesize requirement from chat discussion');
+    } finally {
+      setIsSynthesizingTicket(false);
+      setInProgressSessions((prev) => ({ ...prev, [activeSessionId]: false }));
     }
   };
 
@@ -653,14 +671,12 @@ export function AiChatPage() {
       rawContent.toLowerCase() === 'create requirement' ||
       rawContent.toLowerCase() === 'dispatch requirement'
     ) {
-      if (latestSpec) {
-        setChatInput('');
-        handleQuickCreateRequirement(latestSpec);
-        return;
-      } else {
-        toast.error('No requirement spec formulated yet in this thread. Discuss feature requirements first!');
-        return;
-      }
+      setChatInput('');
+      const extraInstructions = rawContent.toLowerCase().startsWith('/create')
+        ? rawContent.slice(7).trim()
+        : undefined;
+      await handleSynthesizeRequirement(extraInstructions || undefined);
+      return;
     }
 
     // If no active session, create one seeded from settings
@@ -686,6 +702,15 @@ export function AiChatPage() {
     const sendingModel = selectedModel !== 'default' ? selectedModel : undefined;
     const sendingEffort = selectedEffort;
 
+    // Build final content with reply quote if replying to a message
+    let contentToSend = rawContent;
+    if (replyingToMessage) {
+      const quoteSnippet = replyingToMessage.content.replace(/\n+/g, ' ').trim().slice(0, 160);
+      const speaker = replyingToMessage.role === 'assistant' ? 'AI Architect' : 'User';
+      contentToSend = `> Replying to ${speaker}: "${quoteSnippet}..."\n\n${rawContent || '(Attached files)'}`;
+      setReplyingToMessage(null);
+    }
+
     setChatInput('');
     setAttachedFiles([]);
     setShowMentionMenu(false);
@@ -696,7 +721,7 @@ export function AiChatPage() {
 
     try {
       const response = await sendAiSessionMessage(targetSessionId, {
-        content: rawContent || '(Attached files)',
+        content: contentToSend || '(Attached files)',
         attachments: sendingFiles.length > 0 ? sendingFiles : undefined,
         provider: sendingProvider as any,
         model: sendingModel,
@@ -926,18 +951,25 @@ export function AiChatPage() {
           {/* Radix UI Controls for Engine, Model, Effort & Inspector Toggle */}
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap w-full lg:w-auto flex-1 justify-between lg:justify-end">
             <div className="flex items-center gap-2 flex-wrap">
-              {latestSpec && (
+              {(latestSpec || (activeSession?.messages && activeSession.messages.length > 1)) && (
                 <button
                   type="button"
-                  onClick={() => handleQuickCreateRequirement(latestSpec)}
-                  className="flex items-center gap-1.5 py-1.5 px-3 rounded-xl bg-gradient-to-r from-[#7b68ee] to-[#6366f1] hover:from-[#6c5ce7] hover:to-[#4f46e5] text-white font-bold text-xs shadow-sm transition-all active:scale-95"
-                  title={`Create requirement: ${latestSpec.title}`}
+                  onClick={() => handleSynthesizeRequirement()}
+                  disabled={isActiveSessionRunning || isSynthesizingTicket}
+                  className="flex items-center gap-1.5 py-1.5 px-3 rounded-xl bg-gradient-to-r from-[#7b68ee] to-[#6366f1] hover:from-[#6c5ce7] hover:to-[#4f46e5] text-white font-bold text-xs shadow-sm transition-all active:scale-95 disabled:opacity-50"
+                  title="Synthesize full discussion context into a requirement ticket"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Create Requirement (/create)</span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20 font-mono">
-                    {latestSpec.affected_projects?.length || 1} repos
-                  </span>
+                  {isSynthesizingTicket ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3.5 h-3.5" />
+                  )}
+                  <span>{isSynthesizingTicket ? 'Synthesizing...' : 'Create Requirement (/create)'}</span>
+                  {latestSpec?.affected_projects && (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20 font-mono">
+                      {latestSpec.affected_projects.length} repos
+                    </span>
+                  )}
                 </button>
               )}
 
@@ -1132,119 +1164,216 @@ export function AiChatPage() {
               Loading chat transcript...
             </div>
           ) : activeSession?.messages && activeSession.messages.length > 0 ? (
-            activeSession.messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex gap-3 text-xs ${
-                  msg.role === 'user' ? 'justify-end' : 'justify-start'
-                }`}
-              >
-                {msg.role === 'assistant' && (
-                  <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#7b68ee] to-[#6366f1] flex items-center justify-center text-white shrink-0 mt-0.5 shadow-sm">
-                    <Bot className="w-4 h-4" />
-                  </div>
-                )}
+            activeSession.messages.map((msg) => {
+              const isReplyQuote = msg.content.startsWith('> Replying to ');
+              let quoteText = '';
+              let actualContent = msg.content;
+              if (isReplyQuote) {
+                const doubleBreak = msg.content.indexOf('\n\n');
+                if (doubleBreak !== -1) {
+                  quoteText = msg.content.slice(0, doubleBreak).replace(/^>\s*/, '');
+                  actualContent = msg.content.slice(doubleBreak + 2);
+                }
+              }
 
+              return (
                 <div
-                  className={`max-w-[78%] rounded-2xl p-4 shadow-xs ${
-                    msg.role === 'user'
-                      ? 'bg-gradient-to-r from-[#7b68ee] to-[#6366f1] text-white rounded-tr-xs'
-                      : 'bg-white dark:bg-[#1e1f2b] text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-[#2d2f3d] rounded-tl-xs'
+                  key={msg.id}
+                  className={`group/msg relative flex gap-3 text-xs ${
+                    msg.role === 'user' ? 'justify-end' : 'justify-start'
                   }`}
                 >
-                  {msg.role === 'user' ? (
-                    <div className="whitespace-pre-wrap font-sans text-xs leading-relaxed">
-                      {renderInlineMarkdown(msg.content)}
+                  {msg.role === 'assistant' && (
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#7b68ee] to-[#6366f1] flex items-center justify-center text-white shrink-0 mt-0.5 shadow-sm">
+                      <Bot className="w-4 h-4" />
                     </div>
-                  ) : (
-                    <div className="font-sans text-xs">
-                      <MarkdownMessage content={msg.content} />
+                  )}
 
-                      {msg.suggested_spec && (
-                        <div className="mt-2.5 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-purple-200 dark:border-purple-800/50 bg-purple-50/80 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 font-semibold text-[11px]">
-                          <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                          <span>
-                            Architectural spec ready for <strong>{msg.suggested_spec.affected_projects?.length || 1} repos</strong> · Type <code className="bg-purple-100 dark:bg-purple-900/60 px-1 py-0.2 rounded font-mono">/create</code> or click button above
-                          </span>
+                  <div className="relative max-w-[78%]">
+                    {/* Floating Quick Action Bar (Reply & Copy) on hover */}
+                    <div
+                      className={`absolute -top-3.5 ${
+                        msg.role === 'user' ? 'left-2' : 'right-2'
+                      } opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 flex items-center gap-0.5 px-1 py-0.5 rounded-lg bg-white dark:bg-[#20212e] border border-slate-200 dark:border-[#333547] shadow-sm`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReplyingToMessage(msg);
+                          textareaRef.current?.focus();
+                        }}
+                        className="flex items-center gap-1 px-1.5 py-0.5 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-slate-100 dark:hover:bg-[#2b2d3e] text-slate-500 dark:text-slate-400 rounded transition-colors text-[10px] font-medium"
+                        title="Reply to this message"
+                      >
+                        <Reply className="w-3 h-3 text-purple-500" />
+                        <span>Reply</span>
+                      </button>
+                      <div className="h-2.5 w-px bg-slate-200 dark:bg-[#333547] my-auto" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(msg.content);
+                          toast.success('Message copied to clipboard');
+                        }}
+                        className="p-1 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-slate-100 dark:hover:bg-[#2b2d3e] text-slate-500 dark:text-slate-400 rounded transition-colors"
+                        title="Copy message text"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    <div
+                      className={`rounded-2xl p-4 shadow-xs ${
+                        msg.role === 'user'
+                          ? 'bg-gradient-to-r from-[#7b68ee] to-[#6366f1] text-white rounded-tr-xs'
+                          : 'bg-white dark:bg-[#1e1f2b] text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-[#2d2f3d] rounded-tl-xs'
+                      }`}
+                    >
+                      {/* Replying quote badge if present */}
+                      {quoteText && (
+                        <div
+                          className={`mb-2.5 px-2.5 py-1.5 rounded-lg border text-[11px] leading-snug ${
+                            msg.role === 'user'
+                              ? 'bg-black/20 border-white/20 text-white/90'
+                              : 'bg-purple-50/70 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800/40 text-purple-900 dark:text-purple-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1 font-semibold text-[10px] uppercase tracking-wider opacity-80 mb-0.5">
+                            <Reply className="w-3 h-3" />
+                            <span>Replying to context</span>
+                          </div>
+                          <div className="italic line-clamp-2">
+                            {quoteText}
+                          </div>
+                        </div>
+                      )}
+
+                      {msg.role === 'user' ? (
+                        <div className="whitespace-pre-wrap font-sans text-xs leading-relaxed">
+                          {renderInlineMarkdown(actualContent)}
+                        </div>
+                      ) : (
+                        <div className="font-sans text-xs">
+                          <MarkdownMessage content={actualContent} />
+
+                          {msg.suggested_spec && (
+                            <div className="mt-2.5 flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg border border-purple-200 dark:border-purple-800/50 bg-purple-50/80 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 font-semibold text-[11px]">
+                              <div className="flex items-center gap-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+                                <span>
+                                  Architectural spec formulated ({msg.suggested_spec.affected_projects?.length || 1} repos)
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleSynthesizeRequirement()}
+                                disabled={isSynthesizingTicket}
+                                className="px-2.5 py-1 rounded-md bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px] transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+                              >
+                                {isSynthesizingTicket ? 'Synthesizing...' : 'Create Ticket (/create)'}
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Interactive Open Info button for created tickets mentioned in chat */}
+                          {msg.content.includes('#REQ-') && (
+                            <div className="mt-2.5 flex items-center gap-2">
+                              {(() => {
+                                const match = msg.content.match(/#(REQ-\d+)/i);
+                                const reqId = match ? match[1].toUpperCase() : null;
+                                if (!reqId) return null;
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedTicketId(reqId)}
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-100 dark:bg-purple-950/80 border border-purple-200 dark:border-purple-800/60 text-purple-800 dark:text-purple-300 font-bold text-[11px] hover:bg-purple-200 dark:hover:bg-purple-900/60 transition-colors shadow-2xs cursor-pointer"
+                                  >
+                                    <Info className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                                    <span>Open Ticket Info (#{reqId})</span>
+                                  </button>
+                                );
+                              })()}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Render message attachments */}
+                      {msg.attachments && msg.attachments.length > 0 && (
+                        <div
+                          className={`mt-2.5 pt-2 border-t ${
+                            msg.role === 'user'
+                              ? 'border-white/20'
+                              : 'border-slate-200 dark:border-[#2d2f3d]'
+                          } flex flex-wrap gap-1.5`}
+                        >
+                          {msg.attachments.map((att, idx) => {
+                            const isImg =
+                              att.type?.startsWith('image/') ||
+                              att.name.match(/\.(png|jpg|jpeg|gif|webp|svg)$/i);
+                            return (
+                              <div
+                                key={att.id || idx}
+                                className={`flex items-center gap-2 p-1.5 px-2.5 rounded-lg border text-[11px] ${
+                                  msg.role === 'user'
+                                    ? 'bg-white/15 border-white/25 text-white'
+                                    : 'bg-slate-50 dark:bg-[#181922] border-slate-200 dark:border-[#2d2f3d] text-slate-800 dark:text-slate-200'
+                                }`}
+                              >
+                                {isImg && att.data_url ? (
+                                  <img
+                                    src={att.data_url}
+                                    alt={att.name}
+                                    className="w-6 h-6 object-cover rounded shadow-2xs"
+                                  />
+                                ) : att.name.match(/\.(ts|tsx|js|jsx|json|sql|html|css|py|rs|go)$/i) ? (
+                                  <FileCode className="w-4 h-4 text-purple-400 shrink-0" />
+                                ) : (
+                                  <FileText className="w-4 h-4 text-purple-400 shrink-0" />
+                                )}
+                                <div className="flex flex-col min-w-0">
+                                  <span
+                                    className="font-medium truncate max-w-[140px]"
+                                    title={att.name}
+                                  >
+                                    {att.name}
+                                  </span>
+                                  <span className="text-[9px] opacity-75">
+                                    {att.size
+                                      ? `${Math.round(att.size / 1024)} KB`
+                                      : att.asset_id
+                                      ? 'Shared Asset'
+                                      : 'Attached'}
+                                  </span>
+                                </div>
+                                {att.data_url && (
+                                  <a
+                                    href={att.data_url}
+                                    download={att.name}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="p-1 hover:opacity-100 opacity-70 transition-opacity"
+                                    title="Download / Open file"
+                                  >
+                                    <ExternalLink className="w-3 h-3" />
+                                  </a>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
-                  )}
+                  </div>
 
-                  {/* Render message attachments */}
-                  {msg.attachments && msg.attachments.length > 0 && (
-                    <div
-                      className={`mt-2.5 pt-2 border-t ${
-                        msg.role === 'user'
-                          ? 'border-white/20'
-                          : 'border-slate-200 dark:border-[#2d2f3d]'
-                      } flex flex-wrap gap-1.5`}
-                    >
-                      {msg.attachments.map((att, idx) => {
-                        const isImg =
-                          att.type?.startsWith('image/') ||
-                          att.name.match(/\.(png|jpg|jpeg|gif|webp|svg)$/i);
-                        return (
-                          <div
-                            key={att.id || idx}
-                            className={`flex items-center gap-2 p-1.5 px-2.5 rounded-lg border text-[11px] ${
-                              msg.role === 'user'
-                                ? 'bg-white/15 border-white/25 text-white'
-                                : 'bg-slate-50 dark:bg-[#181922] border-slate-200 dark:border-[#2d2f3d] text-slate-800 dark:text-slate-200'
-                            }`}
-                          >
-                            {isImg && att.data_url ? (
-                              <img
-                                src={att.data_url}
-                                alt={att.name}
-                                className="w-6 h-6 object-cover rounded shadow-2xs"
-                              />
-                            ) : att.name.match(/\.(ts|tsx|js|jsx|json|sql|html|css|py|rs|go)$/i) ? (
-                              <FileCode className="w-4 h-4 text-purple-400 shrink-0" />
-                            ) : (
-                              <FileText className="w-4 h-4 text-purple-400 shrink-0" />
-                            )}
-                            <div className="flex flex-col min-w-0">
-                              <span
-                                className="font-medium truncate max-w-[140px]"
-                                title={att.name}
-                              >
-                                {att.name}
-                              </span>
-                              <span className="text-[9px] opacity-75">
-                                {att.size
-                                  ? `${Math.round(att.size / 1024)} KB`
-                                  : att.asset_id
-                                  ? 'Shared Asset'
-                                  : 'Attached'}
-                              </span>
-                            </div>
-                            {att.data_url && (
-                              <a
-                                href={att.data_url}
-                                download={att.name}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="p-1 hover:opacity-100 opacity-70 transition-opacity"
-                                title="Download / Open file"
-                              >
-                                <ExternalLink className="w-3 h-3" />
-                              </a>
-                            )}
-                          </div>
-                        );
-                      })}
+                  {msg.role === 'user' && (
+                    <div className="w-8 h-8 rounded-xl bg-slate-200 dark:bg-[#2d2f3d] flex items-center justify-center text-slate-700 dark:text-slate-200 shrink-0 mt-0.5">
+                      <User className="w-4 h-4" />
                     </div>
                   )}
                 </div>
-
-                {msg.role === 'user' && (
-                  <div className="w-8 h-8 rounded-xl bg-slate-200 dark:bg-[#2d2f3d] flex items-center justify-center text-slate-700 dark:text-slate-200 shrink-0 mt-0.5">
-                    <User className="w-4 h-4" />
-                  </div>
-                )}
-              </div>
-            ))
+              );
+            })
           ) : (
             <div className="flex flex-col items-center justify-center h-64 text-center text-slate-400 space-y-3">
               <Bot className="w-10 h-10 text-purple-400/80" />
@@ -1300,6 +1429,33 @@ export function AiChatPage() {
             </button>
           ))}
         </div>
+
+        {/* Replying to Preview Banner */}
+        {replyingToMessage && (
+          <div className="flex items-center justify-between px-4 py-2 bg-purple-50/90 dark:bg-purple-950/40 border-t border-purple-200 dark:border-purple-800/60 text-xs shadow-xs">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="p-1 rounded-md bg-purple-100 dark:bg-purple-900/60 text-purple-600 dark:text-purple-300 shrink-0">
+                <Reply className="w-3.5 h-3.5" />
+              </div>
+              <div className="min-w-0 flex items-center gap-1.5 text-[11px]">
+                <span className="font-semibold text-purple-800 dark:text-purple-300 shrink-0">
+                  Replying to {replyingToMessage.role === 'assistant' ? 'AI Architect' : 'You'}:
+                </span>
+                <span className="text-slate-600 dark:text-slate-400 truncate italic max-w-md">
+                  "{replyingToMessage.content.replace(/\n+/g, ' ').slice(0, 120)}..."
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setReplyingToMessage(null)}
+              className="p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-purple-100 dark:hover:bg-purple-900/60 transition-colors"
+              title="Cancel reply"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Attached Files Preview Tray */}
         {attachedFiles.length > 0 && (
@@ -1581,7 +1737,7 @@ export function AiChatPage() {
                   {sessionTickets.map((ticket) => (
                     <div
                       key={ticket.id}
-                      className="p-2.5 rounded-xl border border-slate-200 dark:border-[#2d2f3d] bg-slate-50/50 dark:bg-[#1f202b] space-y-1.5 hover:border-purple-300 dark:hover:border-purple-700 transition-colors"
+                      className="p-3 rounded-xl border border-slate-200 dark:border-[#2d2f3d] bg-slate-50/50 dark:bg-[#1f202b] space-y-2 hover:border-purple-300 dark:hover:border-purple-700 transition-colors group/card"
                     >
                       <div className="flex items-center justify-between">
                         <span className="px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 font-mono text-[10px] font-bold">
@@ -1591,18 +1747,31 @@ export function AiChatPage() {
                           {ticket.status}
                         </span>
                       </div>
-                      <div className="text-xs font-semibold text-slate-900 dark:text-slate-100 line-clamp-2">
+                      <div
+                        onClick={() => setSelectedTicketId(ticket.id)}
+                        className="text-xs font-semibold text-slate-900 dark:text-slate-100 line-clamp-2 hover:text-purple-600 dark:hover:text-purple-400 cursor-pointer transition-colors"
+                        title="Click to open ticket info"
+                      >
                         {ticket.title}
                       </div>
-                      <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1">
-                        <span className="capitalize">{ticket.priority} priority</span>
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1.5 border-t border-slate-100 dark:border-[#2a2c3a]">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTicketId(ticket.id)}
+                          className="flex items-center gap-1 font-semibold text-purple-600 dark:text-purple-400 hover:text-purple-500 hover:underline cursor-pointer"
+                          title="Open ticket details and info sheet"
+                        >
+                          <Info className="w-3 h-3" />
+                          <span>Open Info</span>
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
                             setChatInput((prev) => (prev ? `${prev} #${ticket.id} ` : `#${ticket.id} `));
                             if (textareaRef.current) textareaRef.current.focus();
                           }}
-                          className="text-purple-600 dark:text-purple-400 font-semibold hover:underline"
+                          className="text-slate-500 dark:text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:underline cursor-pointer"
+                          title="Reference in chat input"
                         >
                           Reference #
                         </button>
@@ -1723,6 +1892,13 @@ export function AiChatPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Requirement Detail Sheet drawer for viewing full ticket info */}
+      <RequirementDetailSheet
+        requirementId={selectedTicketId}
+        isOpen={Boolean(selectedTicketId)}
+        onClose={() => setSelectedTicketId(null)}
+      />
     </div>
   );
 }

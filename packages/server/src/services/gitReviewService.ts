@@ -27,6 +27,7 @@ export interface GitReviewSummary {
   changedFiles: ChangedFile[];
   recentCommits: GitCommitInfo[];
   clean: boolean;
+  error?: string;
 }
 
 export interface DiffLine {
@@ -76,7 +77,42 @@ export class GitReviewService {
     targetBranch = 'main'
   ): GitReviewSummary {
     assertSafeRef(targetBranch);
-    const repoPath = this.resolveRepo(projectName);
+    const project = this.projectService.getProject(projectName);
+    if (!project) {
+      throw new Error(`Project ${projectName} not found`);
+    }
+
+    const repoPath = project.repo_path?.trim() || '';
+    if (!repoPath || !fs.existsSync(repoPath)) {
+      return {
+        project: projectName,
+        repoPath: repoPath || '(no repo path)',
+        currentBranch: project.base_branch || 'main',
+        targetBranch,
+        totalAdditions: 0,
+        totalDeletions: 0,
+        changedFiles: [],
+        recentCommits: [],
+        clean: true,
+        error: repoPath ? `Repository path does not exist on disk: ${repoPath}` : 'No repository path configured',
+      };
+    }
+
+    const isGit = tryGit(repoPath, ['rev-parse', '--git-dir']) !== null;
+    if (!isGit) {
+      return {
+        project: projectName,
+        repoPath,
+        currentBranch: project.base_branch || 'main',
+        targetBranch,
+        totalAdditions: 0,
+        totalDeletions: 0,
+        changedFiles: [],
+        recentCommits: [],
+        clean: true,
+        error: `Directory is not a git repository: ${repoPath}`,
+      };
+    }
 
     const currentBranch = tryGit(repoPath, ['branch', '--show-current'])?.trim() || 'develop';
 
@@ -188,7 +224,19 @@ export class GitReviewService {
     targetBranch = 'main'
   ): FileDiffResult {
     assertSafeRef(targetBranch);
-    const repoPath = this.resolveRepo(projectName);
+    const project = this.projectService.getProject(projectName);
+    const repoPath = project?.repo_path || '';
+    if (!repoPath || !fs.existsSync(repoPath)) {
+      return {
+        path: filePath,
+        status: 'unchanged',
+        originalContent: '',
+        modifiedContent: '',
+        diffLines: [],
+        additions: 0,
+        deletions: 0,
+      };
+    }
     const { fullPath, relPath } = resolveInRepo(repoPath, filePath);
 
     let modifiedContent = '';
@@ -274,7 +322,16 @@ export class GitReviewService {
    * Get recursive file tree of the project repo
    */
   public getFileTree(projectName: string, maxDepth = 4): FileTreeNode {
-    const repoPath = this.resolveRepo(projectName);
+    const project = this.projectService.getProject(projectName);
+    const repoPath = project?.repo_path || '';
+    if (!repoPath || !fs.existsSync(repoPath)) {
+      return {
+        name: projectName,
+        path: '.',
+        type: 'directory',
+        children: [],
+      };
+    }
 
     const ignoredNames = new Set([
       '.git',
@@ -345,7 +402,11 @@ export class GitReviewService {
    * Get raw file content for viewing in the editor
    */
   public getFileContent(projectName: string, filePath: string): { path: string; content: string; size: number } {
-    const repoPath = this.resolveRepo(projectName);
+    const project = this.projectService.getProject(projectName);
+    const repoPath = project?.repo_path || '';
+    if (!repoPath || !fs.existsSync(repoPath)) {
+      return { path: filePath, content: `Error: Repository path does not exist on disk (${repoPath || 'none'})`, size: 0 };
+    }
     const { fullPath } = resolveInRepo(repoPath, filePath);
 
     if (!fs.existsSync(fullPath)) {

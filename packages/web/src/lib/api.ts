@@ -6,6 +6,7 @@ import {
   Link,
   BridgeEvent,
   CreateRequirementInput,
+  UpdateRequirementInput,
   CreateWorkspaceInput,
   UpdateWorkspaceInput,
   BranchMergeSettings,
@@ -26,6 +27,7 @@ import {
   IdeSettings,
   IdeServerStatus,
   StartIdeInput,
+  ProjectTerminalStatus,
 } from '@sp-kickstack/shared';
 
 const BASE = '/api';
@@ -212,6 +214,17 @@ export async function updateAiCliSettings(settings: Partial<AiCliSettings>): Pro
   });
   if (!res.ok) throw new Error('Failed to update AI CLI settings');
   return res.json();
+}
+
+export async function updateRequirement(
+  id: string,
+  input: UpdateRequirementInput
+): Promise<Requirement> {
+  return request(`${BASE}/requirements/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
 }
 
 export async function updateRequirementStatus(id: string, status: RequirementStatus): Promise<Requirement> {
@@ -427,6 +440,25 @@ export async function sendAiSessionMessage(
   return res.json();
 }
 
+export async function createRequirementFromSession(
+  sessionId: string,
+  instructions?: string
+): Promise<{
+  requirement: Requirement;
+  session: AiChatSession;
+}> {
+  const res = await fetch(`${BASE}/ai/chat/sessions/${sessionId}/create-requirement`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instructions }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to create requirement from chat discussion');
+  }
+  return res.json();
+}
+
 // Embedded IDE APIs (code-server / openvscode-server)
 export async function fetchIdeStatus(): Promise<IdeServerStatus> {
   const res = await fetch(`${BASE}/ide/status`);
@@ -504,6 +536,7 @@ export interface GitReviewSummary {
   changedFiles: ChangedFile[];
   recentCommits: GitCommitInfo[];
   clean: boolean;
+  error?: string;
 }
 
 export interface DiffLine {
@@ -564,6 +597,63 @@ export async function fetchFileContent(projectName: string, filePath: string): P
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || 'Failed to fetch file content');
   }
+  return res.json();
+}
+
+// =========================================================
+// Project Persistent Terminal Client Endpoints
+// =========================================================
+
+export async function fetchProjectTerminal(projectName: string): Promise<ProjectTerminalStatus> {
+  const res = await fetch(`${BASE}/projects/${encodeURIComponent(projectName)}/terminal`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to fetch project terminal status');
+  }
+  return res.json();
+}
+
+export async function sendProjectTerminalInput(projectName: string, input: string): Promise<ProjectTerminalStatus> {
+  const res = await fetch(`${BASE}/projects/${encodeURIComponent(projectName)}/terminal/input`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to send terminal command');
+  }
+  return res.json();
+}
+
+export async function interruptProjectTerminal(projectName: string): Promise<{ ok: boolean }> {
+  const res = await fetch(`${BASE}/projects/${encodeURIComponent(projectName)}/terminal/interrupt`, {
+    method: 'POST',
+  });
+  return res.json();
+}
+
+export async function restartProjectTerminal(projectName: string): Promise<ProjectTerminalStatus> {
+  const res = await fetch(`${BASE}/projects/${encodeURIComponent(projectName)}/terminal/restart`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to restart terminal');
+  }
+  return res.json();
+}
+
+export async function clearProjectTerminal(projectName: string): Promise<{ ok: boolean }> {
+  const res = await fetch(`${BASE}/projects/${encodeURIComponent(projectName)}/terminal/clear`, {
+    method: 'POST',
+  });
+  return res.json();
+}
+
+export async function fetchActiveTerminals(): Promise<string[]> {
+  const res = await fetch(`${BASE}/terminals/active`);
+  if (!res.ok) return [];
   return res.json();
 }
 

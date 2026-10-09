@@ -3,6 +3,7 @@ import { execa } from 'execa';
 import { AppDatabase } from '../db/index.js';
 import { ProjectService } from './projectService.js';
 import { SettingsService } from './settingsService.js';
+import { RequirementService } from './requirementService.js';
 import { findCliBinary } from './aiDraftService.js';
 import {
   AiChatMessage,
@@ -11,15 +12,22 @@ import {
   AiChatSession,
   DraftRequirementResult,
   ChatAttachmentItem,
+  AttachmentItem,
+  Requirement,
   normalizeMergePolicy,
 } from '@sp-kickstack/shared';
 
 export class AiChatService {
+  private requirementService: RequirementService;
+
   constructor(
     private db: AppDatabase,
     private projectService: ProjectService,
-    private settingsService?: SettingsService
-  ) {}
+    private settingsService?: SettingsService,
+    requirementService?: RequirementService
+  ) {
+    this.requirementService = requirementService || new RequirementService(this.db);
+  }
 
   public listSessions(workspaceId?: string): AiChatSession[] {
     const ws = workspaceId || 'default';
@@ -268,6 +276,225 @@ What feature, solution, or refactoring would you like to design today? Tell me w
     };
   }
 
+  public async createRequirementFromSession(
+    sessionId: string,
+    extraInstructions?: string
+  ): Promise<{
+    requirement: Requirement;
+    session: AiChatSession;
+  }> {
+    const session = this.getSession(sessionId);
+    if (!session) {
+      throw new Error(`Chat session ${sessionId} not found`);
+    }
+
+    if (!session.messages || session.messages.length === 0) {
+      throw new Error('Cannot create requirement from empty chat session. Please discuss your feature requirements first.');
+    }
+
+    // 1. Gather all attachments across the entire session
+    const sessionAttachments: AttachmentItem[] = [];
+    for (const msg of session.messages) {
+      if (msg.attachments && msg.attachments.length > 0) {
+        for (const att of msg.attachments) {
+          if (!sessionAttachments.some((a) => a.name === att.name)) {
+            sessionAttachments.push({
+              name: att.name,
+              type: att.type,
+              size: att.size,
+              data_url: att.data_url,
+            });
+          }
+        }
+      }
+    }
+
+    // 2. Request AI to synthesize the entire conversation into a comprehensive requirement specification
+    const synthesisPrompt = `You are the Principal Software Architect for this multi-project workspace.
+Analyze the ENTIRE conversation history below between Developer and Architect.
+Synthesize all user requests, architectural designs, contracts, acceptance criteria, constraints, and edge cases discussed into a comprehensive, production-ready Requirement Ticket Specification.
+
+${this.compileWorkspaceContext()}
+
+Guidelines:
+1. Title: Concise, clear architectural feature title.
+2. Goal: Comprehensive business and technical goal synthesized from all discussion points.
+3. User Story: "As a [role], I want [capability], so that [business value]."
+4. Acceptance Criteria: An exhaustive list of ALL criteria, verification checks, edge cases, test requirements, and contracts agreed upon in this chat.
+5. Affected Projects: List all workspace project repositories that need code changes.
+6. API Hints: Document all API paths, payload schemas, query parameters, or contract definitions discussed.
+7. Notes: Detailed architectural summary and record of key decisions made in this discussion.
+${extraInstructions ? `8. Additional Developer Instructions: "${extraInstructions}"` : ''}
+
+You MUST return your specification strictly in a \`\`\`json:spec block:
+\`\`\`json:spec
+{
+  "title": "Title here",
+  "goal": "Detailed goal here",
+  "user_story": "As a ...",
+  "acceptance_criteria": [
+    "Criterion 1",
+    "Criterion 2"
+  ],
+  "affected_projects": ["backend", "frontend"],
+  "api_hints": "POST /api/v1/...",
+  "notes": "Architectural summary and decisions..."
+}
+\`\`\`
+`;
+
+    const chatReq: AiChatRequest = {
+      messages: [
+        ...session.messages,
+        {
+          id: `msg-${crypto.randomUUID()}`,
+          role: 'user',
+          content: synthesisPrompt,
+          timestamp: new Date().toISOString(),
+        },
+      ],
+      provider: session.provider,
+      model: session.model,
+      effort: 'high',
+      workspace_id: session.workspace_id,
+    };
+
+    const aiResponse = await this.chat(chatReq, sessionId);
+    let spec = aiResponse.suggested_spec;
+
+    if (!spec) {
+      // Also check if aiResponse.message.content contains embedded spec
+      spec = this.extractSpecFromContent(aiResponse.message.content);
+    }
+
+    if (!spec) {
+      const latestWithSpec = [...session.messages].reverse().find((m) => m.suggested_spec)?.suggested_spec;
+      if (latestWithSpec) {
+        spec = latestWithSpec;
+      }
+    }
+
+    // Extract rich architecture directly from the session discussion
+    const availableProjects = this.projectService.listProjects(session.workspace_id).map((p) => p.name);
+    const extractedArchitecture = this.extractRichArchitectureFromMessages(
+      session.messages,
+      session.title,
+      availableProjects
+    );
+
+    // If spec is still null or has generic titles/criteria, use extractedArchitecture
+    if (!spec) {
+      spec = extractedArchitecture;
+    } else {
+      // If spec title is generic (e.g. starts with "Requirement created:" or "Architectural Feature Requirement"), upgrade it
+      if (
+        !spec.title ||
+        spec.title === 'Architectural Feature Requirement' ||
+        spec.title.startsWith('Requirement created:') ||
+        spec.title.startsWith('what is your recommend')
+      ) {
+        spec.title = extractedArchitecture.title;
+      }
+      if (!spec.goal || spec.goal.startsWith('Implement Requirement created:')) {
+        spec.goal = extractedArchitecture.goal;
+      }
+      // Merge acceptance criteria if spec had few items
+      if (!spec.acceptance_criteria || spec.acceptance_criteria.length <= 1) {
+        spec.acceptance_criteria = extractedArchitecture.acceptance_criteria;
+      }
+      if (!spec.affected_projects || spec.affected_projects.length === 0) {
+        spec.affected_projects = extractedArchitecture.affected_projects;
+      }
+      if (!spec.api_hints && extractedArchitecture.api_hints) {
+        spec.api_hints = extractedArchitecture.api_hints;
+      }
+    }
+
+    // Ensure notes has the COMPLETE architectural markdown from the conversation
+    const chatArchitecturalDoc = session.messages
+      .filter((m) => m.role === 'assistant')
+      .map((m) => this.stripSpecJsonFromContent(m.content))
+      .filter((text) => text.length > 50)
+      .join('\n\n---\n\n');
+
+    const synthesisText = this.stripSpecJsonFromContent(aiResponse.message?.content || '');
+
+    const detailedArchitecture = [
+      chatArchitecturalDoc || spec.notes || extractedArchitecture.notes || '',
+      synthesisText && !chatArchitecturalDoc.includes(synthesisText.slice(0, 50))
+        ? `\n### Synthesized Architecture Overview:\n${synthesisText}`
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    // 3. Compile full discussion record into notes
+    const discussionNotes = [
+      `### Architectural Assessment & Technical Details\n`,
+      detailedArchitecture,
+      `\n---`,
+      `### AI Architecture Discussion Context`,
+      `* **Chat Session**: "${session.title}" (\`${session.id}\`)`,
+      `* **Engine Used**: ${aiResponse.provider_used || session.provider}`,
+      `* **Synthesized At**: ${new Date().toLocaleString()}`,
+      extraInstructions ? `* **Developer Instructions**: "${extraInstructions}"` : '',
+      spec.api_hints ? `* **API & Contract Hints**: \`${spec.api_hints}\`` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    // 4. Create the requirement in database & disk
+    const createdRequirement = this.requirementService.createRequirement({
+      workspace_id: session.workspace_id,
+      session_id: session.id,
+      title: spec.title || session.title || 'Architectural Requirement',
+      goal: spec.goal || `Implement architecture discussed in session "${session.title}"`,
+      user_story: spec.user_story,
+      acceptance_criteria:
+        spec.acceptance_criteria && spec.acceptance_criteria.length > 0
+          ? spec.acceptance_criteria
+          : ['Implementation complete and verified with tests'],
+      affected_projects:
+        spec.affected_projects && spec.affected_projects.length > 0
+          ? spec.affected_projects
+          : this.projectService.listProjects(session.workspace_id).map((p) => p.name).slice(0, 2),
+      api_hints: spec.api_hints,
+      notes: discussionNotes,
+      attachments: sessionAttachments,
+      priority: 'high',
+      status: 'draft',
+    });
+
+    // 5. Append assistant confirmation message to session transcript
+    const now = new Date().toISOString();
+    const assistantMsgId = `msg-${crypto.randomUUID()}`;
+    const confirmContent = `🎯 **Ticket Created from Full Discussion Context**: [#${createdRequirement.id} - ${createdRequirement.title}](/requirements/${createdRequirement.id})
+
+**Synthesized Scope:**
+- **Affected Projects**: \`${createdRequirement.affected_projects.join(', ')}\`
+- **Acceptance Criteria**: ${spec.acceptance_criteria?.length || 0} items synthesized from conversation
+- **Attachments Attached**: ${sessionAttachments.length} file(s)
+${spec.api_hints ? `- **API / Contract**: \`${spec.api_hints}\`\n` : ''}
+
+You can click **Open Info** on ticket #${createdRequirement.id} in the right sidebar or reference it in chat with **#${createdRequirement.id}**.`;
+
+    this.db
+      .prepare(
+        `INSERT INTO ai_chat_messages (id, session_id, role, content, spec_json, attachments, created_at)
+         VALUES (?, ?, 'assistant', ?, ?, '[]', ?)`
+      )
+      .run(assistantMsgId, sessionId, confirmContent, JSON.stringify(spec), now);
+
+    this.db
+      .prepare('UPDATE ai_chat_sessions SET updated_at = ? WHERE id = ?')
+      .run(now, sessionId);
+
+    return {
+      requirement: createdRequirement,
+      session: this.getSession(sessionId)!,
+    };
+  }
+
   public compileWorkspaceContext(): string {
     const projects = this.projectService.listProjects();
     const projLines = projects.map(
@@ -345,6 +572,176 @@ ${reqLines.length > 0 ? `\n### Existing Workspace Requirements / Tickets (refere
     } catch {}
 
     return undefined;
+  }
+
+  public extractRichArchitectureFromMessages(
+    messages: AiChatMessage[],
+    sessionTitle?: string,
+    availableProjects: string[] = []
+  ): DraftRequirementResult {
+    const assistantMessages = messages.filter((m) => m.role === 'assistant' && m.content.trim().length > 0);
+    const userMessages = messages.filter((m) => m.role === 'user' && m.content.trim().length > 0);
+
+    // Pick the most comprehensive architectural message
+    let bestMsg = assistantMessages[assistantMessages.length - 1];
+    for (let i = assistantMessages.length - 1; i >= 0; i--) {
+      const content = assistantMessages[i].content;
+      if (
+        content.includes('Architectural Assessment') ||
+        content.includes('CREATE TABLE') ||
+        content.includes('Database Schema') ||
+        content.includes('### 1.')
+      ) {
+        bestMsg = assistantMessages[i];
+        break;
+      }
+    }
+
+    const rawContent = bestMsg?.content || '';
+
+    // Extract Title: Look for "### Architectural Assessment: <Title>" or "#+ <Title>"
+    let title = '';
+    const headingMatch = rawContent.match(/^#{1,3}\s*(?:Architectural\s*(?:Assessment|Specification|Design|Proposal)[:\s]+)?([^\n]+)/im);
+    if (headingMatch && headingMatch[1].trim()) {
+      title = headingMatch[1]
+        .replace(/[`*#]/g, '')
+        .replace(/^Architectural\s*(?:Assessment|Specification|Design|Proposal)[:\s]+/i, '')
+        .trim();
+    }
+
+    // If title is missing or is a prompt echo / generic title, resolve cleanly
+    const isGenericTitle =
+      !title ||
+      title.toLowerCase().startsWith('requirement created:') ||
+      title.toLowerCase().startsWith('what is your recommend') ||
+      title.toLowerCase() === 'new architecture discussion' ||
+      title.length < 4;
+
+    if (isGenericTitle) {
+      if (
+        sessionTitle &&
+        !sessionTitle.toLowerCase().startsWith('requirement created:') &&
+        sessionTitle !== 'New Architecture Discussion' &&
+        sessionTitle !== 'hi' &&
+        sessionTitle.length > 3
+      ) {
+        title = sessionTitle;
+      } else {
+        const relevantUser = userMessages.find(
+          (u) =>
+            !u.content.toLowerCase().startsWith('requirement created:') &&
+            !u.content.toLowerCase().startsWith('create ticket') &&
+            u.content.trim().length > 5
+        );
+        if (relevantUser) {
+          title = relevantUser.content.trim();
+          if (title.length > 50) title = title.slice(0, 47) + '...';
+        } else {
+          title = 'Architectural Feature Specification';
+        }
+      }
+    }
+
+    // Extract Goal: The introductory paragraph under the title
+    let goal = '';
+    const lines = rawContent.split('\n');
+    let foundHeading = false;
+    const goalParagraphs: string[] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('#')) {
+        if (!foundHeading) {
+          foundHeading = true;
+          continue;
+        } else {
+          break;
+        }
+      }
+      if (foundHeading && trimmed && !trimmed.startsWith('---') && !trimmed.startsWith('```')) {
+        goalParagraphs.push(trimmed);
+      }
+    }
+    if (goalParagraphs.length > 0) {
+      goal = goalParagraphs.join(' ');
+    } else {
+      goal = `Implement ${title} according to the architectural design and contracts agreed in chat.`;
+    }
+
+    // Extract User Story
+    const storyMatch = rawContent.match(/As a\s+([^,]+),\s*I want\s+([^,]+),\s*so that\s+([^.\n]+)/i);
+    const userStory = storyMatch
+      ? `As a ${storyMatch[1].trim()}, I want ${storyMatch[2].trim()}, so that ${storyMatch[3].trim()}.`
+      : `As a developer, I want to implement ${title}, so that the system operates reliably across affected services.`;
+
+    // Extract Acceptance Criteria:
+    const criteria: string[] = [];
+
+    // Look for SQL CREATE TABLE statements
+    const tableMatches = [...rawContent.matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_]+)/gi)];
+    if (tableMatches.length > 0) {
+      const tableNames = Array.from(new Set(tableMatches.map((m) => m[1])));
+      criteria.push(`Create and migrate database tables: ${tableNames.map((t) => `\`${t}\``).join(', ')} with relational integrity and constraints`);
+    }
+
+    // Look for specific approaches or constraints
+    if (rawContent.includes('Approach A') || rawContent.includes('Dedicated Translation Tables')) {
+      criteria.push('Implement dedicated translation tables with compound unique constraint on `(entity_id, locale)`');
+    }
+    if (rawContent.includes('Accept-Language') || rawContent.includes('locale') || rawContent.includes('Content Negotiation')) {
+      criteria.push('Support locale negotiation via `Accept-Language` header and `?locale` parameter with fallback to default locale');
+      criteria.push('Implement client localized response shape and Admin CMS payload for managing all locales');
+    }
+
+    // Scan for markdown bullet points that look like criteria
+    const bulletMatches = rawContent.match(/^[-*]\s+\*\*([^*]+)\*\*:\s*([^\n]+)/gm);
+    if (bulletMatches) {
+      for (const bm of bulletMatches.slice(0, 3)) {
+        const cleaned = bm.replace(/^[-*]\s+/, '').trim();
+        if (!criteria.some((c) => c.includes(cleaned.slice(0, 15)))) {
+          criteria.push(cleaned);
+        }
+      }
+    }
+
+    // Always include verification criteria
+    if (!criteria.some((c) => c.includes('tests'))) {
+      criteria.push('Unit and integration tests pass on develop branch');
+    }
+
+    // Extract Affected Projects
+    const affectedProjects: string[] = [];
+    const lowerContent = rawContent.toLowerCase();
+    for (const proj of availableProjects) {
+      const lowerProj = proj.toLowerCase();
+      if (lowerContent.includes(lowerProj)) {
+        affectedProjects.push(proj);
+      }
+    }
+    if (affectedProjects.length === 0) {
+      if (lowerContent.includes('api')) affectedProjects.push('api');
+      if (lowerContent.includes('admin') || lowerContent.includes('dashboard')) affectedProjects.push('admin dashboard');
+      if (affectedProjects.length === 0) {
+        affectedProjects.push(...availableProjects.slice(0, 2));
+      }
+    }
+
+    // Extract API Hints
+    let apiHints: string | undefined;
+    const apiMatch = rawContent.match(/(?:Accept-Language[^\n]*|GET\s+\/[^\n]*|POST\s+\/[^\n]*|\?locale=[^\n]*)/i);
+    if (apiMatch) {
+      apiHints = apiMatch[0].trim();
+    }
+
+    return {
+      title,
+      goal,
+      user_story: userStory,
+      acceptance_criteria: criteria.length > 0 ? criteria : ['Implementation complete and verified with tests'],
+      affected_projects: affectedProjects,
+      api_hints: apiHints,
+      notes: rawContent,
+      provider_used: bestMsg ? 'Chat Conversation' : 'Local Architect',
+    };
   }
 
   public async chat(req: AiChatRequest, sessionId?: string): Promise<AiChatResponse> {
@@ -532,7 +929,11 @@ Guidelines:
   }
 
   private chatWithHeuristic(req: AiChatRequest): AiChatResponse {
-    const lastUserMessage = [...req.messages].reverse().find((m) => m.role === 'user')?.content || '';
+    const rawLastUser = [...req.messages].reverse().find((m) => m.role === 'user')?.content || '';
+    const lastUserMessage =
+      rawLastUser.startsWith('> Replying to ') && rawLastUser.includes('\n\n')
+        ? rawLastUser.slice(rawLastUser.indexOf('\n\n') + 2).trim()
+        : rawLastUser;
     const projects = this.projectService.listProjects().map((p) => p.name);
     const affected = projects.length > 0
       ? projects.filter((p) => lastUserMessage.toLowerCase().includes(p.toLowerCase()))

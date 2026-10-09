@@ -35,8 +35,17 @@ import {
   Cpu,
   Terminal,
   Wand2,
+  AlertTriangle,
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from './ui/dialog.js';
 import {
   Priority,
   RequirementStatus,
@@ -88,6 +97,7 @@ export function CreateRequirementSheet() {
   const [isAiDrafting, setIsAiDrafting] = useState(false);
   const [showAiBar, setShowAiBar] = useState(false);
   const [selectedAiProvider, setSelectedAiProvider] = useState<string>('auto');
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const { data: aiProviders } = useQuery({
     queryKey: ['ai-providers'],
@@ -141,6 +151,14 @@ export function CreateRequirementSheet() {
   const handleClose = () => {
     resetForm();
     closeSheet();
+  };
+
+  const triggerCancel = () => {
+    if (title.trim() || goal.trim() || aiPrompt.trim() || attachments.length > 0) {
+      setShowCancelConfirm(true);
+    } else {
+      handleClose();
+    }
   };
 
   const handleAiDraft = async () => {
@@ -398,7 +416,7 @@ What feature, solution, or refactoring would you like to design today? You can s
   };
 
   return (
-    <Sheet open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
+    <Sheet open={isOpen} onOpenChange={(open) => { if (!open) triggerCancel(); }}>
       <SheetContent side="right" className="p-0 overflow-hidden sm:max-w-2xl flex flex-col w-screen">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-[#262732] flex items-center justify-between bg-slate-50/70 dark:bg-[#1a1b23]/70">
@@ -438,13 +456,15 @@ What feature, solution, or refactoring would you like to design today? You can s
                 </select>
               </div>
 
-              {/* Close Button */}
+              {/* Close / Cancel Button */}
               <button
-                onClick={handleClose}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-[#2a2a2a] transition-colors"
-                title="Close (Esc)"
+                type="button"
+                onClick={triggerCancel}
+                className="px-2.5 py-1 text-xs font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-[#2a2a2a] rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                title="Cancel & close (Esc)"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
+                <span>Cancel</span>
               </button>
             </div>
           </div>
@@ -1195,9 +1215,9 @@ What feature, solution, or refactoring would you like to design today? You can s
           <div className="p-4 border-t border-slate-200 dark:border-[#2d2d2d] bg-slate-50/80 dark:bg-[#1e1e1e]/80 flex items-center justify-between gap-3">
             <button
               type="button"
-              onClick={handleClose}
+              onClick={triggerCancel}
               disabled={isSubmitting}
-              className="px-4 py-2 rounded-lg border border-slate-200 dark:border-[#303030] text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#2a2a2a] transition-all"
+              className="px-4 py-2 rounded-lg border border-slate-200 dark:border-[#303030] text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#2a2a2a] transition-all cursor-pointer"
             >
               Cancel
             </button>
@@ -1264,6 +1284,40 @@ What feature, solution, or refactoring would you like to design today? You can s
             )}
           </div>
         </SheetContent>
+
+        {/* Radix UI Cancel Confirmation Dialog */}
+        <Dialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <div className="w-10 h-10 rounded-2xl bg-amber-100 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900/40 flex items-center justify-center text-amber-600 dark:text-amber-400 mb-2">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <DialogTitle>Discard Requirement Draft?</DialogTitle>
+              <DialogDescription>
+                You have unsaved changes in this requirement form. Are you sure you want to discard your draft and close the sheet?
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:gap-2 pt-3">
+              <button
+                type="button"
+                onClick={() => setShowCancelConfirm(false)}
+                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-[#2d2f3d] bg-slate-50 dark:bg-[#20212b] text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#282937] transition-colors cursor-pointer"
+              >
+                Continue Editing
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCancelConfirm(false);
+                  handleClose();
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-semibold shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                Discard &amp; Close
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </Sheet>
     );
 }

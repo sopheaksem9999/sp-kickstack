@@ -1440,3 +1440,56 @@ describe('Review fixes: blocking tickets survive a down target engine', () => {
     expect(h.linkService.getLinksForTask(mobileGoal.id)[0].state).toBe('waiting');
   });
 });
+
+describe('Review fixes: every retried side effect has backoff and a cap', () => {
+  let h: Harness;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => h.db.close());
+
+  const failedEvents = () => (h.db.prepare("SELECT COUNT(*) c FROM events WHERE type = 'task_failed'").get() as any).c;
+
+  it('outbox re-scans during a target outage stop at the cap and do not notify on every scan', async () => {
+    const req = h.createRequirement();
+    let engineCalls = 0;
+    h.adapters.backend.createTask = async () => { engineCalls++; throw new Error('backend engine down'); };
+    const outbox = path.join(h.repoMobile, '.devflow', 'outbox');
+    fs.mkdirSync(outbox, { recursive: true });
+    fs.writeFileSync(path.join(outbox, 't.json'), JSON.stringify({ to: 'backend', type: 'api_request', title: 'GET /x', body: 'Provide it please', req_id: req.id }));
+
+    const scanner = new OutboxScanner(h.projectService, h.ticketService);
+    for (let i = 0; i < 8; i++) await scanner.scanOnce();
+
+    expect(engineCalls).toBeLessThanOrEqual(5);
+    expect(failedEvents()).toBeLessThanOrEqual(2);
+  });
+
+  it('engine cancel retries back off and stop at the cap', async () => {
+    const req = h.createRequirement();
+    await h.fanOutService.execute(req.id);
+    let cancelCalls = 0;
+    h.adapters.mobile.cancelTask = async () => { cancelCalls++; throw new Error('engine 503'); };
+    await h.fanOutService.cancel(req.id);
+
+    let clock = Date.now();
+    const sweeper = new RetrySweeper(h.db, h.fanOutService, h.ticketService, h.linkService, { now: () => clock });
+    clock += 6_000;
+    for (let i = 0; i < 3; i++) await sweeper.sweepOnce(); // same instant: at most one retry
+    expect(cancelCalls).toBe(2);
+
+    for (let i = 0; i < 20; i++) { clock += 3600_000; await sweeper.sweepOnce(); }
+    expect(cancelCalls).toBeLessThanOrEqual(6);
+  });
+
+  it('link release retries back off and stop at the cap', async () => {
+    const { tickets } = await blockMobileOn(h, ['GET /loc']);
+    let releaseCalls = 0;
+    h.adapters.mobile.releaseTask = async () => { releaseCalls++; throw new Error('engine 503'); };
+    await h.linkService.evaluateDependencyResolved(tickets[0].ticketId);
+
+    let clock = Date.now();
+    const sweeper = new RetrySweeper(h.db, h.fanOutService, h.ticketService, h.linkService, { now: () => clock });
+    for (let i = 0; i < 20; i++) { clock += 3600_000; await sweeper.sweepOnce(); }
+
+    expect(releaseCalls).toBeLessThanOrEqual(6);
+  });
+});

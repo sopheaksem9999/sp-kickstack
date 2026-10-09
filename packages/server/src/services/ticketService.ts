@@ -11,6 +11,7 @@ import { oneLine, wrapUntrusted } from '../lib/promptSafety.js';
 import { HttpError, badRequest } from '../lib/httpError.js';
 import crypto from 'node:crypto';
 import { cancelOrphan } from './orphans.js';
+import { MAX_DISPATCH_ATTEMPTS, shouldNotifyFailure } from '../lib/retryPolicy.js';
 
 function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -130,13 +131,14 @@ ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input
       ownsEngineCall = reserved.changes === 1;
       ticket = this.findByKey(idempotencyKey)!;
     } else if (!ticket.engine_task_id) {
-      // A previous attempt failed before the engine accepted it: claim the retry.
+      // A previous attempt failed before the engine accepted it: claim the retry (capped;
+      // beyond the cap the ticket stays failed and visible instead of retrying every scan).
       const reclaimed = this.db
         .prepare(`
           UPDATE bridge_tasks SET status = 'pending', attempts = attempts + 1, last_error = NULL, updated_at = ?
-          WHERE id = ? AND status = 'failed' AND engine_task_id IS NULL
+          WHERE id = ? AND status = 'failed' AND engine_task_id IS NULL AND attempts < ?
         `)
-        .run(new Date().toISOString(), ticket.id);
+        .run(new Date().toISOString(), ticket.id, MAX_DISPATCH_ATTEMPTS);
       ownsEngineCall = reclaimed.changes === 1;
     }
 
@@ -144,7 +146,8 @@ ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input
     // the retry sweep creates it later, so record the link and hold the source regardless.
     let dispatchError: unknown = null;
     if (ownsEngineCall) {
-      await this.dispatchTicket(ticket.id).catch((err) => {
+      const { attempts } = this.db.prepare('SELECT attempts FROM bridge_tasks WHERE id = ?').get(ticket.id) as { attempts: number };
+      await this.dispatchTicket(ticket.id, { recordFailure: shouldNotifyFailure(attempts) }).catch((err) => {
         dispatchError = err;
       });
     }

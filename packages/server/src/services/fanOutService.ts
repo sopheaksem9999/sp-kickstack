@@ -7,6 +7,7 @@ import { oneLine, wrapUntrusted } from '../lib/promptSafety.js';
 import { HttpError, conflict } from '../lib/httpError.js';
 import { RequirementStatus } from '@sp-kickstack/shared';
 import { cancelOrphan } from './orphans.js';
+import { MAX_DISPATCH_ATTEMPTS, shouldNotifyFailure } from '../lib/retryPolicy.js';
 
 export type AdapterFactory = (projectName: string) => EngineAdapter;
 
@@ -118,7 +119,7 @@ ${wrapUntrusted('requirement', requirementMd)}
     }
 
     // Reserve synchronously: no await between the uniqueness check and the insert.
-    const toDispatch: number[] = [];
+    const toDispatch: Array<{ id: number; attempts: number }> = [];
     const now = new Date().toISOString();
     const reserve = this.db.prepare(`
       INSERT INTO bridge_tasks (
@@ -129,8 +130,8 @@ ${wrapUntrusted('requirement', requirementMd)}
     const reclaimFailed = this.db.prepare(`
       UPDATE bridge_tasks SET status = 'pending', attempts = attempts + 1, last_error = NULL, updated_at = ?
       WHERE req_id = ? AND project = ? AND role = 'goal' AND revision = ?
-        AND status = 'failed' AND engine_task_id IS NULL
-      RETURNING id
+        AND status = 'failed' AND engine_task_id IS NULL AND attempts < ${MAX_DISPATCH_ATTEMPTS}
+      RETURNING id, attempts
     `);
     this.db.transaction(() => {
       for (const project of projects) {
@@ -139,15 +140,19 @@ ${wrapUntrusted('requirement', requirementMd)}
         const bodyMd = this.formatGoalBody(req.id, req.title, project.name, req.body_md, baseBranch, mergePolicy, sharedAssets);
         const inserted = reserve.run(req.id, project.name, title, bodyMd, req.revision, now, now);
         if (inserted.changes === 1) {
-          toDispatch.push(Number(inserted.lastInsertRowid));
+          toDispatch.push({ id: Number(inserted.lastInsertRowid), attempts: 1 });
           continue;
         }
-        const reclaimed = reclaimFailed.get(now, req.id, project.name, req.revision) as { id: number } | undefined;
-        if (reclaimed) toDispatch.push(reclaimed.id);
+        const reclaimed = reclaimFailed.get(now, req.id, project.name, req.revision) as
+          | { id: number; attempts: number }
+          | undefined;
+        if (reclaimed) toDispatch.push(reclaimed);
       }
     })();
 
-    await Promise.allSettled(toDispatch.map((id) => this.dispatchGoal(id)));
+    await Promise.allSettled(
+      toDispatch.map((t) => this.dispatchGoal(t.id, { recordFailure: shouldNotifyFailure(t.attempts) }))
+    );
 
     const goals = this.goalsFor(req.id, req.revision, projects.map((p) => p.name));
     this.applyFanOutStatus(req.id, goals);

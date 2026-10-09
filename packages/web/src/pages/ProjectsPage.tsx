@@ -47,6 +47,7 @@ export function ProjectsPage() {
   const [engineUrl, setEngineUrl] = useState('');
   const [baseBranch, setBaseBranch] = useState('main');
   const [contractPath, setContractPath] = useState('');
+  const [testCommand, setTestCommand] = useState('');
 
   // Open Details modal state
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -63,6 +64,7 @@ export function ProjectsPage() {
   const [editEngineUrl, setEditEngineUrl] = useState('');
   const [editBaseBranch, setEditBaseBranch] = useState('main');
   const [editContractPath, setEditContractPath] = useState('');
+  const [editTestCommand, setEditTestCommand] = useState('');
 
   // Delete Project dialog state
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
@@ -86,6 +88,7 @@ export function ProjectsPage() {
     setEditEngineUrl(proj.engine_url || '');
     setEditBaseBranch(proj.base_branch || 'main');
     setEditContractPath(proj.contract_path || '');
+    setEditTestCommand(proj.test_command || '');
   };
 
   const handleCopyPath = (path: string) => {
@@ -185,6 +188,7 @@ export function ProjectsPage() {
       engine_url: engineUrl.trim() || undefined,
       base_branch: baseBranch.trim() || 'main',
       contract_path: contractPath.trim() || undefined,
+      test_command: testCommand.trim() || undefined,
       done_means: 'merged',
       enabled: true,
     });
@@ -208,6 +212,7 @@ export function ProjectsPage() {
         engine_url: editEngineUrl.trim() || undefined,
         base_branch: editBaseBranch.trim() || 'main',
         contract_path: editContractPath.trim() || undefined,
+        test_command: editTestCommand.trim() || null,
       },
     });
   };
@@ -680,6 +685,22 @@ export function ProjectsPage() {
                 </div>
               </div>
 
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Test Command (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={editTestCommand}
+                  onChange={(e) => setEditTestCommand(e.target.value)}
+                  placeholder="npm ci && npm test"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
+                />
+                <p className="mt-1 text-[10px] text-slate-400">
+                  Runs in a fresh checkout of the merge result before the base branch moves; it must install what it needs.
+                </p>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
@@ -887,6 +908,22 @@ export function ProjectsPage() {
                     className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Test Command (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={testCommand}
+                  onChange={(e) => setTestCommand(e.target.value)}
+                  placeholder="npm ci && npm test"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
+                />
+                <p className="mt-1 text-[10px] text-slate-400">
+                  Runs in a fresh checkout of the merge result before the base branch moves; it must install what it needs.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

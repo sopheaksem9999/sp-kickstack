@@ -27,3 +27,32 @@ export function mergeCopy(demoMode: boolean) {
         success: 'Marked as merged (no git operation)',
       };
 }
+
+type MergeTask = Pick<BridgeTask, 'role' | 'status'> & { branch?: string | null; merged_at?: string | null };
+
+/**
+ * Which merge control a requirement shows:
+ * - 'merge'    — branched work is all in review: "Merge & move to QA" runs the merge gate
+ * - 'merging'  — the merge gate is running
+ * - 'confirm'  — legacy work without branches: "Confirm merged"
+ * - null       — nothing to do yet (or already merged)
+ */
+export function mergeGateAction(
+  req: { status: RequirementStatus; merge_state?: string | null } | undefined,
+  tasks: MergeTask[] = []
+): 'merge' | 'merging' | 'confirm' | null {
+  if (!req) return null;
+  if (req.merge_state === 'running') return 'merging';
+  const work = tasks.filter((t) => (t.role === 'goal' || t.role === 'ticket') && t.status !== 'cancelled');
+  const unmerged = work.filter((t) => t.branch && !t.merged_at);
+  if (unmerged.length > 0) {
+    const allInReview = work.every((t) => t.status === 'in_review' || t.status === 'done');
+    return req.status === 'in_review' && allInReview ? 'merge' : null;
+  }
+  if (work.some((t) => t.branch)) return null; // everything branched is merged already
+  return isMergeReady(req.status, tasks) ? 'confirm' : null;
+}
+
+export function policyLabel(policy: 'manual_review_merge' | 'auto_merge'): string {
+  return policy === 'auto_merge' ? 'Auto-merge (no review)' : 'Review first';
+}

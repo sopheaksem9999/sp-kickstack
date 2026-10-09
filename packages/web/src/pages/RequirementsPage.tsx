@@ -157,9 +157,13 @@ export function RequirementsPage() {
     mutationFn: ({ id, status }: { id: string; status: RequirementStatus }) =>
       updateRequirementStatus(id, status),
     onSuccess: (updatedReq) => {
-      toast.success(
-        `Moved "${updatedReq.title}" to ${updatedReq.status.replace('_', ' ').toUpperCase()}`
-      );
+      if (updatedReq.merge_state === 'running') {
+        toast.info(`Merging "${updatedReq.title}"… it moves to QA when the merge succeeds`);
+      } else {
+        toast.success(
+          `Moved "${updatedReq.title}" to ${updatedReq.status.replace('_', ' ').toUpperCase()}`
+        );
+      }
       queryClient.invalidateQueries({ queryKey: ['requirements'] });
     },
     onError: (err: any) => toast.error(err.message || 'Failed to move requirement state'),

@@ -672,8 +672,8 @@ What feature, solution, or refactoring would you like to design today? You can s
                   className="w-full px-3 py-2.5 rounded-lg border border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424] text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] cursor-pointer"
                 >
                   <option value="inherit">⚙️ Workspace Default</option>
-                  <option value="manual_review_merge">🛡️ Manual Review & Merge</option>
-                  <option value="auto_merge">🚀 Automatic Merge to Main</option>
+                  <option value="manual_review_merge">🛡️ Review first</option>
+                  <option value="auto_merge">🚀 Auto-merge (no review)</option>
                 </select>
               </div>
             </div>

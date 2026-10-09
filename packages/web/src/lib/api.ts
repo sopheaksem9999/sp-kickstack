@@ -226,6 +226,11 @@ export async function mergeRequirementToMain(id: string): Promise<{ ok: boolean;
   return request(`${BASE}/requirements/${id}/merge-to-main`, { method: 'POST' });
 }
 
+/** Start the merge gate (merge task branches, test, push, move to QA). Answers with merge_state 'running'. */
+export async function startMergeToQa(id: string): Promise<Requirement> {
+  return request(`${BASE}/requirements/${id}/merge-to-qa`, { method: 'POST' });
+}
+
 export interface TicketAttachmentItem {
   req_id: string;
   req_title: string;

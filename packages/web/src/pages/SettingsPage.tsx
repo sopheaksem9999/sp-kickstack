@@ -1584,7 +1584,7 @@ export function SettingsPage() {
               {/* Merge Policy Selector */}
               <div className="space-y-2 pt-1">
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                  Merge into Main Policy
+                  Merge Policy
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div
@@ -1601,14 +1601,14 @@ export function SettingsPage() {
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
                         <h3 className="font-bold text-xs text-slate-900 dark:text-white">
-                          Manual Review & Merge
+                          Review first
                         </h3>
                         {mergePolicy === 'manual_review_merge' && (
                           <CheckCircle2 className="w-4 h-4 text-[#7b68ee]" />
                         )}
                       </div>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                        Agents implement on <code className="text-[#7b68ee]">develop</code>. Once QA is done, human reviewer inspects the work and clicks <strong>&quot;Review & Merge to Main&quot;</strong>.
+                        Each task works on its own branch. A person reviews the changes, then moving the requirement to <strong>QA</strong> (or <strong>&quot;Merge &amp; move to QA&quot;</strong>) merges every branch into the base branch, after the project tests pass.
                       </p>
                     </div>
                   </div>
@@ -1627,14 +1627,14 @@ export function SettingsPage() {
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
                         <h3 className="font-bold text-xs text-slate-900 dark:text-white">
-                          Automatic Merge to Main
+                          Auto-merge (no review)
                         </h3>
                         {mergePolicy === 'auto_merge' && (
                           <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                         )}
                       </div>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                        Automatically merges feature changes from <code className="text-[#7b68ee]">develop</code> into <code className="text-emerald-500">main</code> once all tasks finish and tests pass.
+                        As soon as all work for a requirement is in review, the bridge merges every task branch into the base branch (after the project tests pass), pushes, and moves it to <strong>QA</strong>.
                       </p>
                     </div>
                   </div>

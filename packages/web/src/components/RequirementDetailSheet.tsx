@@ -15,8 +15,9 @@ import {
   updateRequirementProjects,
   updateRequirementMergePolicy,
   mergeRequirementToMain,
+  startMergeToQa,
 } from '../lib/api.js';
-import { isMergeReady as computeMergeReady, mergeCopy } from '../lib/mergeReady.js';
+import { mergeCopy, mergeGateAction } from '../lib/mergeReady.js';
 import { useDemoMode } from '../lib/useDemoMode.js';
 import { StatusBadge } from './StatusBadge.js';
 import { BridgeTask, RequirementStatus, BranchMergePolicy, Priority } from '@sp-kickstack/shared';
@@ -146,6 +147,16 @@ export function RequirementDetailSheet({
     onError: (err: any) => toast.error(err.message || 'Failed to merge to main'),
   });
 
+  // Merge gate: merges every task branch into its base branch, then moves to QA (runs in the background).
+  const mergeGateMutation = useMutation({
+    mutationFn: () => startMergeToQa(requirementId!),
+    onSuccess: () => {
+      toast.info('Merging… the requirement moves to QA when the merge succeeds');
+      queryClient.invalidateQueries();
+    },
+    onError: (err: any) => toast.error(err.message || 'Could not start the merge'),
+  });
+
   const doneMutation = useMutation({
     mutationFn: (taskId: number) => markTaskDone(taskId),
     onSuccess: () => {
@@ -218,7 +229,9 @@ export function RequirementDetailSheet({
     }
   }
 
-  const isMergeReady = computeMergeReady(req?.status, graph?.tasks);
+  const mergeAction = mergeGateAction(req, graph?.tasks);
+  // Legacy "Confirm merged" only for work without task branches.
+  const isMergeReady = mergeAction === 'confirm';
 
   const prio = req ? priorityConfig[req.priority] || priorityConfig.normal : null;
 
@@ -378,10 +391,10 @@ export function RequirementDetailSheet({
                       Default Policy
                     </option>
                     <option value="manual_review_merge" className="bg-white dark:bg-[#242424] text-slate-800 dark:text-slate-200">
-                      Manual Review & Merge
+                      Review first
                     </option>
                     <option value="auto_merge" className="bg-white dark:bg-[#242424] text-slate-800 dark:text-slate-200">
-                      Auto-Merge to Main
+                      Auto-merge (no review)
                     </option>
                   </select>
                 </div>
@@ -404,6 +417,33 @@ export function RequirementDetailSheet({
                     <Play className="w-3 h-3 fill-current" />
                     <span>Start Fan-Out</span>
                   </button>
+                )}
+
+                {/* Merge gate: merge every task branch, run the project tests, push, move to QA */}
+                {mergeAction === 'merge' && (
+                  <button
+                    onClick={() => mergeGateMutation.mutate()}
+                    disabled={mergeGateMutation.isPending}
+                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-xs font-bold shadow-md shadow-emerald-600/20 active:scale-[0.98] transition-all disabled:opacity-50"
+                    title="Merge every task branch into its base branch (after the project tests pass), push, and move to QA"
+                  >
+                    <GitMerge className="w-3 h-3" />
+                    <span>Merge &amp; move to QA</span>
+                  </button>
+                )}
+                {mergeAction === 'merging' && (
+                  <span className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-xs font-bold">
+                    <GitMerge className="w-3 h-3 animate-pulse" />
+                    Merging…
+                  </span>
+                )}
+                {req.merge_state === 'failed' && req.merge_error && (
+                  <span
+                    className="max-w-xs truncate px-3 py-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 text-xs font-semibold"
+                    title={req.merge_error}
+                  >
+                    Merge failed: {req.merge_error.split('\n')[0]}
+                  </span>
                 )}
 
                 {isMergeReady && (

@@ -278,6 +278,13 @@ describe('J: agent token protects the agent ticket endpoint', () => {
     h.db.close();
   });
 
+  it('also guards the /api/tickets alias', async () => {
+    const h = makeHarness({ agentToken: 'secret-token' });
+    const res = await testRequest(h.app, 'POST', '/api/tickets', { body: ticket });
+    expect(res.status).toBe(401);
+    h.db.close();
+  });
+
   it('stays open when no token is configured', async () => {
     const h = makeHarness();
     const res = await testRequest(h.app, 'POST', '/api/agent/tickets', { body: ticket });

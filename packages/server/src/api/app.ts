@@ -711,7 +711,7 @@ export function createApp(deps: AppDependencies): Express {
     return res.status(401).json({ error: 'Invalid or missing agent token' });
   };
 
-  app.post('/api/tickets', handleCreateTicket);
+  app.post('/api/tickets', requireAgentToken, handleCreateTicket);
   app.post('/api/agent/tickets', requireAgentToken, handleCreateTicket);
 
   // VCS Webhooks Sync

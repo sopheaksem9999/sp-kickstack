@@ -155,7 +155,13 @@ export class MergeGateService {
         return { ok: true as const, projects: mergedProjects, warnings };
       });
     } catch (err) {
-      return this.finishFailure(reqId, err, mergedProjects);
+      try {
+        return await this.finishFailure(reqId, err, mergedProjects);
+      } catch (inner: any) {
+        // Even recording the failure failed (e.g. database closed): never reject from a background run.
+        console.warn(`[merge] ${reqId}: could not record the merge failure: ${inner?.message || inner}`);
+        return { ok: false, error: String((err as Error)?.message || err), mergedProjects };
+      }
     } finally {
       for (const p of prepared) this.cleanup(p.repo, p.worktree, p.tmpDir);
     }
@@ -298,7 +304,6 @@ export class MergeGateService {
   private async finishSuccess(reqId: string, prepared: PreparedProject[], warnings: string[]) {
     // QA first: it is operator-owned, so the task completions below cannot recompute it away.
     this.requirementService.updateStatus(reqId, 'qa');
-    this.db.prepare("UPDATE requirements SET merge_state = 'idle', merge_error = NULL WHERE id = ?").run(reqId);
 
     const merged = this.db
       .prepare(`
@@ -334,6 +339,8 @@ export class MergeGateService {
       projects: prepared.map((p) => p.project.name),
       warnings,
     });
+    // Last: "not running" must mean every side effect above has happened.
+    this.db.prepare("UPDATE requirements SET merge_state = 'idle', merge_error = NULL WHERE id = ?").run(reqId);
   }
 
   private async finishFailure(reqId: string, err: unknown, mergedProjects: string[]): Promise<MergeOutcome> {
@@ -342,9 +349,10 @@ export class MergeGateService {
       ? `${base}\nAlready merged and pushed: ${mergedProjects.join(', ')}. Starting the merge again merges only the rest.`
       : base;
 
-    this.db.prepare("UPDATE requirements SET merge_state = 'failed', merge_error = ? WHERE id = ?").run(error, reqId);
     if (err instanceof GateFailure && err.note) await this.note(err.note.task, err.note.text);
     this.reactor.recordEvent('merge_failed', reqId, undefined, { reqId, error, mergedProjects });
+    // Last, for the same reason as on success.
+    this.db.prepare("UPDATE requirements SET merge_state = 'failed', merge_error = ? WHERE id = ?").run(error, reqId);
     return { ok: false, error, mergedProjects };
   }
 

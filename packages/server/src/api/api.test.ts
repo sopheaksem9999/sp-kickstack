@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { initDatabase, AppDatabase } from '../db/index.js';
 import { WorkspaceService } from '../services/workspaceService.js';
 import { ProjectService } from '../services/projectService.js';
@@ -23,7 +23,7 @@ describe('Bridge REST API Integration Tests', () => {
   let backendEngine: FakeEngineServer;
   let mobileEngine: FakeEngineServer;
 
-  beforeEach(() => {
+  beforeAll(() => {
     db = initDatabase(':memory:');
     workspaceService = new WorkspaceService(db);
     projectService = new ProjectService(db);
@@ -64,6 +64,21 @@ describe('Bridge REST API Integration Tests', () => {
       broadcaster,
       notifier,
     });
+  });
+
+  afterAll(() => {
+    db.close();
+  });
+
+  beforeEach(() => {
+    db.exec(`
+      DELETE FROM events;
+      DELETE FROM links;
+      DELETE FROM bridge_tasks;
+      DELETE FROM requirement_projects;
+      DELETE FROM requirements;
+      DELETE FROM projects;
+    `);
 
     // Seed projects
     projectService.registerProject({
@@ -85,10 +100,6 @@ describe('Bridge REST API Integration Tests', () => {
       base_branch: 'main',
       enabled: true,
     });
-  });
-
-  afterEach(() => {
-    db.close();
   });
 
   it('GET /api/health returns ok', async () => {

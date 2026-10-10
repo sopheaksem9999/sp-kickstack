@@ -10,10 +10,95 @@ import { cancelOrphan } from './orphans.js';
 const RETRYABLE = ['failed', 'needs_human', 'rate_limited'];
 /** Engine states in which the old agent no longer works. */
 const STOPPED = ['done', 'failed', 'cancelled'];
-/** The note an earlier retry appended (always the end of the body). */
-const RETRY_NOTE = /\n\n## Retry\nA previous attempt stopped [^\n]*\n$/;
 
-type TaskRow = BridgeTask & { attempts: number };
+export type TaskRow = BridgeTask & { attempts: number };
+export type BridgeNoteKind = 'review' | 'retry';
+
+const NOTE_ORDER: BridgeNoteKind[] = ['review', 'retry'];
+const MARKER = /\n\n<!-- bridge:(review|retry) -->\n/;
+const MARKER_SPLIT = /\n\n<!-- bridge:(review|retry) -->\n/g;
+/** Retry note written before the markers existed (always the end of the body). */
+const LEGACY_RETRY_NOTE = /\n\n## Retry\nA previous attempt stopped [^\n]*\n$/;
+
+/**
+ * Set one bridge note at the end of a prompt and keep the other kinds. Each note follows a
+ * `<!-- bridge:<kind> -->` marker, which untrusted text cannot contain (promptSafety
+ * neutralizes it). A new review round drops a stale retry note.
+ */
+export function setBridgeNote(body: string, kind: BridgeNoteKind, note: string): string {
+  const start = body.search(MARKER);
+  const base = (start === -1 ? body : body.slice(0, start)).replace(LEGACY_RETRY_NOTE, '');
+  const notes = new Map<BridgeNoteKind, string>();
+  if (start !== -1) {
+    // ['', kind1, text1, kind2, text2, ...]
+    const parts = body.slice(start).split(MARKER_SPLIT);
+    for (let i = 1; i < parts.length; i += 2) notes.set(parts[i] as BridgeNoteKind, parts[i + 1]);
+  }
+  notes.set(kind, note);
+  if (kind === 'review') notes.delete('retry');
+  return base + NOTE_ORDER.filter((k) => notes.has(k)).map((k) => `\n\n<!-- bridge:${k} -->\n${notes.get(k)}`).join('');
+}
+
+export interface RerunOptions {
+  /** Statuses the task may be in (checked again atomically by the claim). */
+  from: string[];
+  noteKind: BridgeNoteKind;
+  note: string;
+  /** Engine states in which the old agent counts as stopped, so a refused cancel is fine. */
+  stopped?: string[];
+  /** Forget the last merge: the new commits must be merged again. */
+  clearMerge?: boolean;
+}
+
+/**
+ * Claim a task for a new run on its branch, then stop its old engine task. Claiming first
+ * ('pending', no engine id) keeps the watcher and a concurrent rerun away from the row; if the
+ * old task cannot be stopped the row is restored and 503 is thrown. The caller dispatches.
+ */
+export async function rerunTask(
+  db: AppDatabase,
+  task: TaskRow,
+  adapterFor: (project: string) => EngineAdapter,
+  opts: RerunOptions
+): Promise<void> {
+  if (!opts.from.includes(task.status)) throw conflict(`Task #${task.id} is ${task.status}`);
+  const body = setBridgeNote(task.body_md || '', opts.noteKind, opts.note);
+  const clear = opts.clearMerge ? 1 : 0;
+  const claimed = db
+    .prepare(`
+      UPDATE bridge_tasks
+      SET status = 'pending', engine_task_id = NULL, engine_status_raw = NULL, engine_url = NULL, last_error = NULL,
+          paused_until = NULL, attempts = 1, body_md = ?, updated_at = ?,
+          merged_at = CASE WHEN ? = 1 THEN NULL ELSE merged_at END,
+          merge_sha = CASE WHEN ? = 1 THEN NULL ELSE merge_sha END
+      WHERE id = ? AND status = ? AND engine_task_id IS ?
+    `)
+    .run(body, new Date().toISOString(), clear, clear, task.id, task.status, task.engine_task_id ?? null);
+  if (claimed.changes !== 1) {
+    throw conflict(`Task #${task.id} changed meanwhile (another retry or review?); refresh and try again`);
+  }
+
+  if (!task.engine_task_id) return;
+  const adapter = adapterFor(task.project);
+  const refusal = await stopEngineTask(adapter, task.engine_task_id, opts.stopped ?? STOPPED);
+  if (!refusal) return;
+
+  const restored = db
+    .prepare(`
+      UPDATE bridge_tasks
+      SET status = ?, engine_task_id = ?, engine_status_raw = ?, engine_url = ?, last_error = ?,
+          paused_until = ?, attempts = ?, body_md = ?, merged_at = ?, merge_sha = ?, updated_at = ?
+      WHERE id = ? AND status = 'pending' AND engine_task_id IS NULL
+    `)
+    .run(
+      task.status, task.engine_task_id, task.engine_status_raw ?? null, task.engine_url ?? null, task.last_error ?? null,
+      task.paused_until ?? null, task.attempts, task.body_md ?? null, task.merged_at ?? null, task.merge_sha ?? null,
+      new Date().toISOString(), task.id
+    );
+  // Cancelled meanwhile: track the old agent so the cancel retry stops it.
+  if (restored.changes === 0) await cancelOrphan(db, adapter, task.id, task.engine_task_id);
+  throw new HttpError(503, `Could not stop the old engine task ${task.engine_task_id} (${refusal}); try again later`);
+}
 
 /**
  * Reset a stopped goal/ticket so it can be dispatched again on the same branch: the old
@@ -41,54 +126,22 @@ export async function prepareRetry(
   }
 
   const reason = oneLine(task.last_error || task.status, 200);
-  const note = `\n\n## Retry\nA previous attempt stopped (${reason}). ${
+  const note = `## Retry\nA previous attempt stopped (${reason}). ${
     task.branch ? `Continue from the commits already on \`${task.branch}\`.` : 'Start again from the current code.'
   }\n`;
-  const body = `${(task.body_md || '').replace(RETRY_NOTE, '')}${note}`;
-  const now = new Date().toISOString();
-  // Claimed before the engine call: a 'pending' row without an engine id is left alone by
-  // the watcher and by a second retry while the old engine task is being stopped.
-  const claimed = db.prepare(`
-    UPDATE bridge_tasks
-    SET status = 'pending', engine_task_id = NULL, engine_status_raw = NULL, engine_url = NULL, last_error = NULL,
-        paused_until = NULL, attempts = 1, body_md = ?, updated_at = ?
-    WHERE id = ? AND status = ? AND engine_task_id IS ?
-  `).run(body, now, taskId, task.status, task.engine_task_id ?? null);
-  if (claimed.changes !== 1) {
-    throw conflict(`Task #${taskId} changed while it was being retried (another retry?); refresh and try again`);
-  }
-
-  // The old agent must be stopped first, or two agents would work on the same branch.
-  if (task.engine_task_id) {
-    const adapter = adapterFor(task.project);
-    const refusal = await stopEngineTask(adapter, task.engine_task_id);
-    if (refusal) {
-      const restored = db.prepare(`
-        UPDATE bridge_tasks
-        SET status = ?, engine_task_id = ?, engine_status_raw = ?, engine_url = ?, last_error = ?,
-            paused_until = ?, attempts = ?, body_md = ?, updated_at = ?
-        WHERE id = ? AND status = 'pending' AND engine_task_id IS NULL
-      `).run(
-        task.status, task.engine_task_id, task.engine_status_raw ?? null, task.engine_url ?? null, task.last_error ?? null,
-        task.paused_until ?? null, task.attempts, task.body_md ?? null, new Date().toISOString(), taskId
-      );
-      // Cancelled meanwhile: track the old agent so the cancel retry stops it.
-      if (restored.changes === 0) await cancelOrphan(db, adapter, taskId, task.engine_task_id);
-      throw new HttpError(503, `Could not stop the old engine task ${task.engine_task_id} (${refusal}); try again later`);
-    }
-  }
+  await rerunTask(db, task, adapterFor, { from: RETRYABLE, noteKind: 'retry', note });
 
   db.prepare("INSERT INTO events (req_id, task_id, type, payload, read, at) VALUES (?, ?, 'task_retried', ?, 0, ?)").run(
     task.req_id,
     taskId,
     JSON.stringify({ taskId, project: task.project, oldEngineTaskId: task.engine_task_id ?? null }),
-    now
+    new Date().toISOString()
   );
   return task;
 }
 
 /** Cancel an engine task; null once its agent has stopped (or the task is gone), else why not. */
-async function stopEngineTask(adapter: EngineAdapter, engineTaskId: string): Promise<string | null> {
+async function stopEngineTask(adapter: EngineAdapter, engineTaskId: string, stopped: string[]): Promise<string | null> {
   try {
     await adapter.cancelTask(engineTaskId);
     return null;
@@ -98,7 +151,7 @@ async function stopEngineTask(adapter: EngineAdapter, engineTaskId: string): Pro
     // Engines may refuse to cancel finished work; that is fine once the agent has stopped.
     try {
       const current = await adapter.getTask(engineTaskId);
-      if (!current || STOPPED.includes(current.status)) return null;
+      if (!current || stopped.includes(current.status)) return null;
     } catch {
       // State unknown: refuse.
     }

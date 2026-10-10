@@ -50,6 +50,7 @@ import { TaskReactor } from '../services/taskReactor.js';
 import { MergeGateService } from '../services/mergeGate.js';
 import { DEDUPE_NOTE } from '../db/migrations.js';
 import { QuestionService } from '../services/questionService.js';
+import { ReviewService } from '../services/reviewService.js';
 import { registerHumanLoopRoutes } from './humanLoopRoutes.js';
 import type { AdapterFactory } from '../services/fanOutService.js';
 import { HttpError } from '../lib/httpError.js';
@@ -77,6 +78,7 @@ export interface AppDependencies {
   /** Engine adapters (needed by questions and reviews); routes that call engines answer 503 without it. */
   getAdapter?: AdapterFactory;
   questionService?: QuestionService;
+  reviewService?: ReviewService;
   /** DEMO_MODE=1: enables the simulated CLI runner, seeded logs and the demo "merge to main". */
   demoMode?: boolean;
   agentToken?: string;
@@ -124,6 +126,9 @@ export function createApp(deps: AppDependencies): Express {
     });
   const questionService =
     deps.questionService || new QuestionService(deps.db, deps.linkService, getAdapter, (evt) => deps.broadcaster.broadcast(evt));
+  const reviewService =
+    deps.reviewService ||
+    new ReviewService(deps.db, deps.requirementService, deps.fanOutService, deps.ticketService, getAdapter, (evt) => deps.broadcaster.broadcast(evt));
 
   /** Start the merge gate in the background and answer 202 with the requirement (merge_state running). */
   const startMerge = (res: Response, id: string) => {
@@ -804,7 +809,7 @@ export function createApp(deps: AppDependencies): Express {
 
   app.post('/api/tickets', requireAgentToken, handleCreateTicket);
   app.post('/api/agent/tickets', requireAgentToken, handleCreateTicket);
-  registerHumanLoopRoutes(app, { questionService, requireAgentToken });
+  registerHumanLoopRoutes(app, { questionService, reviewService, requireAgentToken });
 
   // VCS Webhooks Sync
   const hasValidGitHubSignature = (req: Request): boolean => {

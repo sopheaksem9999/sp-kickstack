@@ -59,7 +59,9 @@ export type EventType =
   | 'task_rate_limited'
   | 'task_retried'
   | 'question_asked'
-  | 'question_answered';
+  | 'question_answered'
+  | 'changes_requested'
+  | 'task_note_sent';
 
 export interface HealthResponse {
   ok: boolean;
@@ -365,4 +367,28 @@ export interface AskQuestionResponse {
   answer: string | null;
   /** What the agent should do now. */
   message: string;
+}
+
+export type ReviewCommentState = 'open' | 'sent' | 'resolved';
+
+/** A reviewer's comment on a task; sent to the agent with "Request changes". */
+export interface ReviewComment {
+  id: number;
+  req_id: string;
+  task_id: number;
+  project: string;
+  file_path: string | null;
+  line: number | null;
+  body: string;
+  state: ReviewCommentState;
+  /** Review round it was sent in. */
+  round: number | null;
+  created_at: string;
+  updated_at: string;
+  sent_at: string | null;
+}
+
+export interface RequestChangesResult {
+  round: number;
+  results: Array<{ taskId: number; ok: boolean; status?: string; error?: string }>;
 }

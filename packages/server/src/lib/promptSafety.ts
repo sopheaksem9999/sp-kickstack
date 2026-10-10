@@ -3,9 +3,13 @@
 // Also catches whitespace variants such as "</ untrusted_input" or "< /untrusted_input".
 const TAG = /<\s*(\/?)\s*untrusted_input/gi;
 
+// Bridge notes at the end of a prompt start with "<!-- bridge:<kind> -->"; text from people or
+// agents must not be able to fake one.
+const BRIDGE_MARK = /<!--\s*bridge:/gi;
+
 /** Neutralize anything that looks like an untrusted_input tag so text cannot open or close a block. */
 function neutralizeTags(text: string): string {
-  return text.replace(TAG, '&lt;$1untrusted_input');
+  return text.replace(TAG, '&lt;$1untrusted_input').replace(BRIDGE_MARK, '&lt;!-- bridge:');
 }
 
 /** Wrap untrusted text in a delimited block it cannot break out of. */

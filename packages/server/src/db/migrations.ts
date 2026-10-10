@@ -137,6 +137,28 @@ export const MIGRATIONS: Migration[] = [
       addColumn(db, 'bridge_tasks', 'answered_at', 'TEXT');
     },
   },
+  {
+    version: 6,
+    name: 'review comments',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS review_comments (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          req_id     TEXT NOT NULL REFERENCES requirements(id) ON DELETE CASCADE,
+          task_id    INTEGER NOT NULL REFERENCES bridge_tasks(id) ON DELETE CASCADE,
+          file_path  TEXT,
+          line       INTEGER,
+          body_md    TEXT NOT NULL,
+          state      TEXT NOT NULL DEFAULT 'open',
+          round      INTEGER,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          sent_at    TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_review_comments_req ON review_comments(req_id);
+      `);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

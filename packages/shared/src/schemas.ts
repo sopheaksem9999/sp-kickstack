@@ -258,6 +258,28 @@ export const AnswerQuestionInputSchema = z
     path: ['answer'],
   });
 
+export const CreateReviewCommentInputSchema = z.object({
+  task_id: z.number().int().positive(),
+  body: z.string().trim().min(1).max(4000),
+  file_path: z.string().trim().min(1).max(300).optional(),
+  line: z.number().int().positive().optional(),
+});
+
+export const UpdateReviewCommentInputSchema = z
+  .object({
+    body: z.string().trim().min(1).max(4000).optional(),
+    state: z.enum(['open', 'resolved']).optional(),
+  })
+  .refine((v) => v.body !== undefined || v.state !== undefined, { message: 'Nothing to update' });
+
+export const RequestChangesInputSchema = z.object({
+  task_ids: z.array(z.number().int().positive()).max(50).optional(),
+});
+
+export const SendTaskNoteInputSchema = z.object({
+  body: z.string().trim().min(1).max(4000),
+});
+
 export type CreateWorkspaceInput = z.input<typeof CreateWorkspaceInputSchema>;
 export type UpdateWorkspaceInput = z.input<typeof UpdateWorkspaceInputSchema>;
 export type CreateRequirementInput = z.input<typeof CreateRequirementInputSchema>;
@@ -273,6 +295,10 @@ export type CreateTicketInput = z.input<typeof CreateTicketInputSchema>;
 export type TicketResponse = z.infer<typeof TicketResponseSchema>;
 export type AskQuestionInput = z.input<typeof AskQuestionInputSchema>;
 export type AnswerQuestionInput = z.input<typeof AnswerQuestionInputSchema>;
+export type CreateReviewCommentInput = z.input<typeof CreateReviewCommentInputSchema>;
+export type UpdateReviewCommentInput = z.input<typeof UpdateReviewCommentInputSchema>;
+export type RequestChangesInput = z.input<typeof RequestChangesInputSchema>;
+export type SendTaskNoteInput = z.input<typeof SendTaskNoteInputSchema>;
 
 export const ReasoningEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 

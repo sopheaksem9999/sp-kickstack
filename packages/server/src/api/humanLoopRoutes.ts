@@ -2,9 +2,11 @@ import type { Express, RequestHandler } from 'express';
 import { AskQuestionInputSchema, QuestionStatus } from '@sp-kickstack/shared';
 import { badRequest } from '../lib/httpError.js';
 import type { QuestionService } from '../services/questionService.js';
+import type { ReviewService } from '../services/reviewService.js';
 
 export interface HumanLoopRouteDeps {
   questionService: QuestionService;
+  reviewService: ReviewService;
   requireAgentToken: RequestHandler;
 }
 
@@ -12,7 +14,7 @@ const QUESTION_STATUSES: QuestionStatus[] = ['open', 'answered', 'cancelled'];
 
 /** Routes for people and agents talking to each other: questions, review comments, notes, notifications. */
 export function registerHumanLoopRoutes(app: Express, deps: HumanLoopRouteDeps) {
-  const { questionService } = deps;
+  const { questionService, reviewService } = deps;
 
   app.post('/api/agent/questions', deps.requireAgentToken, async (req, res, next) => {
     try {
@@ -43,6 +45,51 @@ export function registerHumanLoopRoutes(app: Express, deps: HumanLoopRouteDeps) 
   app.post('/api/questions/:id/answer', async (req, res, next) => {
     try {
       res.json(await questionService.answer(Number(req.params.id), req.body ?? {}));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.get('/api/requirements/:id/comments', (req, res) => {
+    res.json(reviewService.listComments(req.params.id));
+  });
+
+  app.post('/api/requirements/:id/comments', (req, res, next) => {
+    try {
+      res.status(201).json(reviewService.addComment(req.params.id, req.body ?? {}));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.patch('/api/comments/:id', (req, res, next) => {
+    try {
+      res.json(reviewService.updateComment(Number(req.params.id), req.body ?? {}));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.delete('/api/comments/:id', (req, res, next) => {
+    try {
+      reviewService.deleteComment(Number(req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post('/api/requirements/:id/request-changes', async (req, res, next) => {
+    try {
+      res.json(await reviewService.requestChanges(req.params.id, req.body ?? {}));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post('/api/tasks/:id/note', async (req, res, next) => {
+    try {
+      res.json(await reviewService.sendNote(Number(req.params.id), req.body ?? {}));
     } catch (err) {
       next(err);
     }

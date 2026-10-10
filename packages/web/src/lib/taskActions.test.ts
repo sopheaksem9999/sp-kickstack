@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canRetry, pausedLabel } from './taskActions';
+import { canRetry, pausedLabel, retryOutcome } from './taskActions';
 
 const t = (role: string, status: string, extra: Record<string, unknown> = {}) => ({ role, status, ...extra }) as any;
 
@@ -36,5 +36,15 @@ describe('pausedLabel', () => {
 
   it('is empty for tasks that are not rate limited', () => {
     expect(pausedLabel(t('goal', 'running'), now)).toBeNull();
+  });
+});
+
+describe('retryOutcome', () => {
+  it('reports a retry that did not reach the engine as an error', () => {
+    expect(retryOutcome({ status: 'failed', last_error: 'connection refused' } as any)).toEqual({
+      kind: 'error', message: 'Retry failed: connection refused',
+    });
+    expect(retryOutcome({ status: 'rate_limited' } as any).kind).toBe('info');
+    expect(retryOutcome({ status: 'queued' } as any)).toEqual({ kind: 'success', message: 'Task sent to its engine again' });
   });
 });

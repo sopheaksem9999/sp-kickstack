@@ -14,6 +14,10 @@ export interface EngineThrottleOptions {
 
 const WINDOW_MS = 60_000;
 const RENOTIFY_EXTENSION_MS = 60_000;
+/** A new trip this soon after the last one ended belongs to the same incident. */
+const INCIDENT_GRACE_MS = 5 * 60_000;
+/** Back-to-back trips double their wait (when the engine keeps refusing), up to this. */
+const MAX_ESCALATED_TRIP_MS = 15 * 60_000;
 
 function envStartLimit(): number {
   const value = Number(process.env.ENGINE_MAX_STARTS_PER_MINUTE);
@@ -30,6 +34,8 @@ function envStartLimit(): number {
 export class EngineThrottle {
   private trippedUntilMs = new Map<string, number>();
   private notifiedUntilMs = new Map<string, number>();
+  /** Per engine: the current/last rate-limit incident (kept after a trip expires, for the grace window). */
+  private incidents = new Map<string, { lastUntil: number; length: number }>();
   private starts = new Map<string, number[]>();
   private readonly maxStarts: number;
   private readonly defaultTripMs: number;
@@ -46,7 +52,6 @@ export class EngineThrottle {
     if (until === undefined) return null;
     if (until <= this.now()) {
       this.trippedUntilMs.delete(project);
-      this.notifiedUntilMs.delete(project);
       return null;
     }
     return until;
@@ -56,15 +61,31 @@ export class EngineThrottle {
     return this.trippedUntil(project) !== null;
   }
 
-  /** Mark an engine rate limited. Never shortens an existing trip. */
+  /**
+   * Mark an engine rate limited. Never shortens an existing trip. A trip that starts again
+   * within the grace window after the last one ended is the same incident: its wait doubles
+   * (capped) and no new notification is sent; only a new incident, or a long extension of an
+   * active trip, notifies.
+   */
   public trip(project: string, retryAfterMs: number = this.defaultTripMs) {
-    const until = this.now() + Math.max(retryAfterMs, 1_000);
+    const now = this.now();
     const current = this.trippedUntil(project);
+    const incident = this.incidents.get(project);
+    const sameIncident = incident !== undefined && now - incident.lastUntil <= INCIDENT_GRACE_MS;
+
+    let length = Math.max(retryAfterMs, 1_000);
+    if (sameIncident && current === null) {
+      length = Math.min(Math.max(length, incident!.length * 2), Math.max(MAX_ESCALATED_TRIP_MS, retryAfterMs));
+    }
+    const until = now + length;
     if (current !== null && current >= until) return;
+
     this.trippedUntilMs.set(project, until);
+    this.incidents.set(project, { lastUntil: until, length: sameIncident ? Math.max(length, incident!.length) : length });
 
     const notified = this.notifiedUntilMs.get(project);
-    if (current === null || notified === undefined || until - notified > RENOTIFY_EXTENSION_MS) {
+    const longExtension = current !== null && until - (notified ?? 0) > RENOTIFY_EXTENSION_MS;
+    if (!sameIncident || longExtension) {
       this.notifiedUntilMs.set(project, until);
       this.opts.onTrip?.(project, until);
     }

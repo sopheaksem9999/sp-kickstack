@@ -19,7 +19,7 @@ import {
   startMergeToQa,
 } from '../lib/api.js';
 import { mergeCopy, mergeGateAction } from '../lib/mergeReady.js';
-import { canRetry, pausedLabel } from '../lib/taskActions.js';
+import { canRetry, pausedLabel, retryOutcome } from '../lib/taskActions.js';
 import { useDemoMode } from '../lib/useDemoMode.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { DependencyGraphCanvas } from '../components/DependencyGraphCanvas.js';
@@ -131,7 +131,8 @@ export function RequirementDetailPage() {
   const retryMutation = useMutation({
     mutationFn: (taskId: number) => retryTask(taskId),
     onSuccess: (task) => {
-      toast.success(task.status === 'rate_limited' ? 'Retry queued: the engine is still rate limited' : 'Task sent to its engine again');
+      const outcome = retryOutcome(task);
+      toast[outcome.kind](outcome.message);
       queryClient.invalidateQueries();
     },
     onError: (err: any) => toast.error(err.message || 'Failed to retry task'),

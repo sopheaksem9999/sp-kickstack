@@ -16,3 +16,13 @@ export function pausedLabel(task: Pick<BridgeTask, 'status'> & { paused_until?: 
   if (Number.isNaN(until) || until <= now) return 'Rate limited · resumes automatically';
   return `Rate limited · resumes ${new Date(until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 }
+
+/** Toast for the result of a retry: the route answers with the task as it is now. */
+export function retryOutcome(task: Pick<BridgeTask, 'status'> & { last_error?: string | null }): {
+  kind: 'success' | 'info' | 'error';
+  message: string;
+} {
+  if (task.status === 'failed') return { kind: 'error', message: `Retry failed: ${task.last_error || 'the engine refused the task'}` };
+  if (task.status === 'rate_limited') return { kind: 'info', message: 'Retry queued: the engine is rate limited; it starts automatically' };
+  return { kind: 'success', message: 'Task sent to its engine again' };
+}

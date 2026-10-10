@@ -88,3 +88,33 @@ describe('EngineThrottle', () => {
     expect(throttle.isTripped('b')).toBe(false);
   });
 });
+
+describe('EngineThrottle repeated limits', () => {
+  it('treats back-to-back trips as one incident: one notification, growing waits', () => {
+    let now = 0;
+    const trips: number[] = [];
+    const throttle = new EngineThrottle({ now: () => now, onTrip: (_p, until) => trips.push(until) });
+    let previousLength = 0;
+    for (let i = 0; i < 30; i++) {
+      throttle.trip('backend', 60_000);
+      const length = throttle.trippedUntil('backend')! - now;
+      expect(length).toBeGreaterThanOrEqual(previousLength);
+      previousLength = length;
+      now += length + 1_000;
+    }
+    expect(trips).toHaveLength(1);
+    expect(previousLength).toBeGreaterThan(60_000);
+    expect(previousLength).toBeLessThanOrEqual(15 * 60_000);
+  });
+
+  it('starts a new incident after a quiet period', () => {
+    let now = 0;
+    const trips: number[] = [];
+    const throttle = new EngineThrottle({ now: () => now, onTrip: (_p, until) => trips.push(until) });
+    throttle.trip('backend', 60_000);
+    now += 60_000 + 10 * 60_000;
+    throttle.trip('backend', 60_000);
+    expect(trips).toHaveLength(2);
+    expect(throttle.trippedUntil('backend')! - now).toBe(60_000);
+  });
+});

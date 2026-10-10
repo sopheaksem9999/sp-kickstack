@@ -223,6 +223,8 @@ export class RetrySweeper {
       if (!this.isRetryDue(key, source.updated_at)) continue;
       this.db.prepare("UPDATE links SET state = 'ready' WHERE task_id = ? AND state = 'error'").run(source.task_id);
       if ((await this.linkService.releaseSourceIfUnblocked(source.task_id)).length > 0) released++;
+      // Refused by a rate limit (the engine just tripped): wait for the reset, use no attempt.
+      if (this.options.throttle?.isTripped(source.project)) continue;
 
       const stillFailing = (
         this.db.prepare("SELECT COUNT(*) AS c FROM links WHERE task_id = ? AND state = 'error'").get(source.task_id) as { c: number }
@@ -255,6 +257,7 @@ export class RetrySweeper {
       if (!this.isRetryDue(key, row.updated_at)) continue;
       const { failed } = await this.fanOutService.cancel(row.req_id);
       retried++;
+      if (this.anyTripped(row.req_id)) continue; // refused by a rate limit: no attempt used
       this.recordOutcome(key, failed.length === 0, () =>
         this.recordEvent('task_failed', row.req_id, failed[0] ?? null, {
           stage: 'cancel',

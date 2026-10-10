@@ -30,7 +30,7 @@ import {
   ProjectTerminalStatus,
 } from '@sp-kickstack/shared';
 
-const BASE = '/api';
+export const BASE = '/api';
 
 /** fetch + JSON, throwing the server's `error` message (or the HTTP status) on failure. */
 async function request<T>(url: string, init?: RequestInit): Promise<T> {

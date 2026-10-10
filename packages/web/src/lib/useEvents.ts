@@ -34,6 +34,14 @@ export function useBridgeEvents() {
           toast.warning(`${data.payload?.project} engine is rate limited until ${until}; work resumes automatically`);
         } else if (data.type === 'task_rate_limited') {
           toast.info(`A ${data.payload?.project} task is paused by a rate limit; it resumes automatically`);
+        } else if (data.type === 'question_asked') {
+          toast.warning(`${data.payload?.project} agent asks: ${data.payload?.question}`, {
+            description: 'Open the requirement to answer; the agent waits until you do.',
+          });
+        } else if (data.type === 'task_needs_human') {
+          toast.warning(`${data.payload?.project} agent needs help`, { description: data.payload?.summary || undefined });
+        } else if (data.type === 'requirement_in_review') {
+          toast.info(`${data.payload?.reqId} is ready for review`);
         } else if (data.type === 'merge_failed') {
           toast.error(`Merge failed for ${data.payload?.reqId}`, {
             description: String(data.payload?.error ?? '').split('\n')[0],

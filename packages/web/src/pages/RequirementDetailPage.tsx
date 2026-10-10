@@ -23,6 +23,7 @@ import { canRetry, pausedLabel, retryOutcome } from '../lib/taskActions.js';
 import { useDemoMode } from '../lib/useDemoMode.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { DependencyGraphCanvas } from '../components/DependencyGraphCanvas.js';
+import { AgentQuestionsPanel } from '../components/AgentQuestionsPanel.js';
 import { BridgeTask, RequirementStatus, BranchMergePolicy } from '@sp-kickstack/shared';
 import { toast } from 'sonner';
 import {
@@ -431,6 +432,8 @@ export function RequirementDetailPage() {
           )}
         </div>
       </div>
+
+      <AgentQuestionsPanel reqId={req.id} />
 
       {/* ClickUp Doc Spec Preview Card */}
       <div className="bg-white dark:bg-[#181922] border border-slate-200 dark:border-[#262732] rounded-2xl p-5 shadow-sm space-y-4">

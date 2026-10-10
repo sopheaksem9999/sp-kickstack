@@ -25,6 +25,7 @@ import { useCreateRequirement } from '../lib/CreateRequirementContext.js';
 import { healthQueryOptions } from '../lib/useDemoMode.js';
 import { CreateWorkspaceModal, WorkspaceRulesModal } from './WorkspaceModals.js';
 import { CreateRequirementSheet } from './CreateRequirementSheet.js';
+import { OpenQuestionsButton } from './OpenQuestionsButton.js';
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
@@ -357,6 +358,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
           {/* Right Header Utilities */}
           <div className="flex items-center gap-3">
+            <OpenQuestionsButton />
+
             {/* Dark / Light Toggle Icon button */}
             <button
               onClick={toggleTheme}

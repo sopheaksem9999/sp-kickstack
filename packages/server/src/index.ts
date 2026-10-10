@@ -90,7 +90,7 @@ const watcher = new EngineWatcher(
   reactor
 );
 
-const outboxScanner = new OutboxScanner(projectService, ticketService);
+const outboxScanner = new OutboxScanner(projectService, ticketService, questionService);
 const retrySweeper = new RetrySweeper(db, fanOutService, ticketService, linkService, { throttle: engineThrottle });
 const TICK_MS = Number(process.env.WATCH_INTERVAL_MS) || 5000;
 

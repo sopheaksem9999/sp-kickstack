@@ -13,6 +13,7 @@ import { TaskReactor } from './taskReactor.js';
 import { RetrySweeper } from './retrySweeper.js';
 import { QuestionService } from './questionService.js';
 import { EngineWatcher } from '../watcher/engineWatcher.js';
+import { OutboxScanner } from '../watcher/outboxScanner.js';
 import { FakeEngineServer } from '../adapters/fakeEngine.js';
 import { StoneforgeAdapter } from '../adapters/stoneforgeAdapter.js';
 import { EngineThrottle } from '../lib/engineThrottle.js';
@@ -339,5 +340,40 @@ describe('Agent questions API', () => {
     expect(answered.status).toBe(200);
     expect(answered.body.status).toBe('answered');
     h.db.close();
+  });
+});
+
+describe('Questions from the outbox and prompts', () => {
+  let h: H;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => h.db.close());
+
+  const outbox = () => path.join(h.ws, 'mobile', '.devflow', 'outbox');
+  const writeOutbox = (file: string, data: unknown) => {
+    fs.mkdirSync(outbox(), { recursive: true });
+    fs.writeFileSync(path.join(outbox(), file), JSON.stringify(data));
+  };
+
+  it('files questions the agent queued in its outbox, and rejects bad ones', async () => {
+    const goal = await h.startGoal();
+    writeOutbox('question-1.json', { kind: 'question', question: 'Redis or Postgres?', options: ['redis', 'postgres'], project: 'mobile', engineTaskId: goal.engine_task_id });
+    writeOutbox('question-2.json', { kind: 'question', question: 'x', project: 'mobile', engineTaskId: goal.engine_task_id });
+
+    await new OutboxScanner(h.projectService, h.ticketService, h.questions).scanOnce();
+
+    expect(h.questions.list({ status: 'open' })).toHaveLength(1);
+    expect(h.task(goal.id).status).toBe('held');
+    expect(fs.existsSync(path.join(outbox(), 'processed', 'question-1.json'))).toBe(true);
+    expect(fs.existsSync(path.join(outbox(), 'failed', 'question-2.json'))).toBe(true);
+    expect(fs.readFileSync(path.join(outbox(), 'failed', 'question-2.json.error.txt'), 'utf-8')).toMatch(/question/);
+  });
+
+  it('tells goal and ticket agents how to ask a person', async () => {
+    const goal = await h.startGoal('backend');
+    expect(h.task(goal.id).body_md).toContain('xticket ask --question');
+    const ticket = await h.ticketService.createTicket(
+      { to: 'backend', type: 'api_request', title: 'GET /x', body: 'Provide it please', blocking: false, req_id: goal.req_id }, 'manual'
+    );
+    expect(h.task(ticket.ticketId).body_md).toContain('xticket ask --question');
   });
 });

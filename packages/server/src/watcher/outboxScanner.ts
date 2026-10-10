@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ProjectService } from '../services/projectService.js';
 import { TicketService } from '../services/ticketService.js';
-import { CreateTicketInputSchema } from '@sp-kickstack/shared';
+import type { QuestionService } from '../services/questionService.js';
+import { AskQuestionInputSchema, CreateTicketInputSchema } from '@sp-kickstack/shared';
 
 /** Errors that will fail the same way on every retry (bad input, unknown target, limits). */
 function isPermanent(err: any): boolean {
@@ -15,7 +16,8 @@ export class OutboxScanner {
 
   constructor(
     private projectService: ProjectService,
-    private ticketService: TicketService
+    private ticketService: TicketService,
+    private questionService?: QuestionService
   ) {}
 
   public async scanOnce(): Promise<number> {
@@ -44,13 +46,17 @@ export class OutboxScanner {
         const filePath = path.join(outboxDir, file);
         try {
           const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-          const validated = CreateTicketInputSchema.parse(data);
-
           const sourceProject = data.project || project.name;
           const sourceTaskId = data.engineTaskId || data.taskId;
 
-          // Idempotent: a re-scan after a partial failure returns the same ticket.
-          await this.ticketService.createTicket(validated, sourceProject, sourceTaskId);
+          if (data.kind === 'question') {
+            if (!this.questionService) throw Object.assign(new Error('This bridge does not take questions'), { status: 400 });
+            // Idempotent: a re-scan returns the same question.
+            await this.questionService.ask(AskQuestionInputSchema.parse(data), sourceProject, sourceTaskId);
+          } else {
+            // Idempotent: a re-scan after a partial failure returns the same ticket.
+            await this.ticketService.createTicket(CreateTicketInputSchema.parse(data), sourceProject, sourceTaskId);
+          }
 
           this.moveTo(outboxDir, 'processed', file);
           processed++;

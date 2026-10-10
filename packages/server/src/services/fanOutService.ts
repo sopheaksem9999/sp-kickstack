@@ -67,6 +67,7 @@ ${assetsBlock}
 - **Operate headlessly & autonomously**: Do NOT halt execution to ask user confirmation for running standard builds, package installations, tests, or mechanical file refactorings.
 - **Architectural Disambiguation**: If an implementation fork or design choice arises, pick the safest industry standard convention, record the rationale in \`specs/${reqId}/decision.md\`, and proceed without waiting for interactive human prompts.
 - **Cross-Service Contracts**: Never pause to chat interactively with the human about other repositories; instead issue a blocking \`xticket\` so the dependency graph handles orchestration automatically.
+- **Questions for a person**: when a product decision (what users see, scope, data kept) is genuinely open and this requirement does not settle it, run \`xticket ask --question "..." --option "..." --option "..."\` (options are optional, up to 6), commit WIP changes, then stop. Your task is paused until a person answers; the answer arrives as a note when it resumes. Decide technical details yourself.
 
 ## What to do
 1. Read the requirement below and inspect this codebase on the \`${branch ?? baseBranch}\` branch.

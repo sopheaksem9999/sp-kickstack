@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { submitTicket } from './submit.js';
+import { parseAskArgs } from './ask.js';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -16,6 +17,7 @@ Commands:
   create     Create a cross-repo ticket
   status     Check status of a ticket
   list       List tickets
+  ask        Ask a person a question; your task pauses until they answer
 
 Options for create:
   --to <project>           Target project name
@@ -24,8 +26,30 @@ Options for create:
   --body <text>            Ticket body description
   --body-file <file>       Path to markdown file containing body
   --blocking               Block the calling task until this ticket is resolved
+
+Options for ask:
+  --question <text>        The question (required)
+  --option <label>         A choice the person can pick (repeat, up to 6)
+  --body <text>            Context that helps the person decide
+  --body-file <file>       Path to a markdown file with that context
 `);
     process.exit(0);
+  }
+
+  const bridgeUrl = process.env.XTICKET_URL || 'http://127.0.0.1:4100';
+  const token = process.env.XTICKET_TOKEN;
+  const outboxDir = path.resolve('.devflow', 'outbox');
+
+  if (command === 'ask') {
+    const parsed = parseAskArgs(args.slice(1), process.env);
+    if ('error' in parsed) {
+      console.error(`Error: ${parsed.error}`);
+      process.exit(2);
+    }
+    const result = await submitTicket(parsed.payload, { bridgeUrl, token, outboxDir, endpoint: '/api/agent/questions' });
+    if (result.stdout) console.log(result.stdout);
+    if (result.stderr) console.error(result.stderr);
+    process.exit(result.exitCode);
   }
 
   if (command !== 'create') {
@@ -65,8 +89,6 @@ Options for create:
     process.exit(2);
   }
 
-  const bridgeUrl = process.env.XTICKET_URL || 'http://127.0.0.1:4100';
-  const token = process.env.XTICKET_TOKEN;
   const project = process.env.XTICKET_PROJECT || 'unknown';
   const engineTaskId = process.env.XTICKET_TASK;
 
@@ -83,7 +105,7 @@ Options for create:
   const result = await submitTicket(payload, {
     bridgeUrl,
     token,
-    outboxDir: path.resolve('.devflow', 'outbox'),
+    outboxDir,
   });
   if (result.stdout) console.log(result.stdout);
   if (result.stderr) console.error(result.stderr);

@@ -49,6 +49,7 @@ export class TicketService {
 Review feasibility against the current contract and tenant-isolation rules,
 write a short plan, implement, update the contract file, add tests.
 If the request is unclear or unsafe, say so instead of guessing.
+If you need a decision from a person, run \`xticket ask --question "..." --option "..."\`, commit WIP changes and stop; the answer arrives as a note when the task resumes.
 ${branch ? `\n${branchInstructions(branch.name, branch.base, branch.policy)}\n` : ''}
 ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input.body}`)}
 `;

@@ -49,4 +49,26 @@ describe('xticket submitTicket', () => {
     expect(r.exitCode).toBe(0);
     expect(outboxFiles().length).toBe(before + 1);
   });
+
+  it('sends questions to the questions endpoint', async () => {
+    const seen: string[] = [];
+    const fetchImpl = (async (url: any) => {
+      seen.push(String(url));
+      return new Response(JSON.stringify({ questionId: 3, status: 'open' }), { status: 201 });
+    }) as typeof fetch;
+    const r = await submitTicket({ kind: 'question', question: 'Which one?' }, { bridgeUrl: 'http://b', fetchImpl, outboxDir, endpoint: '/api/agent/questions' });
+    expect(r.exitCode).toBe(0);
+    expect(seen).toEqual(['http://b/api/agent/questions']);
+  });
+
+  it('queues a question in the outbox as question-*.json and tells the agent to wait', async () => {
+    const r = await submitTicket(
+      { kind: 'question', question: 'Which one?' },
+      { bridgeUrl: 'http://b', fetchImpl: respond(503, { error: 'rate limited' }), outboxDir, endpoint: '/api/agent/questions' }
+    );
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout!)).toMatchObject({ questionId: 0, status: 'queued_outbox' });
+    expect(JSON.parse(r.stdout!).message).toMatch(/stop working/i);
+    expect(outboxFiles().some((f) => f.startsWith('question-'))).toBe(true);
+  });
 });

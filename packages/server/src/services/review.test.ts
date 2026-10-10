@@ -11,7 +11,7 @@ import { LinkService } from './linkService.js';
 import { TicketService } from './ticketService.js';
 import { TaskReactor } from './taskReactor.js';
 import { ReviewService } from './reviewService.js';
-import { setBridgeNote } from './taskRetry.js';
+import { setBridgeNote, prepareRetry } from './taskRetry.js';
 import { EngineWatcher } from '../watcher/engineWatcher.js';
 import { FakeEngineServer } from '../adapters/fakeEngine.js';
 import { StoneforgeAdapter } from '../adapters/stoneforgeAdapter.js';
@@ -199,6 +199,59 @@ describe('Request changes', () => {
     expect(result.results.find((r) => r.taskId === mobile.id)).toMatchObject({ ok: false, error: expect.stringMatching(/rate limited/) });
     expect(h.task(mobile.id)).toMatchObject({ status: 'in_review', engine_task_id: mobile.engine_task_id });
     expect(h.review.listComments(req.id).find((c) => c.task_id === mobile.id)!.state).toBe('open');
+  });
+
+  it('restores the task when the engine cannot be reached after it was claimed', async () => {
+    const { req, goals } = await h.inReview();
+    const goal = goals[0];
+    const before = h.task(goal.id);
+    h.review.addComment(req.id, { task_id: goal.id, body: 'Fix it' });
+    const unreachable = new ReviewService(h.db, h.requirementService, h.fanOutService, h.ticketService, (p) => {
+      throw new Error(`Project ${p} not found`);
+    });
+
+    await expect(unreachable.requestChanges(req.id)).rejects.toThrow(/not found/);
+
+    expect(h.task(goal.id)).toMatchObject({
+      status: 'in_review', engine_task_id: goal.engine_task_id, body_md: before.body_md, attempts: before.attempts,
+    });
+    expect(h.review.listComments(req.id)[0].state).toBe('open');
+    expect(h.engines.backend.getTaskData(goal.engine_task_id!)!.status).not.toBe('cancelled');
+  });
+
+  it('keeps track of the old agent when the task is cancelled while the engine cannot be reached', async () => {
+    const { req, goals } = await h.inReview();
+    const goal = goals[0];
+    h.review.addComment(req.id, { task_id: goal.id, body: 'Fix it' });
+    const unreachable = new ReviewService(h.db, h.requirementService, h.fanOutService, h.ticketService, (p) => {
+      h.db.prepare("UPDATE bridge_tasks SET status = 'cancelled' WHERE id = ?").run(goal.id);
+      throw new Error(`Project ${p} not found`);
+    });
+
+    await expect(unreachable.requestChanges(req.id)).rejects.toThrow(/not found/);
+
+    // Not 'cancelled' with an engine id: the cancel retry sweep only looks at unfinished tasks.
+    expect(h.task(goal.id)).toMatchObject({ status: 'queued', engine_task_id: goal.engine_task_id });
+    expect(h.task(goal.id).last_error).toMatch(/Cancel failed.*not found/);
+  });
+
+  it('restores a failed task when a retry cannot reach the engine', async () => {
+    const { goals } = await h.inReview();
+    const goal = goals[0];
+    h.engines.backend.setTaskStatus(goal.engine_task_id!, 'failed', 'error');
+    await h.watcher.scanOnce();
+    const before = h.task(goal.id);
+    expect(before.status).toBe('failed');
+
+    await expect(
+      prepareRetry(h.db, goal.id, 'goal', (p) => {
+        throw new Error(`Project ${p} not found`);
+      })
+    ).rejects.toMatchObject({ status: 503, message: expect.stringMatching(/Could not stop the old engine task .*not found/) });
+
+    expect(h.task(goal.id)).toMatchObject({
+      status: 'failed', engine_task_id: goal.engine_task_id, body_md: before.body_md, attempts: before.attempts,
+    });
   });
 
   it('a retry after a review keeps the review note', async () => {

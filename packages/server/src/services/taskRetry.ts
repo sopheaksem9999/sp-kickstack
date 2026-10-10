@@ -79,8 +79,15 @@ export async function rerunTask(
   }
 
   if (!task.engine_task_id) return;
-  const adapter = adapterFor(task.project);
-  const refusal = await stopEngineTask(adapter, task.engine_task_id, opts.stopped ?? STOPPED);
+  // Everything after the claim restores the row on failure, including a failing adapter lookup.
+  let adapter: EngineAdapter | undefined;
+  let refusal: string | null;
+  try {
+    adapter = adapterFor(task.project);
+    refusal = await stopEngineTask(adapter, task.engine_task_id, opts.stopped ?? STOPPED);
+  } catch (err: any) {
+    refusal = err?.message || String(err);
+  }
   if (!refusal) return;
 
   const restored = db
@@ -96,7 +103,14 @@ export async function rerunTask(
       new Date().toISOString(), task.id
     );
   // Cancelled meanwhile: track the old agent so the cancel retry stops it.
-  if (restored.changes === 0) await cancelOrphan(db, adapter, task.id, task.engine_task_id);
+  if (restored.changes === 0) {
+    if (adapter) await cancelOrphan(db, adapter, task.id, task.engine_task_id);
+    else {
+      // No adapter to cancel with: record the agent like a failed cancel, which the sweep retries.
+      db.prepare("UPDATE bridge_tasks SET engine_task_id = ?, status = 'queued', last_error = ? WHERE id = ? AND status = 'cancelled' AND engine_task_id IS NULL")
+        .run(task.engine_task_id, `Cancel failed: ${refusal}`, task.id);
+    }
+  }
   throw new HttpError(503, `Could not stop the old engine task ${task.engine_task_id} (${refusal}); try again later`);
 }
 

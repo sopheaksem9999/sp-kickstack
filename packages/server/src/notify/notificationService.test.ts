@@ -17,9 +17,17 @@ function makeHarness() {
   const settings = new SettingsService(db);
   const posts: Post[] = [];
   const failing = new Set<string>();
+  // Per-URL outcome: an error to throw or an HTTP status to answer with (checked after `failing`).
+  const outcomes = new Map<string, Error | number>();
+  // Node's fetch throws a TypeError('fetch failed') and keeps the real reason in `cause`.
+  const nodeError = (message: string, code: string) =>
+    Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error(message), { code }) });
   const fetchImpl = (async (url: any, init?: any) => {
     posts.push({ url: String(url), body: JSON.parse(init.body), signal: init.signal });
-    if (failing.has(String(url))) throw new Error('connection refused');
+    if (failing.has(String(url))) throw nodeError('connect ECONNREFUSED 127.0.0.1:9', 'ECONNREFUSED');
+    const outcome = outcomes.get(String(url));
+    if (outcome instanceof Error) throw outcome;
+    if (typeof outcome === 'number') return new Response('nope', { status: outcome });
     return new Response('ok', { status: 200 });
   }) as typeof fetch;
   const service = new NotificationService(db, settings, new Notifier([], fetchImpl));
@@ -29,7 +37,7 @@ function makeHarness() {
     { id: 'team', type: 'slack' as const, name: 'Team', url: 'https://hooks.slack.test/a', enabled: true },
     { id: 'off', type: 'webhook' as const, name: 'Off', url: 'https://hooks.test/off', enabled: false },
   ];
-  return { db, settings, service, posts, failing, event, channels };
+  return { db, settings, service, posts, failing, outcomes, nodeError, event, channels };
 }
 
 describe('Notification delivery', () => {
@@ -114,9 +122,40 @@ describe('Notification delivery', () => {
     const results = await h.service.sendTest();
     expect(results).toEqual([
       { channel: 'Team', ok: true },
-      { channel: 'Hook', ok: false, error: 'connection refused' },
+      { channel: 'Hook', ok: false, error: 'The host refused the connection. Check the URL and port.' },
     ]);
     expect(await h.service.sendTest('off-or-missing').catch((e) => e.status)).toBe(404);
+  });
+
+  it('explains each kind of delivery failure in plain words, without the full URL', async () => {
+    const url = (id: string) => `https://hooks.example.test/services/${id}/SECRET-TOKEN`;
+    const ids = ['slow', 'missing', 'gone', 'odd', 'weird'];
+    h.settings.updateNotificationSettings({
+      channels: ids.map((id) => ({ id, type: 'webhook' as const, name: id, url: url(id), enabled: true })),
+    });
+    h.outcomes.set(url('slow'), Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' }));
+    h.outcomes.set(url('missing'), 404);
+    h.outcomes.set(url('gone'), h.nodeError('getaddrinfo ENOTFOUND hooks.example.test', 'ENOTFOUND'));
+    h.outcomes.set(url('odd'), h.nodeError('certificate has expired', 'CERT_HAS_EXPIRED'));
+    h.outcomes.set(url('weird'), new Error(`boom while posting to ${url('weird')}`));
+
+    const results = await h.service.sendTest();
+    expect(results).toEqual([
+      { channel: 'slow', ok: false, error: 'No answer within 10 seconds. Check the URL and that the service is reachable.' },
+      { channel: 'missing', ok: false, error: 'The service answered HTTP 404. Check the URL (and the token or chat id in it).' },
+      { channel: 'gone', ok: false, error: 'Could not find the host hooks.example.test. Check the URL.' },
+      { channel: 'odd', ok: false, error: 'Could not reach the URL (CERT_HAS_EXPIRED). Check it and your network.' },
+      { channel: 'weird', ok: false, error: 'Could not reach the URL (boom while posting to hooks.example.test). Check it and your network.' },
+    ]);
+    expect(JSON.stringify(results)).not.toContain('SECRET-TOKEN');
+  });
+
+  it('treats an aborted request as a timeout', async () => {
+    h.settings.updateNotificationSettings({ channels: [h.channels[0]] });
+    h.outcomes.set(h.channels[0].url, Object.assign(new Error('This operation was aborted'), { name: 'AbortError' }));
+    expect(await h.service.sendTest('team')).toEqual([
+      { channel: 'Team', ok: false, error: 'No answer within 10 seconds. Check the URL and that the service is reachable.' },
+    ]);
   });
 
   it('validates and merges notification settings', () => {

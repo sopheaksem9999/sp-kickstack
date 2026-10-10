@@ -30,6 +30,35 @@ function bodyFor(channel: NotificationChannel, event: NotificationMessage): stri
   return JSON.stringify(event);
 }
 
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return 'the URL';
+  }
+}
+
+/** Error code Node attaches to the real cause of a failed fetch (also inside an AggregateError). */
+function codeOf(err: any): string {
+  const cause = err?.cause;
+  return String(cause?.code ?? cause?.errors?.[0]?.code ?? err?.code ?? '');
+}
+
+/**
+ * A person reads this in Settings after pressing Test, so it says what to check. It never contains
+ * the full URL: Slack and Telegram URLs hold a secret token. The host name is fine.
+ */
+function failureText(err: any, url: string): string {
+  if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
+    return `No answer within ${NOTIFY_TIMEOUT_MS / 1000} seconds. Check the URL and that the service is reachable.`;
+  }
+  const code = codeOf(err);
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return `Could not find the host ${hostOf(url)}. Check the URL.`;
+  if (code === 'ECONNREFUSED' || code === 'ECONNRESET') return 'The host refused the connection. Check the URL and port.';
+  const reason = (code || err?.cause?.message || err?.message || String(err)).split(url).join(hostOf(url)).slice(0, 120);
+  return `Could not reach the URL (${reason}). Check it and your network.`;
+}
+
 export class Notifier {
   constructor(
     private channels: NotificationChannel[] = [],
@@ -49,9 +78,11 @@ export class Notifier {
             body: bodyFor(ch, event),
             signal: AbortSignal.timeout(NOTIFY_TIMEOUT_MS),
           });
-          return res.ok ? { channel, ok: true } : { channel, ok: false, error: `HTTP ${res.status}` };
+          return res.ok
+            ? { channel, ok: true }
+            : { channel, ok: false, error: `The service answered HTTP ${res.status}. Check the URL (and the token or chat id in it).` };
         } catch (err: any) {
-          return { channel, ok: false, error: err?.message || String(err) };
+          return { channel, ok: false, error: failureText(err, ch.url) };
         }
       })
     );

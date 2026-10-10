@@ -30,7 +30,7 @@ export const EngineTypeSchema = z.enum(['stoneforge', 'clinekanban', 'manual']);
 
 export const DoneMeansSchema = z.enum(['merged', 'pr_opened']);
 
-export const TaskRoleSchema = z.enum(['goal', 'ticket', 'waiting']);
+export const TaskRoleSchema = z.enum(['goal', 'ticket', 'waiting', 'question']);
 
 export const LinkStateSchema = z.enum([
   'waiting',
@@ -236,6 +236,28 @@ export const TicketResponseSchema = z.object({
   status: z.string(),
 });
 
+// An agent asks a person; its task pauses until the answer arrives.
+export const AskQuestionInputSchema = z
+  .object({
+    question: z.string().trim().min(3).max(500),
+    options: z.array(z.string().trim().min(1).max(120)).max(6).default([]),
+    body: z.string().max(20480).default(''),
+  })
+  .refine((v) => new Set(v.options.map((o) => o.toLowerCase())).size === v.options.length, {
+    message: 'Options must be different from each other',
+    path: ['options'],
+  });
+
+export const AnswerQuestionInputSchema = z
+  .object({
+    option: z.string().trim().min(1).max(120).optional(),
+    answer: z.string().trim().max(4000).default(''),
+  })
+  .refine((v) => Boolean(v.option) || v.answer.length > 0, {
+    message: 'Pick an option or write an answer',
+    path: ['answer'],
+  });
+
 export type CreateWorkspaceInput = z.input<typeof CreateWorkspaceInputSchema>;
 export type UpdateWorkspaceInput = z.input<typeof UpdateWorkspaceInputSchema>;
 export type CreateRequirementInput = z.input<typeof CreateRequirementInputSchema>;
@@ -249,6 +271,8 @@ export type CreateSharedAssetInput = z.input<typeof CreateSharedAssetInputSchema
 export type SharedAssetItem = z.infer<typeof SharedAssetSchema>;
 export type CreateTicketInput = z.input<typeof CreateTicketInputSchema>;
 export type TicketResponse = z.infer<typeof TicketResponseSchema>;
+export type AskQuestionInput = z.input<typeof AskQuestionInputSchema>;
+export type AnswerQuestionInput = z.input<typeof AnswerQuestionInputSchema>;
 
 export const ReasoningEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 

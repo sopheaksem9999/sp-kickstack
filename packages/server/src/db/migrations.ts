@@ -128,6 +128,15 @@ export const MIGRATIONS: Migration[] = [
       addColumn(db, 'bridge_tasks', 'paused_until', 'TEXT');
     },
   },
+  {
+    version: 5,
+    name: 'agent questions: options and answers',
+    up: (db) => {
+      addColumn(db, 'bridge_tasks', 'options', 'TEXT');
+      addColumn(db, 'bridge_tasks', 'answer_md', 'TEXT');
+      addColumn(db, 'bridge_tasks', 'answered_at', 'TEXT');
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

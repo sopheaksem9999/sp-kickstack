@@ -49,6 +49,10 @@ import { requestGuard, resolveAllowedHosts, resolveWebOrigins } from './requestG
 import { TaskReactor } from '../services/taskReactor.js';
 import { MergeGateService } from '../services/mergeGate.js';
 import { DEDUPE_NOTE } from '../db/migrations.js';
+import { QuestionService } from '../services/questionService.js';
+import { registerHumanLoopRoutes } from './humanLoopRoutes.js';
+import type { AdapterFactory } from '../services/fanOutService.js';
+import { HttpError } from '../lib/httpError.js';
 
 export interface AppDependencies {
   db: AppDatabase;
@@ -70,6 +74,9 @@ export interface AppDependencies {
   notifier: Notifier;
   reactor?: TaskReactor;
   mergeGate?: MergeGateService;
+  /** Engine adapters (needed by questions and reviews); routes that call engines answer 503 without it. */
+  getAdapter?: AdapterFactory;
+  questionService?: QuestionService;
   /** DEMO_MODE=1: enables the simulated CLI runner, seeded logs and the demo "merge to main". */
   demoMode?: boolean;
   agentToken?: string;
@@ -109,6 +116,14 @@ export function createApp(deps: AppDependencies): Express {
     // createApp built the reactor, so it also wires the auto-merge policy to it.
     reactor.setHooks({ onRequirementInReview: (id) => mergeGate.autoStart(id) });
   }
+
+  const getAdapter: AdapterFactory =
+    deps.getAdapter ??
+    (() => {
+      throw new HttpError(503, 'Engine adapters are not configured on this server');
+    });
+  const questionService =
+    deps.questionService || new QuestionService(deps.db, deps.linkService, getAdapter, (evt) => deps.broadcaster.broadcast(evt));
 
   /** Start the merge gate in the background and answer 202 with the requirement (merge_state running). */
   const startMerge = (res: Response, id: string) => {
@@ -394,13 +409,14 @@ export function createApp(deps: AppDependencies): Express {
 
   app.get('/api/requirements/:id/graph', (req, res) => {
     const tasks = deps.db
-      .prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND (last_error IS NULL OR last_error <> ?)")
+      .prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND role <> 'question' AND (last_error IS NULL OR last_error <> ?)")
       .all(req.params.id, DEDUPE_NOTE);
     const links = deps.db
       .prepare(`
         SELECT l.* FROM links l
         JOIN bridge_tasks t ON l.task_id = t.id
-        WHERE t.req_id = ?
+        JOIN bridge_tasks d ON l.depends_on_id = d.id
+        WHERE t.req_id = ? AND d.role <> 'question'
       `)
       .all(req.params.id);
     res.json({ tasks, links });
@@ -785,6 +801,7 @@ export function createApp(deps: AppDependencies): Express {
 
   app.post('/api/tickets', requireAgentToken, handleCreateTicket);
   app.post('/api/agent/tickets', requireAgentToken, handleCreateTicket);
+  registerHumanLoopRoutes(app, { questionService, requireAgentToken });
 
   // VCS Webhooks Sync
   const hasValidGitHubSignature = (req: Request): boolean => {

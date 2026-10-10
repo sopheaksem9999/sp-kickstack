@@ -27,7 +27,7 @@ export type EngineType = 'stoneforge' | 'clinekanban' | 'manual';
 
 export type DoneMeans = 'merged' | 'pr_opened';
 
-export type TaskRole = 'goal' | 'ticket' | 'waiting';
+export type TaskRole = 'goal' | 'ticket' | 'waiting' | 'question';
 
 export type LinkState = 'waiting' | 'ready' | 'released' | 'error' | 'cancelled';
 
@@ -57,7 +57,9 @@ export type EventType =
   | 'merge_failed'
   | 'engine_rate_limited'
   | 'task_rate_limited'
-  | 'task_retried';
+  | 'task_retried'
+  | 'question_asked'
+  | 'question_answered';
 
 export interface HealthResponse {
   ok: boolean;
@@ -171,6 +173,11 @@ export interface BridgeTask {
   merged_at?: string | null;
   /** Rate limited: nothing is retried for this task before this time (ISO). */
   paused_until?: string | null;
+  /** role 'question': the choices offered (JSON array of strings). */
+  options?: string | null;
+  /** role 'question': the person's answer. */
+  answer_md?: string | null;
+  answered_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -331,4 +338,31 @@ export interface ProjectTerminalStatus {
   lastCommand?: string;
 }
 
+export type QuestionStatus = 'open' | 'answered' | 'cancelled';
 
+/** A question an agent asked a person (a bridge task with role 'question'). */
+export interface AgentQuestion {
+  id: number;
+  req_id: string;
+  /** The goal/ticket that asked; it is held until the answer arrives. */
+  task_id: number;
+  project: string;
+  question: string;
+  details: string;
+  options: string[];
+  status: QuestionStatus;
+  answer: string | null;
+  answered_at: string | null;
+  created_at: string;
+}
+
+export interface AskQuestionResponse {
+  questionId: number;
+  taskId: number;
+  status: QuestionStatus;
+  /** The asking task is paused in its engine. */
+  held: boolean;
+  answer: string | null;
+  /** What the agent should do now. */
+  message: string;
+}

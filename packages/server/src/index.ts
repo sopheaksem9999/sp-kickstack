@@ -21,6 +21,7 @@ import { BranchService } from './services/branchService.js';
 import { MergeGateService } from './services/mergeGate.js';
 import { EngineThrottle } from './lib/engineThrottle.js';
 import { RetrySweeper } from './services/retrySweeper.js';
+import { QuestionService } from './services/questionService.js';
 import { startScheduler } from './services/scheduler.js';
 
 const PORT = Number(process.env.PORT || 4100);
@@ -62,6 +63,7 @@ const linkService = new LinkService(db, projectService, getAdapter);
 const ticketService = new TicketService(db, projectService, linkService, getAdapter, branchService);
 const fanOutService = new FanOutService(db, projectService, requirementService, getAdapter, branchService);
 const broadcaster = new SseBroadcaster();
+const questionService = new QuestionService(db, linkService, getAdapter, (evt) => broadcaster.broadcast(evt));
 const notifier = new Notifier();
 const reactor = new TaskReactor(db, requirementService, linkService, (evt) => broadcaster.broadcast(evt));
 const mergeGate = new MergeGateService(db, projectService, requirementService, reactor, { getAdapter });
@@ -114,6 +116,8 @@ const app = createApp({
   notifier,
   reactor,
   mergeGate,
+  getAdapter,
+  questionService,
   demoMode: process.env.DEMO_MODE === '1',
   agentToken: process.env.AGENT_TOKEN || undefined,
   webhookSecret: process.env.GITHUB_WEBHOOK_SECRET || undefined,

@@ -18,3 +18,8 @@ export function oneLine(title: string, maxLength = 250): string {
   const flat = neutralizeTags(title).replace(/\s+/g, ' ').trim();
   return flat.length > maxLength ? `${flat.slice(0, maxLength - 1)}…` : flat;
 }
+
+/** Neutralize prompt-structure markers in multi-line text written by a person or agent. */
+export function neutralize(text: string): string {
+  return neutralizeTags(text);
+}

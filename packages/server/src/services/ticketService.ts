@@ -191,7 +191,11 @@ ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input
   /** A person retries a stopped ticket: new engine task on the same branch, attempts reset. */
   public async retryTicket(ticketId: number): Promise<BridgeTask> {
     await prepareRetry(this.db, ticketId, 'ticket', this.getAdapter);
-    await this.dispatchTicket(ticketId);
+    try {
+      await this.dispatchTicket(ticketId);
+    } catch {
+      // Already recorded on the row (failed + last_error) and as task_failed; the caller shows it.
+    }
     return this.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(ticketId) as BridgeTask;
   }
 
@@ -276,6 +280,10 @@ ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input
     } catch (err: any) {
       const message = `Hold failed: ${err?.message || err}`;
       this.db.prepare('UPDATE bridge_tasks SET last_error = ?, updated_at = ? WHERE id = ?').run(message, now, source.id);
+      if (isRateLimit(err)) {
+        // Expected during a rate limit (the engine trip already notified): the resubmit retries quietly.
+        throw new HttpError(503, `Ticket #${ticketId} was filed; the ${source.project} task is held once its engine's rate limit resets (resubmit to retry)`);
+      }
       this.recordEvent('task_blocked', reqId, source.id, { taskId: source.id, ticketId, error: message });
       throw new HttpError(502, `Ticket #${ticketId} was filed but ${source.project} task could not be held (${message}); resubmit to retry`);
     }

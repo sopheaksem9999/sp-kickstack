@@ -107,6 +107,18 @@ describe('EngineThrottle repeated limits', () => {
     expect(previousLength).toBeLessThanOrEqual(15 * 60_000);
   });
 
+  it('reports the escalated wait on the error it rethrows, so paused tasks show the real resume time', async () => {
+    let now = 1_000_000;
+    const throttle = new EngineThrottle({ now: () => now, maxStartsPerMinute: 0 });
+    const { adapter } = fakeAdapter({ createGoal: async () => { throw new EngineRateLimitError('429', 60_000); } });
+    const getAdapter = throttle.wrap(() => adapter);
+
+    await expect(getAdapter('backend').createGoal({ title: 't', bodyMd: 'b' })).rejects.toMatchObject({ retryAfterMs: 60_000 });
+    now += 61_000; // the trip ended; the engine refuses again: same incident, doubled wait
+    await expect(getAdapter('backend').createGoal({ title: 't', bodyMd: 'b' })).rejects.toMatchObject({ retryAfterMs: 120_000 });
+    expect(throttle.trippedUntil('backend')).toBe(now + 120_000);
+  });
+
   it('starts a new incident after a quiet period', () => {
     let now = 0;
     const trips: number[] = [];

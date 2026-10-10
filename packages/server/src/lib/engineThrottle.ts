@@ -107,7 +107,14 @@ export class EngineThrottle {
       try {
         return await call();
       } catch (err) {
-        if (isRateLimit(err) && !err.local) this.trip(project, err.retryAfterMs);
+        if (isRateLimit(err) && !err.local) {
+          this.trip(project, err.retryAfterMs);
+          // Back-to-back limits wait longer than the engine asked: report the real wait.
+          const until = this.trippedUntil(project);
+          if (until !== null && until - this.now() > err.retryAfterMs) {
+            throw new EngineRateLimitError(err.message, until - this.now());
+          }
+        }
         throw err;
       }
     };

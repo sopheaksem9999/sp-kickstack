@@ -392,3 +392,129 @@ describe('Rate-limit review fixes', () => {
     expect(h.engines.backend.getTaskData(goal.engine_task_id!)!.status).toBe('cancelled');
   });
 });
+
+describe('Rate-limit second review fixes', () => {
+  let h: H;
+  beforeEach(() => { h = makeHarness(); });
+  afterEach(() => h.db.close());
+
+  const isCancel = (url: string, init?: any) => init?.method === 'POST' && url.endsWith('/cancel');
+
+  /** Send matching backend requests to `handler`; `pass` forwards one to the fake engine. */
+  function intercept(match: (url: string, init?: any) => boolean, handler: (pass: () => Promise<Response>) => Promise<Response>) {
+    const engine = h.engines.backend as any;
+    const original = engine.fetch.bind(engine);
+    engine.fetch = async (url: any, init?: any) => {
+      const pass = () => original(url, init);
+      return match(String(url), init) ? handler(pass) : pass();
+    };
+  }
+
+  async function goalWithEngineStatus(status: 'failed' | 'rate_limited') {
+    const req = h.createRequirement(['backend']);
+    const [goal] = await h.fanOutService.execute(req.id);
+    h.engines.backend.setTaskStatus(goal.engine_task_id!, status as any, status === 'failed' ? 'error' : 'rate_limited');
+    await h.watcher.scanOnce();
+    expect(h.task(goal.id).status).toBe(status);
+    return goal;
+  }
+
+  it('is not undone by a watcher poll that sees the old engine task cancelled mid-retry', async () => {
+    const goal = await goalWithEngineStatus('rate_limited');
+    let polled = false;
+    intercept(isCancel, async (pass) => {
+      const res = await pass(); // the engine has cancelled the old task...
+      if (!polled) {
+        polled = true;
+        await h.watcher.scanOnce(); // ...and the watcher polls it before our cancel call returns
+      }
+      return res;
+    });
+
+    await h.fanOutService.retryGoal(goal.id);
+
+    expect(polled).toBe(true);
+    expect(h.task(goal.id).status).toBe('queued');
+    expect(h.task(goal.id).engine_task_id).not.toBe(goal.engine_task_id);
+  });
+
+  it('retries a goal whose finished engine task refuses to be cancelled', async () => {
+    const goal = await goalWithEngineStatus('failed');
+    intercept(isCancel, async () => new Response('task already finished', { status: 409 }));
+
+    await h.fanOutService.retryGoal(goal.id);
+
+    expect(h.task(goal.id).status).toBe('queued');
+    expect(h.task(goal.id).engine_task_id).not.toBe(goal.engine_task_id);
+  });
+
+  it('refuses, and leaves the task as it was, when a live engine task refuses to be cancelled', async () => {
+    const goal = await goalWithEngineStatus('rate_limited');
+    const before = h.task(goal.id);
+    intercept(isCancel, async () => new Response('busy', { status: 409 }));
+
+    await expect(h.fanOutService.retryGoal(goal.id)).rejects.toMatchObject({ status: 503 });
+
+    const after = h.task(goal.id);
+    expect(after).toMatchObject({
+      status: 'rate_limited', engine_task_id: before.engine_task_id, attempts: before.attempts, body_md: before.body_md,
+    });
+    expect(h.events('task_retried')).toBe(0);
+  });
+
+  it('does not raise a blocked notification on every resubmit while the source engine is rate limited', async () => {
+    const req = h.createRequirement();
+    const goals = await h.fanOutService.execute(req.id);
+    const mobileGoal = goals.find((g) => g.project === 'mobile')!;
+    const submit = () =>
+      h.ticketService.createTicket(
+        { to: 'backend', type: 'api_request', title: 'GET /x', body: 'Provide it please', blocking: true }, 'mobile', mobileGoal.engine_task_id!
+      );
+    h.throttle.trip('mobile', 600_000);
+
+    for (let i = 0; i < 3; i++) await expect(submit()).rejects.toMatchObject({ status: 503 });
+
+    expect(h.events('task_blocked')).toBe(0);
+    expect(h.task(mobileGoal.id).last_error).toMatch(/rate limited/i);
+
+    h.clock.now += 601_000;
+    await submit();
+    expect(h.task(mobileGoal.id).status).toBe('held');
+  });
+
+  it('returns the failed ticket when its retry cannot be created in the engine', async () => {
+    const req = h.createRequirement();
+    const resp = await h.ticketService.createTicket(
+      { to: 'backend', type: 'api_request', title: 'GET /x', body: 'Provide it please', blocking: false, req_id: req.id }, 'manual'
+    );
+    h.engines.backend.setTaskStatus(h.task(resp.ticketId).engine_task_id, 'failed', 'error');
+    await h.watcher.scanOnce();
+    intercept((url, init) => init?.method === 'POST' && url.endsWith('/api/tasks'), async () => {
+      throw new Error('connection refused');
+    });
+
+    const row = await h.ticketService.retryTicket(resp.ticketId);
+
+    expect(row.status).toBe('failed');
+    expect(row.last_error).toMatch(/connection refused/);
+  });
+
+  it('replaces the retry note on each retry, even when the requirement has a Retry heading', async () => {
+    const req = h.requirementService.createRequirement({
+      title: 'T', goal: 'Add a retry screen\n\n## Retry\nShow a button', acceptance_criteria: ['a'], affected_projects: ['backend'], priority: 'normal',
+    });
+    const [goal] = await h.fanOutService.execute(req.id);
+    for (const reason of ['first failure', 'second failure']) {
+      h.engines.backend.setTaskStatus(h.task(goal.id).engine_task_id, 'failed', 'error');
+      await h.watcher.scanOnce();
+      h.db.prepare('UPDATE bridge_tasks SET last_error = ? WHERE id = ?').run(reason, goal.id);
+      await h.fanOutService.retryGoal(goal.id);
+    }
+
+    const body: string = h.task(goal.id).body_md;
+    expect(body).toContain('Show a button');
+    expect(body.match(/A previous attempt stopped/g)).toHaveLength(1);
+    expect(body).toContain('second failure');
+    expect(body).not.toContain('first failure');
+  });
+});

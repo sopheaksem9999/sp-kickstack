@@ -588,6 +588,9 @@ export function createApp(deps: AppDependencies): Express {
       const taskId = Number(req.params.id);
       const task = deps.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(taskId) as any;
       if (!task) return res.status(404).json({ error: 'Task not found' });
+      if (task.role === 'question') {
+        return res.status(409).json({ error: `Task #${taskId} is a question for a person; answer it with POST /api/questions/${taskId}/answer` });
+      }
       if (task.status === 'done') return res.json({ ok: true, releasedLinks: [] });
 
       const now = new Date().toISOString();

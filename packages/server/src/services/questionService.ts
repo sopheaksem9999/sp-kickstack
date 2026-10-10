@@ -60,6 +60,9 @@ function toQuestion(row: QuestionRow): AgentQuestion {
  * question is open and resumes it with the answer (failed releases are retried by the sweeper).
  */
 export class QuestionService {
+  /** Asking tasks whose engine hold is in flight; an answer arriving meanwhile is delivered by the hold path. */
+  private holding = new Set<number>();
+
   constructor(
     private db: AppDatabase,
     private linkService: LinkService,
@@ -129,7 +132,8 @@ export class QuestionService {
     try {
       held = await this.holdAsker(row, source.id);
     } finally {
-      // Announced after the hold attempt, so an answer cannot overtake the pause.
+      // Announced after the hold attempt (also a failed one), so it fires once per question.
+      // A person can already answer while the hold is in flight; holdAsker then delivers that answer.
       if (created) {
         this.recordEvent('question_asked', row.req_id, source.id, {
           questionId: row.id, taskId: source.id, reqId: row.req_id, project: row.project,
@@ -177,7 +181,11 @@ export class QuestionService {
     return this.get(questionId)!;
   }
 
-  /** Pause the asking task while its question is open; true once it is held. */
+  /**
+   * Pause the asking task while its question is open; true while it is held. The question is
+   * already visible, so a person may answer while the engine call is in flight: the answer then
+   * waits on its link (see deliverAnswer) and is delivered here once the hold has settled.
+   */
   private async holdAsker(question: QuestionRow, sourceId: number): Promise<boolean> {
     const source = this.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(sourceId) as BridgeTask;
     if (source.status === 'held') return true;
@@ -186,19 +194,41 @@ export class QuestionService {
       | undefined;
     if (question.status !== 'needs_human' || link?.state !== 'waiting' || !source.engine_task_id) return false;
 
-    const now = new Date().toISOString();
+    this.holding.add(sourceId);
     try {
-      await this.getAdapter(source.project).holdTask(source.engine_task_id, `Waiting for a person to answer question #${question.id}`);
-      this.db.prepare("UPDATE bridge_tasks SET status = 'held', last_error = NULL, updated_at = ? WHERE id = ?").run(now, sourceId);
-      return true;
-    } catch (err: any) {
-      const message = err?.message || String(err);
-      this.db.prepare('UPDATE bridge_tasks SET last_error = ?, updated_at = ? WHERE id = ?').run(`Hold failed: ${message}`, now, sourceId);
-      if (isRateLimit(err)) {
-        throw new HttpError(503, `Question #${question.id} was filed; your task pauses once the ${source.project} engine's rate limit resets (resubmit to retry)`);
+      const now = new Date().toISOString();
+      try {
+        await this.getAdapter(source.project).holdTask(source.engine_task_id, `Waiting for a person to answer question #${question.id}`);
+      } catch (err: any) {
+        const message = err?.message || String(err);
+        this.db.prepare('UPDATE bridge_tasks SET last_error = ?, updated_at = ? WHERE id = ?').run(`Hold failed: ${message}`, now, sourceId);
+        // Answered meanwhile: the task never paused, so the answer goes as a note.
+        const answered = this.answeredLink(sourceId, question.id);
+        if (answered) await this.noteAnswer(source, question.id, answered.context_md || '', true);
+        if (isRateLimit(err)) {
+          throw new HttpError(503, `Question #${question.id} was filed; your task pauses once the ${source.project} engine's rate limit resets (resubmit to retry)`);
+        }
+        throw new HttpError(502, `Question #${question.id} was filed but your task could not be paused (${message}); resubmit to retry`);
       }
-      throw new HttpError(502, `Question #${question.id} was filed but your task could not be paused (${message}); resubmit to retry`);
+      this.db.prepare("UPDATE bridge_tasks SET status = 'held', last_error = NULL, updated_at = ? WHERE id = ?").run(now, sourceId);
+
+      if (this.answeredLink(sourceId, question.id)) {
+        // Answered while the hold was in flight: resume with the answer (a failed release stays for the sweeper).
+        await this.linkService.releaseSourceIfUnblocked(sourceId);
+        const current = this.db.prepare('SELECT status FROM bridge_tasks WHERE id = ?').get(sourceId) as { status: string };
+        return current.status === 'held';
+      }
+      return true;
+    } finally {
+      this.holding.delete(sourceId);
     }
+  }
+
+  /** The link to a question once its answer is stored on it and awaits delivery. */
+  private answeredLink(sourceId: number, questionId: number): { context_md: string | null } | undefined {
+    return this.db
+      .prepare("SELECT context_md FROM links WHERE task_id = ? AND depends_on_id = ? AND state = 'ready'")
+      .get(sourceId, questionId) as { context_md: string | null } | undefined;
   }
 
   /**
@@ -211,6 +241,8 @@ export class QuestionService {
       .prepare("UPDATE links SET state = 'ready', context_md = ? WHERE task_id = ? AND depends_on_id = ? AND state = 'waiting'")
       .run(context, sourceId, questionId);
     if (ready.changes !== 1) return;
+    // The task's engine hold is still in flight: holdAsker delivers the stored answer when it settles.
+    if (this.holding.has(sourceId)) return;
 
     const source = this.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(sourceId) as BridgeTask;
     const stillWaiting = (
@@ -221,6 +253,11 @@ export class QuestionService {
       await this.linkService.releaseSourceIfUnblocked(sourceId);
       return;
     }
+    await this.noteAnswer(source, questionId, context, source.status !== 'held');
+  }
+
+  /** Send the answer to the engine task as a note (best effort); `settle` also marks its link released. */
+  private async noteAnswer(source: BridgeTask, questionId: number, context: string, settle: boolean) {
     if (source.engine_task_id) {
       try {
         await this.getAdapter(source.project).appendNote(source.engine_task_id, context);
@@ -228,10 +265,10 @@ export class QuestionService {
         // Kept on the link; a held task gets it with the final release.
       }
     }
-    if (source.status !== 'held') {
+    if (settle) {
       this.db
         .prepare("UPDATE links SET state = 'released', released_at = ? WHERE task_id = ? AND depends_on_id = ? AND state = 'ready'")
-        .run(new Date().toISOString(), sourceId, questionId);
+        .run(new Date().toISOString(), source.id, questionId);
     }
   }
 

@@ -449,3 +449,62 @@ export const StartIdeInputSchema = z.object({
 });
 
 
+
+/** Events a person can be notified about outside the app (Slack, Telegram, webhook). */
+export const NOTIFY_EVENT_TYPES = [
+  'question_asked',
+  'task_needs_human',
+  'requirement_in_review',
+  'merge_succeeded',
+  'merge_failed',
+  'task_failed',
+  'task_blocked',
+  'engine_down',
+  'engine_rate_limited',
+  'changes_requested',
+  'question_answered',
+] as const;
+export type NotifyEventType = (typeof NOTIFY_EVENT_TYPES)[number];
+
+export const DEFAULT_NOTIFY_EVENTS: Record<NotifyEventType, boolean> = {
+  question_asked: true,
+  task_needs_human: true,
+  requirement_in_review: true,
+  merge_succeeded: true,
+  merge_failed: true,
+  task_failed: true,
+  task_blocked: true,
+  engine_down: true,
+  engine_rate_limited: true,
+  changes_requested: false,
+  question_answered: false,
+};
+
+export const NotificationChannelSchema = z.object({
+  id: z.string().trim().min(1).max(40),
+  type: z.enum(['slack', 'telegram', 'webhook']),
+  name: z.string().trim().max(60).default(''),
+  url: z
+    .string()
+    .trim()
+    .url()
+    .refine((u) => /^https?:\/\//i.test(u), { message: 'URL must start with http:// or https://' }),
+  enabled: z.boolean().default(true),
+});
+
+export const UpdateNotificationSettingsInputSchema = z
+  .object({
+    channels: z.array(NotificationChannelSchema).max(10).optional(),
+    events: z.record(z.string(), z.boolean()).optional(),
+    app_url: z.union([z.literal(''), z.string().trim().url()]).optional(),
+  })
+  .refine((v) => !v.channels || new Set(v.channels.map((c) => c.id)).size === v.channels.length, {
+    message: 'Channel ids must be unique',
+    path: ['channels'],
+  })
+  .refine((v) => Object.keys(v.events ?? {}).every((k) => (NOTIFY_EVENT_TYPES as readonly string[]).includes(k)), {
+    message: 'Unknown notification event',
+    path: ['events'],
+  });
+
+export type UpdateNotificationSettingsInput = z.input<typeof UpdateNotificationSettingsInputSchema>;

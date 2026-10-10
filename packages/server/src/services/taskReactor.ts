@@ -2,6 +2,7 @@ import { AppDatabase } from '../db/index.js';
 import { RequirementService } from './requirementService.js';
 import { LinkService } from './linkService.js';
 import { BridgeTask, Link, NormStatus } from '@sp-kickstack/shared';
+import { oneLine } from '../lib/promptSafety.js';
 
 export interface ReactorEvent {
   type: string;
@@ -51,7 +52,7 @@ export class TaskReactor {
     oldStatus: NormStatus,
     newStatus: NormStatus,
     source: StatusChangeSource,
-    extra: { rawStatus?: string | null; prUrl?: string | null; resumeAt?: string | null } = {}
+    extra: { rawStatus?: string | null; prUrl?: string | null; resumeAt?: string | null; summary?: string | null } = {}
   ): Promise<{ releasedLinks: Link[] }> {
     this.recordEvent('task_status_changed', task.req_id, task.id, {
       taskId: task.id,
@@ -82,6 +83,12 @@ export class TaskReactor {
         project: task.project,
         until: extra.resumeAt ?? null,
       });
+    } else if (newStatus === 'needs_human') {
+      this.recordEvent('task_needs_human', task.req_id, task.id, {
+        taskId: task.id,
+        project: task.project,
+        summary: extra.summary ? oneLine(extra.summary, 500) : null,
+      });
     } else if (newStatus === 'failed' || newStatus === 'cancelled') {
       if (newStatus === 'failed') {
         this.recordEvent('task_failed', task.req_id, task.id, { taskId: task.id, project: task.project });
@@ -107,7 +114,10 @@ export class TaskReactor {
         req_id: task.req_id,
         payload: { id: task.req_id, status: after },
       });
-      if (after === 'in_review') this.hooks.onRequirementInReview?.(task.req_id);
+      if (after === 'in_review') {
+        this.recordEvent('requirement_in_review', task.req_id, undefined, { reqId: task.req_id });
+        this.hooks.onRequirementInReview?.(task.req_id);
+      }
     }
 
     return { releasedLinks };

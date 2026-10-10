@@ -61,7 +61,9 @@ export type EventType =
   | 'question_asked'
   | 'question_answered'
   | 'changes_requested'
-  | 'task_note_sent';
+  | 'task_note_sent'
+  | 'requirement_in_review'
+  | 'task_needs_human';
 
 export interface HealthResponse {
   ok: boolean;
@@ -391,4 +393,26 @@ export interface ReviewComment {
 export interface RequestChangesResult {
   round: number;
   results: Array<{ taskId: number; ok: boolean; status?: string; error?: string }>;
+}
+
+export interface NotificationChannelConfig {
+  id: string;
+  type: 'slack' | 'telegram' | 'webhook';
+  name: string;
+  url: string;
+  enabled: boolean;
+}
+
+export interface NotificationSettings {
+  channels: NotificationChannelConfig[];
+  /** Event type → notify (missing types use the defaults). */
+  events: Record<string, boolean>;
+  /** Base URL of the web app, for links in messages ('' = no links). */
+  app_url: string;
+}
+
+export interface NotificationTestResult {
+  channel: string;
+  ok: boolean;
+  error?: string;
 }

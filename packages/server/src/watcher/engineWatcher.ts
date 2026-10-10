@@ -174,7 +174,7 @@ export class EngineWatcher {
         oldStatus,
         engineTask.status,
         'watcher',
-        { rawStatus: engineTask.rawStatus, prUrl: engineTask.prUrl || null, resumeAt: pausedUntil }
+        { rawStatus: engineTask.rawStatus, prUrl: engineTask.prUrl || null, resumeAt: pausedUntil, summary: engineTask.summary ?? null }
       );
     } else {
       // Raw status / PR link only: refresh clients without a notification row.

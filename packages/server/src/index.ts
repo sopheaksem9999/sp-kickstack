@@ -22,6 +22,8 @@ import { MergeGateService } from './services/mergeGate.js';
 import { EngineThrottle } from './lib/engineThrottle.js';
 import { RetrySweeper } from './services/retrySweeper.js';
 import { QuestionService } from './services/questionService.js';
+import { SettingsService } from './services/settingsService.js';
+import { NotificationService } from './notify/notificationService.js';
 import { startScheduler } from './services/scheduler.js';
 
 const PORT = Number(process.env.PORT || 4100);
@@ -65,6 +67,8 @@ const fanOutService = new FanOutService(db, projectService, requirementService, 
 const broadcaster = new SseBroadcaster();
 const questionService = new QuestionService(db, linkService, getAdapter, (evt) => broadcaster.broadcast(evt));
 const notifier = new Notifier();
+const settingsService = new SettingsService(db);
+const notificationService = new NotificationService(db, settingsService, notifier);
 const reactor = new TaskReactor(db, requirementService, linkService, (evt) => broadcaster.broadcast(evt));
 const mergeGate = new MergeGateService(db, projectService, requirementService, reactor, { getAdapter });
 // Auto-merge policy: start the merge gate when all of a requirement's work is in review.
@@ -118,6 +122,8 @@ const app = createApp({
   mergeGate,
   getAdapter,
   questionService,
+  settingsService,
+  notificationService,
   demoMode: process.env.DEMO_MODE === '1',
   agentToken: process.env.AGENT_TOKEN || undefined,
   webhookSecret: process.env.GITHUB_WEBHOOK_SECRET || undefined,
@@ -133,6 +139,7 @@ const server = app.listen(PORT, HOST, () => {
       ['watcher', () => watcher.scanOnce()],
       ['retry', () => retrySweeper.sweepOnce()],
       ['outbox', () => outboxScanner.scanOnce()],
+      ['notify', () => notificationService.dispatchPending()],
     ],
     TICK_MS
   );

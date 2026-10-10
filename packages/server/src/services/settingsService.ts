@@ -6,6 +6,9 @@ import {
   AiCliSettingsSchema,
   IdeSettings,
   IdeSettingsSchema,
+  DEFAULT_NOTIFY_EVENTS,
+  NotificationSettings,
+  UpdateNotificationSettingsInputSchema,
 } from '@sp-kickstack/shared';
 
 export class SettingsService {
@@ -105,5 +108,39 @@ export class SettingsService {
 
     return updated;
   }
-}
 
+  public getNotificationSettings(): NotificationSettings {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'notification_settings'").get() as { value: string } | undefined;
+    let stored: Partial<NotificationSettings> = {};
+    if (row) {
+      try {
+        const parsed = JSON.parse(row.value);
+        stored = parsed && typeof parsed === 'object' ? parsed : {};
+      } catch {
+        stored = {};
+      }
+    }
+    return {
+      channels: Array.isArray(stored.channels) ? stored.channels : [],
+      events: { ...DEFAULT_NOTIFY_EVENTS, ...(stored.events ?? {}) },
+      app_url: typeof stored.app_url === 'string' ? stored.app_url : '',
+    };
+  }
+
+  public updateNotificationSettings(updates: unknown): NotificationSettings {
+    const parsed = UpdateNotificationSettingsInputSchema.parse(updates ?? {});
+    const current = this.getNotificationSettings();
+    const next: NotificationSettings = {
+      channels: parsed.channels ?? current.channels,
+      events: { ...current.events, ...(parsed.events ?? {}) },
+      app_url: parsed.app_url ?? current.app_url,
+    };
+    this.db
+      .prepare(`
+        INSERT INTO settings (key, value) VALUES ('notification_settings', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `)
+      .run(JSON.stringify(next));
+    return this.getNotificationSettings();
+  }
+}

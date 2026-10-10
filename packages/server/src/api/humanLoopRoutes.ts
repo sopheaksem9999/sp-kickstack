@@ -3,10 +3,16 @@ import { AskQuestionInputSchema, QuestionStatus } from '@sp-kickstack/shared';
 import { badRequest } from '../lib/httpError.js';
 import type { QuestionService } from '../services/questionService.js';
 import type { ReviewService } from '../services/reviewService.js';
+import type { SettingsService } from '../services/settingsService.js';
+import type { NotificationService } from '../notify/notificationService.js';
+import type { SseBroadcaster } from '../sse/broadcaster.js';
 
 export interface HumanLoopRouteDeps {
   questionService: QuestionService;
   reviewService: ReviewService;
+  settingsService: SettingsService;
+  notificationService: NotificationService;
+  broadcaster: SseBroadcaster;
   requireAgentToken: RequestHandler;
 }
 
@@ -90,6 +96,29 @@ export function registerHumanLoopRoutes(app: Express, deps: HumanLoopRouteDeps) 
   app.post('/api/tasks/:id/note', async (req, res, next) => {
     try {
       res.json(await reviewService.sendNote(Number(req.params.id), req.body ?? {}));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.get('/api/settings/notifications', (_req, res) => {
+    res.json(deps.settingsService.getNotificationSettings());
+  });
+
+  app.put('/api/settings/notifications', (req, res, next) => {
+    try {
+      const updated = deps.settingsService.updateNotificationSettings(req.body);
+      deps.broadcaster.broadcast({ type: 'settings_updated', payload: { section: 'notifications' } });
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post('/api/settings/notifications/test', async (req, res, next) => {
+    try {
+      const channelId = typeof req.body?.channel_id === 'string' ? req.body.channel_id : undefined;
+      res.json(await deps.notificationService.sendTest(channelId));
     } catch (err) {
       next(err);
     }

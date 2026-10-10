@@ -52,6 +52,7 @@ import { DEDUPE_NOTE } from '../db/migrations.js';
 import { QuestionService } from '../services/questionService.js';
 import { ReviewService } from '../services/reviewService.js';
 import { registerHumanLoopRoutes } from './humanLoopRoutes.js';
+import { NotificationService } from '../notify/notificationService.js';
 import type { AdapterFactory } from '../services/fanOutService.js';
 import { HttpError } from '../lib/httpError.js';
 
@@ -79,6 +80,7 @@ export interface AppDependencies {
   getAdapter?: AdapterFactory;
   questionService?: QuestionService;
   reviewService?: ReviewService;
+  notificationService?: NotificationService;
   /** DEMO_MODE=1: enables the simulated CLI runner, seeded logs and the demo "merge to main". */
   demoMode?: boolean;
   agentToken?: string;
@@ -129,6 +131,7 @@ export function createApp(deps: AppDependencies): Express {
   const reviewService =
     deps.reviewService ||
     new ReviewService(deps.db, deps.requirementService, deps.fanOutService, deps.ticketService, getAdapter, (evt) => deps.broadcaster.broadcast(evt));
+  const notificationService = deps.notificationService || new NotificationService(deps.db, settingsService, deps.notifier);
 
   /** Start the merge gate in the background and answer 202 with the requirement (merge_state running). */
   const startMerge = (res: Response, id: string) => {
@@ -809,7 +812,7 @@ export function createApp(deps: AppDependencies): Express {
 
   app.post('/api/tickets', requireAgentToken, handleCreateTicket);
   app.post('/api/agent/tickets', requireAgentToken, handleCreateTicket);
-  registerHumanLoopRoutes(app, { questionService, reviewService, requireAgentToken });
+  registerHumanLoopRoutes(app, { questionService, reviewService, settingsService, notificationService, broadcaster: deps.broadcaster, requireAgentToken });
 
   // VCS Webhooks Sync
   const hasValidGitHubSignature = (req: Request): boolean => {

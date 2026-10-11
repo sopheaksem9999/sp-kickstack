@@ -33,6 +33,10 @@ export function requestChangesOutcome(result: RequestChangesResult): { kind: 'su
   if (failed.length === 0) {
     return { kind: 'success', message: `Round ${result.round} sent: ${sent} ${sent === 1 ? 'task' : 'tasks'} started a new run` };
   }
-  const reasons = failed.map((r) => `Task #${r.taskId}: ${r.error}`).join('; ');
-  return { kind: 'warning', message: `Round ${result.round} sent to ${sent} of ${result.results.length} tasks. ${reasons}` };
+  const reasons = failed
+    .map((r) => `Task #${r.taskId}: ${r.error}`)
+    .join('; ')
+    .replace(/[.\s]+$/, '');
+  const retry = `${failed.length === 1 ? 'Its comments stay' : 'Their comments stay'} open; press Request changes again to retry.`;
+  return { kind: 'warning', message: `Round ${result.round} sent to ${sent} of ${result.results.length} tasks. ${reasons}. ${retry}` };
 }

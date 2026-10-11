@@ -27,7 +27,16 @@ describe('review actions', () => {
     expect(requestChangesOutcome({ round: 1, results: [{ taskId: 1, ok: true }] })).toEqual({ kind: 'success', message: 'Round 1 sent: 1 task started a new run' });
     expect(requestChangesOutcome({ round: 2, results: [{ taskId: 1, ok: true }, { taskId: 2, ok: false, error: 'rate limited' }] })).toEqual({
       kind: 'warning',
-      message: 'Round 2 sent to 1 of 2 tasks. Task #2: rate limited',
+      message: 'Round 2 sent to 1 of 2 tasks. Task #2: rate limited. Its comments stay open; press Request changes again to retry.',
+    });
+    expect(
+      requestChangesOutcome({
+        round: 3,
+        results: [{ taskId: 1, ok: true }, { taskId: 2, ok: false, error: 'rate limited' }, { taskId: 4, ok: false, error: 'engine offline.' }],
+      })
+    ).toEqual({
+      kind: 'warning',
+      message: 'Round 3 sent to 1 of 3 tasks. Task #2: rate limited; Task #4: engine offline. Their comments stay open; press Request changes again to retry.',
     });
   });
 });

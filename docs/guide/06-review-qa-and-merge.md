@@ -129,10 +129,13 @@ Agents are told the policy in their prompt at fan-out, so set it before you star
 
 1. Wait until the requirement is **In Review**. The **Merge & move to QA** button appears when
    every task is IN REVIEW or COMPLETE and some branch is not merged.
-2. Click **Merge & move to QA**. Dragging the card to **QA / TESTING** on the board, or choosing
-   **State: QA / Review**, does the same.
+2. Click **Merge & move to QA**. Dragging the card to the **QA / TESTING** column on the
+   **Requirements** board starts the same merge.
 3. A toast says "Merging… the requirement moves to QA when the merge succeeds". The button shows
    **Merging…** while it runs.
+
+The **State** select on the requirement page is not a way to merge: while the requirement is In
+Review it already shows **State: QA / Review**, so choosing that entry changes nothing.
 
 ### What happens next
 

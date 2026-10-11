@@ -99,7 +99,7 @@ The page refreshes every few seconds, and toasts announce status changes.
 | IN PROGRESS | The agent is working. |
 | WAITING / HELD | Paused: it waits for a blocking ticket or for your answer to a question. |
 | NEEDS HUMAN | The engine says the agent stopped and needs a person (see [05](05-answering-questions-and-notes.md#an-agent-needs-help-without-a-question)). |
-| RATE LIMITED | Paused by an engine rate limit; it resumes on its own (see [08](08-rate-limits-and-retry.md)). |
+| RATE LIMITED | Paused by a rate limit. A start the bridge held back is retried automatically; a task the engine reports as rate limited continues when the engine resumes it (see [08](08-rate-limits-and-retry.md)). |
 | IN REVIEW | The agent finished; the work is ready for review. |
 | QA / TESTING | Treated like IN REVIEW. (A Stoneforge `qa` status is shown as IN REVIEW.) |
 | COMPLETE | Done (after the merge gate, or marked done). |
@@ -116,12 +116,16 @@ page). Once any task exists, the status follows the tasks and only these moves a
 
 | Move | Allowed when | Otherwise you see |
 |---|---|---|
-| To **QA** | Always. If task branches are not merged yet, this starts the merge gate (same as **Merge & move to QA**). | Merge gate errors, see [06](06-review-qa-and-merge.md) |
+| To **QA** | Always. If task branches are not merged yet, this starts the merge gate (same as **Merge & move to QA**); drag the card to the **QA / TESTING** column to do it from the board. | Merge gate errors, see [06](06-review-qa-and-merge.md) |
 | To **Done** | No task is still active (all are complete, cancelled or failed). | `<n> task(s) are still active; finish or cancel them before marking <REQ-ID> done` |
 | From **QA** to **In-Progress** | Always. The status is then worked out again from the tasks. | — |
 | To **Cancelled** | Always (same as **Cancel**). | — |
 | Anything else | Never. | `"<status>" is set automatically from task progress once <REQ-ID> is dispatched` |
 | Anything, from Cancelled | Never. | `<REQ-ID> was cancelled after dispatch; create a new requirement instead of reopening it` |
+
+While a requirement is In Review, the **State** select on its page already shows
+**State: QA / Review**, so you cannot pick it to merge; use **Merge & move to QA** or drag the
+card on the board.
 
 Moving from QA back to In-Progress does not tell any agent anything. If every task is complete
 and merged, the requirement goes straight to **Done**. To get changes, use

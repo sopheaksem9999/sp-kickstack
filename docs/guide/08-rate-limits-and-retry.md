@@ -16,14 +16,18 @@ two ways:
 
 ### What you see
 
-- The task badge shows **RATE LIMITED**, and the card says
-  `Rate limited · resumes 15:30`, or `Rate limited · resumes automatically` when no time is known.
+- The task badge shows **RATE LIMITED**, and the task card on the requirement page says
+  `Rate limited · resumes 15:30`, or `Rate limited · resumes automatically` when no time is
+  known. (The error text of a RATE LIMITED task is hidden on that page.)
 - When the engine answers 429, a toast says
   "<project> engine is rate limited until 15:30; work resumes automatically", the bell shows
   "<project> engine is rate limited", and your channels get **An engine is rate limited**
   (on by default).
 - When the engine reports one of its tasks as rate limited, a toast says "A <project> task is
   paused by a rate limit; it resumes automatically".
+
+These texts say "automatically". What really resumes on its own depends on who paused the work,
+as described next.
 
 ### What happens next
 
@@ -32,24 +36,29 @@ two ways:
 - **You are told once per incident.** If the engine refuses again within 5 minutes after the
   reset, it counts as the same incident: the bridge waits twice as long as last time (up to
   15 minutes, or longer if the engine asks for longer) and does not notify again.
-- **Work the bridge could not start** (a goal or ticket refused by the limit) is parked as
-  RATE LIMITED with the reset time and started again automatically after it. This does not use
-  up one of its retry attempts and does not send a "task failed" notification.
-- **Work already running in the engine** that the engine reports as rate limited is resumed by
-  the engine itself. The bridge shows the resume time when the engine reports one; it reads the
-  fields `resumeAt`, `resetAt`, `rateLimitResetAt` or `rate_limit_reset_at`. Which of them your
-  Stoneforge version sends is not confirmed.
+- **Work the bridge could not start** (a goal or ticket refused by a 429 or by the start limit)
+  is parked by the bridge as RATE LIMITED with the reset time, and the bridge starts it again
+  automatically after that time. This does not use up one of its retry attempts and does not
+  send a "task failed" notification. You do not need to do anything.
+- **Work already running in the engine** that the engine reports as rate limited is only shown
+  by the bridge: it copies the engine's status and, if the engine sends one, its resume time
+  (from the field `resumeAt`, `resetAt`, `rateLimitResetAt` or `rate_limit_reset_at`; which one
+  your Stoneforge version sends is not confirmed). The bridge does nothing to resume such a
+  task. Whether and when it continues depends on the engine. The badge changes back as soon as
+  the engine reports a new status.
 
-You do not need to do anything. **Retry** is offered on RATE LIMITED tasks, but it stops the
-current engine task and starts a new one, so use it only if a task seems stuck after its resume
-time.
+If a task the engine paused stays RATE LIMITED long after the time shown, press **Retry**. Retry
+stops the current engine task and starts a new one on the same branch, so use it only when the
+task is really stuck.
 
 ## The start limit
 
 To avoid hitting limits in the first place, the bridge starts at most **10 new agents (goals or
-tickets) per project per minute**. Further starts wait for a free slot and show RATE LIMITED with
-"Waiting for a start slot on the engine until <time>; it is retried automatically". They start
-on their own.
+tickets) per project per minute**. Further starts wait for a free slot: the task shows
+**RATE LIMITED**, and its card on the requirement page says `Rate limited · resumes 15:30` with
+the time the next slot frees up. The bridge starts it on its own after that time. (The side panel
+on the board shows the underlying text instead: `Waiting for a start slot on the engine until
+<time>; it is retried automatically`, with the time in ISO format.)
 
 Change the limit with the `ENGINE_MAX_STARTS_PER_MINUTE` environment variable when you start the
 server (`0` turns it off):

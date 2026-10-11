@@ -1,10 +1,14 @@
 import type {
   AgentQuestion,
   AnswerQuestionInput,
+  BridgeEvent,
   CreateReviewCommentInput,
+  NotificationSettings,
+  NotificationTestResult,
   QuestionStatus,
   RequestChangesResult,
   ReviewComment,
+  UpdateNotificationSettingsInput,
   UpdateReviewCommentInput,
 } from '@sp-kickstack/shared';
 import { BASE } from './api.js';
@@ -59,4 +63,24 @@ export function requestChanges(reqId: string, taskIds?: number[]): Promise<Reque
 
 export function sendTaskNote(taskId: number, body: string): Promise<{ ok: true }> {
   return request(`${BASE}/tasks/${taskId}/note`, send('POST', { body }));
+}
+
+export function fetchNotificationFeed(): Promise<BridgeEvent[]> {
+  return request(`${BASE}/notifications`);
+}
+
+export function markAllNotificationsRead(): Promise<{ ok: true }> {
+  return request(`${BASE}/notifications/read`, send('POST'));
+}
+
+export function fetchNotificationSettings(): Promise<NotificationSettings> {
+  return request(`${BASE}/settings/notifications`);
+}
+
+export function saveNotificationSettings(input: UpdateNotificationSettingsInput): Promise<NotificationSettings> {
+  return request(`${BASE}/settings/notifications`, send('PUT', input));
+}
+
+export function testNotificationChannel(channelId?: string): Promise<NotificationTestResult[]> {
+  return request(`${BASE}/settings/notifications/test`, send('POST', channelId ? { channel_id: channelId } : {}));
 }

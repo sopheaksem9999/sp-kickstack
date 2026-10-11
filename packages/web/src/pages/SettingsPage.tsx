@@ -35,7 +35,9 @@ import {
   Code2,
   Power,
   ExternalLink,
+  Bell,
 } from 'lucide-react';
+import { NotificationSettingsSection } from '../components/NotificationSettingsSection.js';
 import { BranchMergePolicy, ReasoningEffort } from '@sp-kickstack/shared';
 
 export interface ModelPreset {
@@ -825,7 +827,7 @@ export function AgyModeCard({
   );
 }
 
-type SettingsTab = 'ai' | 'git' | 'ide' | 'appearance' | 'safety';
+type SettingsTab = 'ai' | 'git' | 'ide' | 'appearance' | 'safety' | 'notifications';
 
 export function SettingsPage() {
   const { theme, setTheme } = useTheme();
@@ -1026,6 +1028,7 @@ export function SettingsPage() {
       sublabel: 'Target branch & merge policy',
       icon: GitBranch,
     },
+    { id: 'notifications', label: 'Notifications', sublabel: 'Slack, Telegram & webhooks', icon: Bell },
     {
       id: 'ide',
       label: 'Embedded IDE (VS Code)',
@@ -1652,6 +1655,29 @@ export function SettingsPage() {
                   <span>{updateBranchMutation.isPending ? 'Saving...' : 'Save Branch & Merge Rules'}</span>
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* Notifications: Slack, Telegram & webhooks */}
+          {/* ========================================================= */}
+          {activeTab === 'notifications' && (
+            <div className="bg-white dark:bg-[#242424] border border-slate-200 dark:border-[#2d2d2d] rounded-2xl p-6 shadow-sm space-y-5 animate-in fade-in-50 duration-150">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-[#2d2d2d]">
+                <div className="flex items-center gap-2">
+                  <Bell className="w-5 h-5 text-[#7b68ee]" />
+                  <div>
+                    <h2 className="text-sm font-black uppercase tracking-wider text-slate-900 dark:text-white">
+                      Notifications
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Send events that need a person to Slack, Telegram or a webhook.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <NotificationSettingsSection />
             </div>
           )}
 

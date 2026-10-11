@@ -57,3 +57,24 @@ describe('review api', () => {
     expect(JSON.parse(String(calls[5].init?.body))).toEqual({ body: 'Use v2' });
   });
 });
+
+describe('notification api', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('calls the notification routes', async () => {
+    const calls = respond(200, {});
+    await api.fetchNotificationFeed();
+    await api.markAllNotificationsRead();
+    await api.fetchNotificationSettings();
+    await api.saveNotificationSettings({ app_url: '' });
+    await api.testNotificationChannel('team');
+    expect(calls.map((c) => `${c.init?.method ?? 'GET'} ${c.url}`)).toEqual([
+      'GET /api/notifications',
+      'POST /api/notifications/read',
+      'GET /api/settings/notifications',
+      'PUT /api/settings/notifications',
+      'POST /api/settings/notifications/test',
+    ]);
+    expect(JSON.parse(String(calls[4].init?.body))).toEqual({ channel_id: 'team' });
+  });
+});

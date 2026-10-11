@@ -4,7 +4,6 @@ import {
   Layers,
   FolderGit2,
   Settings,
-  Bell,
   Building2,
   BookOpen,
   Plus,
@@ -26,6 +25,7 @@ import { healthQueryOptions } from '../lib/useDemoMode.js';
 import { CreateWorkspaceModal, WorkspaceRulesModal } from './WorkspaceModals.js';
 import { CreateRequirementSheet } from './CreateRequirementSheet.js';
 import { OpenQuestionsButton } from './OpenQuestionsButton.js';
+import { NotificationBell } from './NotificationBell.js';
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
@@ -373,13 +373,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               )}
             </button>
 
-            <button
-              title="Notifications"
-              className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#262626] transition-colors relative"
-            >
-              <Bell className="w-4 h-4" />
-              <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-[#ec4899] rounded-full"></span>
-            </button>
+            <NotificationBell />
 
             {/* ClickUp Avatar */}
             <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-[#7b68ee] to-[#ff007f] flex items-center justify-center text-white font-bold text-xs shadow-sm">

@@ -110,9 +110,12 @@ To give it context, add it in a **Note** once it runs, or use the review comment
 
 ### When Retry is refused
 
+- `Task #<id> is waiting for an answer to question #<question id>; answer it (Let the agent decide is enough), then retry`:
+  the task has an open question. Answer it on the requirement page (see
+  [05](05-answering-questions-and-notes.md#answer-a-question)), then press **Retry** again.
 - `Task #<id> is still waiting on another task; release or cancel that dependency first`: the
-  task waits on a blocking ticket or an open question. Answer the question, or release the link
-  (see [04](04-agents-tickets-and-questions.md#dependency-links)).
+  task waits on a blocking ticket. Finish or retry the ticket, or release the link (see
+  [04](04-agents-tickets-and-questions.md#dependency-links)).
 - `Task #<id> is <status>; only failed, stuck or rate-limited tasks can be retried`
 - `Requirement <REQ-ID> is <status>; its tasks cannot be retried` (Done or Cancelled)
 - `Task #<id> changed meanwhile (another retry or review?); refresh and try again`

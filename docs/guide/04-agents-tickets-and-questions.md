@@ -175,6 +175,19 @@ Output (exit code 0; printed on one line):
 
 Whether and how quickly an agent reads a resumed task's context or a note depends on the engine.
 
+### A question from a run that is over
+
+A question can arrive after the asking task's run has ended, typically from the outbox (see
+[below](#the-outbox-fallback)) when the agent already finished. If the task is IN REVIEW, QA,
+COMPLETE, FAILED or CANCELLED, the bridge accepts the question but does **not** pause the task;
+its status stays as it is. The output has `"held":false` and the message
+`Your task's run is over, so it was not paused. A person will see the question; their answer is passed to the next run of this task.`
+
+People still see and answer the question. The answer is saved as an open review comment on the
+task and reaches the agent with the next **Request changes** (see
+[Answers to a finished run](05-answering-questions-and-notes.md#answers-to-a-finished-run)).
+Only a cancelled or Done requirement refuses new questions.
+
 ## Exit codes
 
 Both commands use the same exit codes:
@@ -182,7 +195,7 @@ Both commands use the same exit codes:
 | Code | Meaning |
 |---|---|
 | 0 | Created, or queued in the outbox for the bridge to send later. |
-| 1 | The bridge refused it (for example unknown task, finished task, finished requirement). The reason is printed. |
+| 1 | The bridge refused it (for example unknown task, cancelled or Done requirement). The reason is printed. |
 | 2 | Invalid input (missing flag, too short, too many options, unknown target project). |
 | 3 | A limit was hit (ticket depth or ticket count). |
 | 4 | The bridge could not be reached **and** the outbox file could not be written. |
@@ -213,7 +226,7 @@ What the bridge does with each file:
   that also reached the bridge directly is not filed twice.
 - Invalid or refused for good (bad input, unknown task, limits): the file moves to
   `.devflow/outbox/failed/` with a `<file>.error.txt` next to it, and the bell shows
-  "A ticket from the outbox was rejected" (also for questions).
+  "A question from the outbox was rejected" or "A ticket from the outbox was rejected".
 - A temporary problem (engine down, pause failed): the file stays and is tried on the next tick.
 
 An agent with no network access can write such a file itself. A question file looks like this:
@@ -261,8 +274,9 @@ requirement instead: add `"req_id":"REQ-007"` to the ticket body.
   tickets.
 - **`Target project "<name>" is not registered`** or **`is disabled`**: check `--to` against the
   names under **Repositories**.
-- **`Task #<id> is done; it cannot ask questions`** (or failed, cancelled), or
-  **`Requirement <REQ-ID> is cancelled; it takes no questions`**: the work is over; nothing to ask.
+- **`Requirement <REQ-ID> is cancelled; it takes no questions`** (or `is done`): the work is
+  over; nothing to ask. A question from a task whose own run is over is accepted, see
+  [A question from a run that is over](#a-question-from-a-run-that-is-over).
 - **Exit code 5 with `Host not allowed`**: the agent reaches the server under a host name the
   bridge does not accept (for example from a container). Add it to `ALLOWED_HOSTS`, and start
   the server with `HOST=0.0.0.0` if the agent is not on the same machine. See

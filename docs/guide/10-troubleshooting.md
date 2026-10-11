@@ -30,7 +30,8 @@ messages appear as red toasts in the app; `<REQ-ID>`, `<id>` and similar parts a
 | Message | Meaning | What to do |
 |---|---|---|
 | `Could not stop the old engine task <id> (<reason>); try again later` | **Retry** or **Request changes** must stop the old agent first, and the engine refused (or is rate limited) while the agent still works. Nothing was changed. | Try again later, or stop the task in the engine (**Open Engine**) first. |
-| `Task #<id> is still waiting on another task; release or cancel that dependency first` | The task waits on a blocking ticket or an open question. | Answer the question, or release the link (see [04](04-agents-tickets-and-questions.md#dependency-links)). |
+| `Task #<id> is waiting for an answer to question #<question id>; answer it (Let the agent decide is enough), then retry` | **Retry** was pressed while the task has an open question. | Answer the question on the requirement page (**Let the agent decide** is enough), then press **Retry** again. |
+| `Task #<id> is still waiting on another task; release or cancel that dependency first` | The task waits on a blocking ticket. | Finish or retry the ticket, or release the link (see [04](04-agents-tickets-and-questions.md#dependency-links)). |
 | `Task #<id> is <status>; only failed, stuck or rate-limited tasks can be retried` | **Retry** is for FAILED, NEEDS HUMAN and RATE LIMITED tasks. | Use **Note** for running work. |
 | `Task #<id> changed meanwhile (another retry or review?); refresh and try again` | Someone else changed the task at the same moment. | Reload the page and check before trying again. |
 | `Task #<id> is <status>; notes go to running agents (use Request changes for finished work)` | Notes only reach running agents. | Use **Request changes**. |

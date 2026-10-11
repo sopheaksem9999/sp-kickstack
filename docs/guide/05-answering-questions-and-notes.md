@@ -21,13 +21,19 @@ appears in several places at once:
   The message lists the options and, if you set an app URL, a link to the requirement. See
   [Notifications](07-notifications.md).
 
-The asking task shows **WAITING / HELD** until you answer.
+While its run is going, the asking task shows **WAITING / HELD** until you answer.
 
 ## Answer a question
 
-Open the requirement page. Each open question is a card that says
-"The <project> agent is paused until you answer", followed by the question, the agent's context
-(if any), its options (if any), a text box and two buttons.
+Open the requirement page. Each open question is a card: a first line that says what happens to
+your answer, then the question, the agent's context (if any), its options (if any), a text box
+and two buttons. The first line depends on the asking task:
+
+| The card says | The asking task | Your answer |
+|---|---|---|
+| "The <project> agent is paused until you answer" | WAITING / HELD | Resumes the task. |
+| "The <project> agent asked this while working; your answer goes to it as a note" | Still running, not paused (for example the pause failed) | Goes to the agent as a note. |
+| "The <project> agent's run has ended; your answer is saved as a review comment for its next run" | IN REVIEW, QA, COMPLETE, FAILED or CANCELLED | Becomes an open review comment on that task (see [Answers to a finished run](#answers-to-a-finished-run)). |
 
 ### Pick an option
 
@@ -59,8 +65,22 @@ the agent's choice in its report or its `specs/<REQ-ID>/decision.md`.
 
 ### What happens next
 
-- A toast says **Answer sent; the agent continues**.
-- The card changes to `<project> · answered` and shows `→ <your answer>`.
+The toast says how your answer reached the agent:
+
+| Toast | What happened |
+|---|---|
+| **Answer sent; the agent continues** | The task was resumed with your answer. |
+| **Answer sent; the agent continues once its other dependency is done** | The task also waits on a blocking ticket. The answer went to it as a note; the task stays WAITING / HELD and gets the answer again when it resumes (see [below](#a-question-while-the-agent-also-waits-on-a-ticket)). |
+| **Answer sent to the agent as a note** | The task was not paused, so the answer went to it as a note. |
+| **Answer saved as a review comment; use Request changes to send it to the agent** | The task's run had ended. See [Answers to a finished run](#answers-to-a-finished-run). |
+| **Answer saved; it reaches the agent as soon as its engine responds** | The engine has not taken it yet (the pause was still being set up, or resuming failed). The bridge delivers it on its own and retries in the background; see [An agent stuck in WAITING / HELD](10-troubleshooting.md#an-agent-stuck-in-waiting--held) if the task stays held. |
+
+In every case the card changes to `<project> · answered` and shows `→ <your answer>`, and the
+bell shows "Question answered". (The matching Slack/Telegram/webhook event,
+**A question was answered**, is off by default.)
+
+When the task was paused and waits on nothing else:
+
 - The bridge resumes the asking task in its engine, with this message:
 
   ```text
@@ -73,8 +93,6 @@ the agent's choice in its report or its `specs/<REQ-ID>/decision.md`.
   ```
 
 - The task leaves WAITING / HELD (usually to QUEUED, then IN PROGRESS when the agent picks it up).
-- The bell shows "Question answered". (The matching Slack/Telegram/webhook event,
-  **A question was answered**, is off by default.)
 
 Only the first answer counts. If someone else answered a moment earlier, you see
 `Question #<id> is already answered`; reload to see their answer.
@@ -90,13 +108,32 @@ A task can wait for a question and a blocking ticket at the same time. When you 
 If the bridge could not pause the task when the question was asked (for example the engine
 refused), your answer is sent as a note instead of resuming the task.
 
+## Answers to a finished run
+
+An agent's run can end before its question is answered, for example when the question waited in
+the outbox (see [04](04-agents-tickets-and-questions.md#the-outbox-fallback)) and the agent
+finished meanwhile. The bridge still shows the question but does not pause or reopen the task,
+so its status (IN REVIEW, QA, COMPLETE) stays as it is.
+
+When you answer such a question:
+
+1. No message goes to the engine. The answer becomes an **open** comment on the task in the
+   **Review comments** panel:
+   `Answer to your question "<the question>": <your answer>`.
+2. Press **Request changes** (see [06](06-review-qa-and-merge.md#send-work-back-with-request-changes))
+   to start a new run of the task with it, together with any other open comments. If no new run
+   is needed, **Resolve** the comment.
+
+Request changes works for IN REVIEW and COMPLETE tasks. For a FAILED task, press **Retry** and
+send the answer as a **Note** once the new run is going.
+
 ## Cancelled questions
 
-Open questions are cancelled when their requirement is cancelled. They show
+Open questions are cancelled when their requirement is cancelled or reaches Done. They show
 `<project> · cancelled` and cannot be answered (`Question #<id> is already cancelled`).
 
 While a question is open, **Retry** on the asking task is refused with
-`Task #<id> is still waiting on another task; release or cancel that dependency first`.
+`Task #<id> is waiting for an answer to question #<question id>; answer it (Let the agent decide is enough), then retry`.
 Answer the question first; **Let the agent decide** is enough if you only want it to move on.
 
 ## An agent needs help without a question

@@ -30,7 +30,7 @@ The bell looks at the latest 50 events of the bridge and shows the ones meant fo
 | `A task is blocked` | A task waits on work that failed or was cancelled, or resuming it keeps failing |
 | `<project> engine is down` / `<project> engine is back` | Engine health changed |
 | `<project> engine is rate limited` | An engine hit a rate limit ([08](08-rate-limits-and-retry.md)) |
-| `A ticket from the outbox was rejected` | An outbox file was invalid ([04](04-agents-tickets-and-questions.md#the-outbox-fallback)) |
+| `A question from the outbox was rejected` or `A ticket from the outbox was rejected` | An outbox file was invalid or refused ([04](04-agents-tickets-and-questions.md#the-outbox-fallback)) |
 | `A dependency was released` | A finished dependency resumed the tasks waiting on it |
 | `A <project> task was retried` | Someone pressed **Retry** |
 
@@ -134,15 +134,17 @@ set. Engine events (down, rate limited) have no link.
 
 - The bridge checks for new events on every tick (every 5 seconds by default, `WATCH_INTERVAL_MS`)
   and sends up to 100 per tick.
-- **Each event is sent at most once**, also across restarts: the bridge remembers how far it got.
+- **Each event is sent once**, also across restarts: the bridge remembers how far it got. If the
+  server stops in the middle of sending, that event may be sent again after the restart.
 - **No history on first start.** The first time notifications run, the bridge starts at the
   newest event; nothing older is sent.
 - An event that happens while its switch is **Off**, or while no channel is **On**, is skipped
   for good. Switching it on later does not send old events.
 - Each channel gets 10 seconds to answer. A slow or failing channel does not hold up the other
   channels or the rest of the bridge.
-- **A failed delivery is not retried and not reported.** Only **Test** shows errors, so test a
-  channel after every change.
+- **A failed delivery is not retried and not shown in the app.** The server log gets a line
+  `[notify] <channel name>: <error>`; in the app only **Test** shows errors, so test a channel
+  after every change.
 - Slack and Telegram URLs contain secrets. They are stored in `bridge.db`; error messages show
   only the host name.
 

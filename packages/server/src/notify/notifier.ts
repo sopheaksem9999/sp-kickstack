@@ -23,8 +23,13 @@ export interface NotificationMessage {
 /** A slow channel must not hold up the scheduler tick. */
 export const NOTIFY_TIMEOUT_MS = 10_000;
 
+/** Slack reads `<...>` as links and mentions (`<!channel>`); escaped text is shown as typed. */
+function slackEscape(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function bodyFor(channel: NotificationChannel, event: NotificationMessage): string {
-  if (channel.type === 'slack') return JSON.stringify({ text: `*${event.title}*\n${event.message}` });
+  if (channel.type === 'slack') return JSON.stringify({ text: `*${slackEscape(event.title)}*\n${slackEscape(event.message)}` });
   // Plain text: Telegram rejects Markdown it cannot parse (underscores in code names, for example).
   if (channel.type === 'telegram') return JSON.stringify({ text: `${event.title}\n${event.message}`, disable_web_page_preview: true });
   return JSON.stringify(event);

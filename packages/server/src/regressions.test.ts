@@ -975,6 +975,8 @@ describe('G: tickets are idempotent and the outbox never duplicates them', () =>
     expect(fs.existsSync(path.join(outboxDir(), 'failed', 'bad.json'))).toBe(true);
     expect(fs.readFileSync(path.join(outboxDir(), 'failed', 'bad.json.error.txt'), 'utf-8')).toMatch(/body|title/);
     expect((h.db.prepare("SELECT COUNT(*) c FROM events WHERE type = 'ticket_rejected'").get() as any).c).toBe(1);
+    const payload = JSON.parse((h.db.prepare("SELECT payload FROM events WHERE type = 'ticket_rejected'").get() as any).payload);
+    expect(payload).toMatchObject({ file: 'bad.json', kind: 'ticket' });
   });
 
   it('moves a ticket for an unregistered project to failed/ instead of retrying forever', async () => {

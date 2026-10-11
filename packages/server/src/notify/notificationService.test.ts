@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { initDatabase } from '../db/index.js';
 import { SettingsService } from '../services/settingsService.js';
 import { Notifier } from './notifier.js';
@@ -97,6 +97,35 @@ describe('Notification delivery', () => {
     expect(await h.service.dispatchPending()).toBe(1);
     expect(h.posts.map((p) => p.url).sort()).toEqual(['https://hooks.slack.test/a', 'https://hooks.test/b']);
     expect(h.posts.find((p) => p.url === 'https://hooks.test/b')!.body).toMatchObject({ type: 'task_failed', title: 'A backend task failed (REQ-001)' });
+  });
+
+  it('logs each channel that failed, without its URL', async () => {
+    await h.service.dispatchPending();
+    h.failing.add('https://hooks.slack.test/a');
+    h.settings.updateNotificationSettings({ channels: h.channels });
+    h.event('task_failed', { project: 'backend', error: 'boom' });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      await h.service.dispatchPending();
+      expect(warn.mock.calls.map((c) => c.join(' '))).toEqual(['[notify] Team: The host refused the connection. Check the URL and port.']);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('escapes agent text for Slack so it cannot mention a whole channel', async () => {
+    await h.service.dispatchPending();
+    h.settings.updateNotificationSettings({ channels: [h.channels[0], { id: 'tg', type: 'telegram', name: 'TG', url: 'https://api.telegram.test/bot1/sendMessage?chat_id=2', enabled: true }] });
+    h.event('question_asked', { project: 'mobile<b>', question: '<!channel> ping & <@U123> or Redis > Postgres?' });
+
+    await h.service.dispatchPending();
+
+    const slack = h.posts.find((p) => p.url === h.channels[0].url)!.body.text as string;
+    expect(slack).toBe('*mobile&lt;b&gt; agent asks a question (REQ-001)*\n&lt;!channel&gt; ping &amp; &lt;@U123&gt; or Redis &gt; Postgres?');
+    expect(slack).not.toContain('<!channel>');
+    // Telegram gets plain text: nothing to escape there.
+    expect(h.posts.find((p) => p.url.includes('telegram'))!.body.text).toContain('<!channel> ping & <@U123>');
   });
 
   it('a malformed event never stalls later ones', async () => {

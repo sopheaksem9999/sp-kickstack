@@ -559,6 +559,7 @@ describe('Questions from the outbox and prompts', () => {
     const goal = await h.startGoal();
     writeOutbox('question-1.json', { kind: 'question', question: 'Redis or Postgres?', options: ['redis', 'postgres'], project: 'mobile', engineTaskId: goal.engine_task_id });
     writeOutbox('question-2.json', { kind: 'question', question: 'x', project: 'mobile', engineTaskId: goal.engine_task_id });
+    fs.writeFileSync(path.join(outbox(), 'question-3.json'), '{ not json');
 
     await new OutboxScanner(h.projectService, h.ticketService, h.questions).scanOnce();
 
@@ -567,6 +568,8 @@ describe('Questions from the outbox and prompts', () => {
     expect(fs.existsSync(path.join(outbox(), 'processed', 'question-1.json'))).toBe(true);
     expect(fs.existsSync(path.join(outbox(), 'failed', 'question-2.json'))).toBe(true);
     expect(fs.readFileSync(path.join(outbox(), 'failed', 'question-2.json.error.txt'), 'utf-8')).toMatch(/question/);
+    const rejected = (h.db.prepare("SELECT payload FROM events WHERE type = 'ticket_rejected' ORDER BY id").all() as any[]).map((r) => JSON.parse(r.payload));
+    expect(rejected.map((p) => [p.file, p.kind])).toEqual([['question-2.json', 'question'], ['question-3.json', 'question']]);
   });
 
   it('tells goal and ticket agents how to ask a person', async () => {

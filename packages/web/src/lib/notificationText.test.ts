@@ -14,6 +14,14 @@ describe('notification text', () => {
     expect(describeNotification(e('engine_down', { project: 'backend' }, null))).toMatchObject({ title: 'backend engine is down', href: undefined });
   });
 
+  it('says whether a rejected outbox file was a question or a ticket', () => {
+    expect(describeNotification(e('ticket_rejected', { kind: 'question', reason: 'question: Required\nmore' }, null))).toMatchObject({
+      title: 'A question from the outbox was rejected', detail: 'question: Required', tone: 'error',
+    });
+    expect(describeNotification(e('ticket_rejected', { kind: 'ticket', reason: 'title: Required' }, null))?.title).toBe('A ticket from the outbox was rejected');
+    expect(describeNotification(e('ticket_rejected', { reason: 'old event' }, null))?.title).toBe('A ticket from the outbox was rejected');
+  });
+
   it('leaves routine status noise out of the bell', () => {
     expect(describeNotification(e('task_status_changed', { newStatus: 'running' }))).toBeNull();
     expect(describeNotification(e('task_updated', {}))).toBeNull();

@@ -100,7 +100,12 @@ export function describeNotification(event: BridgeEvent): NotificationText | nul
     case 'ticket_created':
       return { title: `New ticket for ${p.target ?? 'another project'}`, detail: '', tone: 'info', href };
     case 'ticket_rejected':
-      return { title: 'A ticket from the outbox was rejected', detail: first(p.reason), tone: 'error', href };
+      return {
+        title: p.kind === 'question' ? 'A question from the outbox was rejected' : 'A ticket from the outbox was rejected',
+        detail: first(p.reason),
+        tone: 'error',
+        href,
+      };
     case 'link_released':
       return { title: 'A dependency was released', detail: '', tone: 'success', href };
     case 'task_retried':

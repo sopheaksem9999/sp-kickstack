@@ -113,8 +113,9 @@ export class ReviewService {
 
   /**
    * Send open comments back: each task (in review or done) starts a new run on its branch with a
-   * "Review feedback" note. Tasks whose old engine task cannot be stopped keep their comments
-   * open and are reported; the rest proceed. From QA, the requirement returns to in_progress.
+   * "Review feedback" note. Tasks whose old engine task cannot be stopped, or that were cancelled
+   * meanwhile with their requirement, keep their comments open and are reported; the rest
+   * proceed. From QA, the requirement returns to in_progress (unless it was cancelled meanwhile).
    */
   public async requestChanges(reqId: string, input: RequestChangesInput = {}): Promise<RequestChangesResult> {
     const parsed = RequestChangesInputSchema.parse(input);
@@ -154,20 +155,29 @@ export class ReviewService {
         results.push({ taskId: task.id, ok: false, error: err?.message || String(err) });
         continue;
       }
-      const now = new Date().toISOString();
-      for (const c of comments) markSent.run(round, now, now, c.id);
       try {
         if (task.role === 'goal') await this.fanOutService.dispatchGoal(task.id);
         else await this.ticketService.dispatchTicket(task.id);
       } catch {
         // Recorded on the row (failed + last_error); the retry sweep dispatches it again.
       }
-      results.push({ taskId: task.id, ok: true, status: this.workTask(task.id)!.status });
+      const status = this.workTask(task.id)!.status;
+      if (status === 'cancelled') {
+        // The requirement was cancelled while the task was being sent back: nothing runs.
+        results.push({ taskId: task.id, ok: false, error: 'The requirement was cancelled meanwhile' });
+        continue;
+      }
+      const now = new Date().toISOString();
+      for (const c of comments) markSent.run(round, now, now, c.id);
+      results.push({ taskId: task.id, ok: true, status });
     }
 
     const sent = results.filter((r) => r.ok);
     if (sent.length === 0) throw new HttpError(503, `No task could be sent back: ${results[0]?.error ?? 'unknown error'}`);
-    if (req.status === 'qa') this.requirementService.updateStatus(reqId, 'in_progress');
+    if (req.status === 'qa') {
+      // Compare-and-set: a requirement cancelled meanwhile stays cancelled.
+      this.db.prepare("UPDATE requirements SET status = 'in_progress', updated_at = datetime('now') WHERE id = ? AND status = 'qa'").run(reqId);
+    }
     this.requirementService.recalculateDerivedStatus(reqId);
     this.recordEvent('changes_requested', reqId, undefined, {
       reqId, round, taskIds: sent.map((r) => r.taskId),

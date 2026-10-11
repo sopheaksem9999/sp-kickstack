@@ -11,6 +11,7 @@ import { LinkService } from './linkService.js';
 import { TicketService } from './ticketService.js';
 import { TaskReactor } from './taskReactor.js';
 import { ReviewService } from './reviewService.js';
+import { QuestionService } from './questionService.js';
 import { setBridgeNote, prepareRetry } from './taskRetry.js';
 import { EngineWatcher } from '../watcher/engineWatcher.js';
 import { FakeEngineServer } from '../adapters/fakeEngine.js';
@@ -170,6 +171,30 @@ describe('Request changes', () => {
     expect(h.reqStatus(req.id)).toBe('in_progress');
   });
 
+  it('from QA: a requirement cancelled meanwhile stays cancelled', async () => {
+    const { req, goals } = await h.inReview(['backend', 'mobile']);
+    const [backend, mobile] = goals;
+    for (const g of goals) h.db.prepare("UPDATE bridge_tasks SET status = 'done', merged_at = 'x', merge_sha = 'abc' WHERE id = ?").run(g.id);
+    h.db.prepare("UPDATE requirements SET status = 'qa' WHERE id = ?").run(req.id);
+    h.review.addComment(req.id, { task_id: backend.id, body: 'Backend fix' });
+    h.review.addComment(req.id, { task_id: mobile.id, body: 'Mobile fix' });
+    const engine = h.engines.mobile as any;
+    const original = engine.fetch.bind(engine);
+    engine.fetch = async (url: any, init?: any) => {
+      // Someone cancels the requirement while the old mobile agent is being stopped.
+      if (String(url).endsWith(`/api/tasks/${mobile.engine_task_id}/cancel`)) await h.fanOutService.cancel(req.id);
+      return original(url, init);
+    };
+
+    const result = await h.review.requestChanges(req.id);
+
+    expect(h.reqStatus(req.id)).toBe('cancelled');
+    expect(result.results.find((r) => r.taskId === mobile.id)).toEqual({
+      taskId: mobile.id, ok: false, error: 'The requirement was cancelled meanwhile',
+    });
+    expect(h.review.listComments(req.id).find((c) => c.task_id === mobile.id)!.state).toBe('open');
+  });
+
   it('refuses outside review or QA, during a merge, without comments, and for unfinished tasks', async () => {
     const { req, goals } = await h.inReview(['backend', 'mobile']);
     const [a, b] = goals;
@@ -254,6 +279,27 @@ describe('Request changes', () => {
     });
   });
 
+  it('a retry blocked by an open question names the question', async () => {
+    const { goals } = await h.inReview(['backend', 'mobile']);
+    const [backend, mobile] = goals;
+    for (const g of goals) {
+      h.engines[g.project as Project].setTaskStatus(g.engine_task_id!, 'failed', 'error');
+    }
+    await h.watcher.scanOnce();
+    const questions = new QuestionService(h.db, h.linkService, h.getAdapter);
+    const { questionId } = await questions.ask({ question: 'Which DB?' }, 'backend', backend.engine_task_id!);
+    h.linkService.createLink(mobile.id, backend.id, null);
+
+    await expect(prepareRetry(h.db, backend.id, 'goal', h.getAdapter)).rejects.toMatchObject({
+      status: 409,
+      message: `Task #${backend.id} is waiting for an answer to question #${questionId}; answer it (Let the agent decide is enough), then retry`,
+    });
+    await expect(prepareRetry(h.db, mobile.id, 'goal', h.getAdapter)).rejects.toMatchObject({
+      status: 409,
+      message: `Task #${mobile.id} is still waiting on another task; release or cancel that dependency first`,
+    });
+  });
+
   it('a retry after a review keeps the review note', async () => {
     const { req, goals } = await h.inReview();
     const goal = goals[0];
@@ -282,6 +328,16 @@ describe('Bridge notes and notes to agents', () => {
     expect(withBoth).toBe('Prompt\n\n<!-- bridge:review -->\nR1\n\n\n<!-- bridge:retry -->\nT1\n');
     expect(setBridgeNote(withBoth, 'retry', 'T2\n')).toBe('Prompt\n\n<!-- bridge:review -->\nR1\n\n\n<!-- bridge:retry -->\nT2\n');
     expect(setBridgeNote(withBoth, 'review', 'R2\n')).toBe('Prompt\n\n<!-- bridge:review -->\nR2\n');
+  });
+
+  it('replaces a retry note written before the markers existed', () => {
+    const legacy = 'Prompt\n\n## Retry\nA previous attempt stopped (x). Start again from the current code.\n';
+    const note = '## Retry\nA previous attempt stopped (y). Start again from the current code.\n';
+
+    const next = setBridgeNote(legacy, 'retry', note);
+
+    expect(next.match(/A previous attempt stopped/g)).toHaveLength(1);
+    expect(next).toBe(`Prompt\n\n<!-- bridge:retry -->\n${note}`);
   });
 
   it('neutralizes bridge markers in untrusted text', () => {

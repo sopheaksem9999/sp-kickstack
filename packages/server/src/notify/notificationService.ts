@@ -78,8 +78,9 @@ export function describeEvent(
 
 /**
  * Sends new events to the notification channels in Settings. Reads the event log after a
- * persisted cursor (the first run starts at the end: no history replay), so every event is
- * sent at most once, also across restarts. Runs on the scheduler tick.
+ * persisted cursor (the first run starts at the end: no history replay), so each event is sent
+ * once; the cursor moves after the send, so an event whose send a server stop interrupted may be
+ * sent again after the restart. Runs on the scheduler tick.
  */
 export class NotificationService {
   constructor(
@@ -106,7 +107,9 @@ export class NotificationService {
           const payload = parsePayload(row.payload);
           const text = describeEvent({ type: row.type, req_id: row.req_id, payload }, settings.app_url);
           if (text) {
-            await this.notifier.notify({ type: row.type, ...text, payload }, channels);
+            const results = await this.notifier.notify({ type: row.type, ...text, payload }, channels);
+            // The error text never contains the channel URL (it may hold a secret token).
+            for (const r of results) if (!r.ok) console.warn(`[notify] ${r.channel}: ${r.error}`);
             sent++;
           }
         } catch (err: any) {

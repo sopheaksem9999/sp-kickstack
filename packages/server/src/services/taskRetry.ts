@@ -134,8 +134,18 @@ export async function prepareRetry(
   if (!req || req.status === 'cancelled' || req.status === 'done') {
     throw conflict(`Requirement ${task.req_id} is ${req?.status ?? 'missing'}; its tasks cannot be retried`);
   }
-  const waiting = db.prepare("SELECT COUNT(*) AS c FROM links WHERE task_id = ? AND state = 'waiting'").get(taskId) as { c: number };
-  if (waiting.c > 0) {
+  const waiting = db
+    .prepare(`
+      SELECT l.depends_on_id AS id, d.role FROM links l JOIN bridge_tasks d ON d.id = l.depends_on_id
+      WHERE l.task_id = ? AND l.state = 'waiting' ORDER BY d.role = 'question' DESC, l.id
+    `)
+    .all(taskId) as Array<{ id: number; role: string }>;
+  if (waiting[0]?.role === 'question') {
+    throw conflict(
+      `Task #${taskId} is waiting for an answer to question #${waiting[0].id}; answer it (Let the agent decide is enough), then retry`
+    );
+  }
+  if (waiting.length > 0) {
     throw conflict(`Task #${taskId} is still waiting on another task; release or cancel that dependency first`);
   }
 

@@ -9,6 +9,14 @@ export function canRetry(task: Pick<BridgeTask, 'role' | 'status'>, reqStatus?: 
   return RETRYABLE.includes(task.status);
 }
 
+const NOTE_TO = ['queued', 'running', 'needs_human', 'held', 'rate_limited'];
+
+/** "Note" is offered for goals/tickets whose agent is still working or waiting. */
+export function canSendNote(task: Pick<BridgeTask, 'role' | 'status' | 'engine_task_id'>): boolean {
+  if (task.role !== 'goal' && task.role !== 'ticket') return false;
+  return Boolean(task.engine_task_id) && NOTE_TO.includes(task.status);
+}
+
 /** "Rate limited · resumes 15:30" for a rate-limited task, or null. */
 export function pausedLabel(task: Pick<BridgeTask, 'status'> & { paused_until?: string | null }, now = Date.now()): string | null {
   if (task.status !== 'rate_limited') return null;

@@ -19,11 +19,13 @@ import {
   startMergeToQa,
 } from '../lib/api.js';
 import { mergeCopy, mergeGateAction } from '../lib/mergeReady.js';
-import { canRetry, pausedLabel, retryOutcome } from '../lib/taskActions.js';
+import { canRetry, canSendNote, pausedLabel, retryOutcome } from '../lib/taskActions.js';
 import { useDemoMode } from '../lib/useDemoMode.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { DependencyGraphCanvas } from '../components/DependencyGraphCanvas.js';
 import { AgentQuestionsPanel } from '../components/AgentQuestionsPanel.js';
+import { ReviewPanel } from '../components/ReviewPanel.js';
+import { TaskNoteDialog } from '../components/TaskNoteDialog.js';
 import { BridgeTask, RequirementStatus, BranchMergePolicy } from '@sp-kickstack/shared';
 import { toast } from 'sonner';
 import {
@@ -434,6 +436,7 @@ export function RequirementDetailPage() {
       </div>
 
       <AgentQuestionsPanel reqId={req.id} />
+      <ReviewPanel req={req} tasks={graph?.tasks ?? []} />
 
       {/* ClickUp Doc Spec Preview Card */}
       <div className="bg-white dark:bg-[#181922] border border-slate-200 dark:border-[#262732] rounded-2xl p-5 shadow-sm space-y-4">
@@ -719,6 +722,8 @@ export function RequirementDetailPage() {
                             <span>Retry</span>
                           </button>
                         )}
+
+                        {canSendNote(task) && <TaskNoteDialog task={task} />}
 
                         {task.status !== 'done' && (
                           <button

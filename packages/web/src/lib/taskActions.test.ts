@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canRetry, pausedLabel, retryOutcome } from './taskActions';
+import { canRetry, canSendNote, pausedLabel, retryOutcome } from './taskActions';
 
 const t = (role: string, status: string, extra: Record<string, unknown> = {}) => ({ role, status, ...extra }) as any;
 
@@ -46,5 +46,16 @@ describe('retryOutcome', () => {
     });
     expect(retryOutcome({ status: 'rate_limited' } as any).kind).toBe('info');
     expect(retryOutcome({ status: 'queued' } as any)).toEqual({ kind: 'success', message: 'Task sent to its engine again' });
+  });
+});
+
+describe('canSendNote', () => {
+  it('offers notes to tasks whose agent is still working or waiting', () => {
+    for (const status of ['queued', 'running', 'needs_human', 'held', 'rate_limited']) {
+      expect(canSendNote(t('goal', status, { engine_task_id: 'e1' }))).toBe(true);
+    }
+    expect(canSendNote(t('goal', 'in_review', { engine_task_id: 'e1' }))).toBe(false);
+    expect(canSendNote(t('goal', 'running', { engine_task_id: null }))).toBe(false);
+    expect(canSendNote(t('waiting', 'held', { engine_task_id: 'e1' }))).toBe(false);
   });
 });

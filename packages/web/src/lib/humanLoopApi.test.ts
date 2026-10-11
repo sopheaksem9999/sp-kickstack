@@ -33,3 +33,27 @@ describe('questions api', () => {
     await expect(api.answerQuestion(1, { option: 'redis' })).rejects.toThrow('Question #1 is already answered');
   });
 });
+
+describe('review api', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('calls the review routes', async () => {
+    const calls = respond(200, {});
+    await api.fetchReviewComments('REQ-001');
+    await api.addReviewComment('REQ-001', { task_id: 3, body: 'Fix', file_path: 'a.ts', line: 2 });
+    await api.updateReviewComment(5, { state: 'resolved' });
+    await api.deleteReviewComment(5);
+    await api.requestChanges('REQ-001', [3]);
+    await api.sendTaskNote(3, 'Use v2');
+    expect(calls.map((c) => `${c.init?.method ?? 'GET'} ${c.url}`)).toEqual([
+      'GET /api/requirements/REQ-001/comments',
+      'POST /api/requirements/REQ-001/comments',
+      'PATCH /api/comments/5',
+      'DELETE /api/comments/5',
+      'POST /api/requirements/REQ-001/request-changes',
+      'POST /api/tasks/3/note',
+    ]);
+    expect(JSON.parse(String(calls[4].init?.body))).toEqual({ task_ids: [3] });
+    expect(JSON.parse(String(calls[5].init?.body))).toEqual({ body: 'Use v2' });
+  });
+});

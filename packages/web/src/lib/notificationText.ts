@@ -1,4 +1,4 @@
-import type { BridgeEvent, NotificationChannelConfig, NotifyEventType } from '@sp-kickstack/shared';
+import type { BridgeEvent, NotificationChannelConfig, NotificationSettings, NotifyEventType } from '@sp-kickstack/shared';
 
 export type NotificationTone = 'info' | 'success' | 'warning' | 'error';
 
@@ -29,6 +29,38 @@ export const CHANNEL_HINTS: Record<NotificationChannelConfig['type'], string> = 
   telegram: 'https://api.telegram.org/bot<bot token>/sendMessage?chat_id=<chat id>',
   webhook: 'Any https URL; it receives JSON { type, title, message, payload }',
 };
+
+/** Start of each channel type's hint, used as the example in "needs a URL" messages. */
+const CHANNEL_EXAMPLES: Record<NotificationChannelConfig['type'], string> = {
+  slack: 'https://hooks.slack.com/services/…',
+  telegram: 'https://api.telegram.org/bot<token>/sendMessage?chat_id=<chat id>',
+  webhook: 'https://example.com/hook',
+};
+
+function isHttpUrl(value: string): boolean {
+  if (!/^https?:\/\//i.test(value)) return false;
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** First thing to fix before saving, in plain words (what the server would otherwise reject as raw schema text), or null. */
+export function notificationDraftProblem(draft: NotificationSettings): string | null {
+  for (const [i, channel] of draft.channels.entries()) {
+    if (!isHttpUrl(channel.url.trim())) {
+      const name = channel.name.trim();
+      const label = name ? `"${name}"` : `Channel ${i + 1}`;
+      return `${label} needs a URL starting with https://, for example ${CHANNEL_EXAMPLES[channel.type]}.`;
+    }
+  }
+  if (draft.app_url !== '' && !isHttpUrl(draft.app_url.trim())) {
+    return 'The link address must start with http:// or https://, for example http://localhost:4101. Leave it empty for no links.';
+  }
+  return null;
+}
 
 export function newChannel(): NotificationChannelConfig {
   return { id: `ch-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, type: 'slack', name: '', url: '', enabled: true };

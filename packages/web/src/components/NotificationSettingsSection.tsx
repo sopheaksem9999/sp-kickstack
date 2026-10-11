@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Plus, Send, Trash2 } from 'lucide-react';
 import type { NotificationChannelConfig, NotificationSettings } from '@sp-kickstack/shared';
 import { fetchNotificationSettings, saveNotificationSettings, testNotificationChannel } from '../lib/humanLoopApi.js';
-import { CHANNEL_HINTS, NOTIFY_EVENT_LABELS, newChannel } from '../lib/notificationText.js';
+import { CHANNEL_HINTS, NOTIFY_EVENT_LABELS, newChannel, notificationDraftProblem } from '../lib/notificationText.js';
 
 const TYPES: Array<NotificationChannelConfig['type']> = ['slack', 'telegram', 'webhook'];
 const input =
@@ -168,7 +168,11 @@ export function NotificationSettingsSection() {
       <div className="flex gap-2">
         <button
           disabled={!dirty || save.isPending}
-          onClick={() => save.mutate(draft)}
+          onClick={() => {
+            const problem = notificationDraftProblem(draft);
+            if (problem) toast.error(problem);
+            else save.mutate(draft);
+          }}
           className="px-4 py-2 rounded-lg bg-[#7b68ee] hover:bg-[#6a5acd] text-white text-xs font-bold disabled:opacity-40"
         >
           Save

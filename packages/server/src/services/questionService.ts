@@ -239,26 +239,53 @@ export class QuestionService {
         }
         throw new HttpError(502, `Question #${question.id} was filed but your task could not be paused (${message}); resubmit to retry`);
       }
+      // Compare-and-set: only a task still running on the engine task we held becomes 'held'. Any
+      // running state counts: the retry sweep may have moved it to 'queued' meanwhile (see
+      // resumeIfWaitEnded), and the engine task is held either way.
       const wrote = this.db
-        .prepare("UPDATE bridge_tasks SET status = 'held', last_error = NULL, updated_at = ? WHERE id = ? AND status = ?")
-        .run(now, sourceId, source.status);
-      if (wrote.changes !== 1) {
+        .prepare(`
+          UPDATE bridge_tasks SET status = 'held', last_error = NULL, updated_at = ?
+          WHERE id = ? AND engine_task_id = ? AND status IN (${RUNNING.map(() => '?').join(', ')})
+        `)
+        .run(now, sourceId, source.engine_task_id, ...RUNNING);
+      const current = this.task(sourceId);
+      const heldMeanwhile = current.status === 'held' && current.engine_task_id === source.engine_task_id;
+      if (wrote.changes !== 1 && !heldMeanwhile) {
         // The task moved on while the hold was in flight (for example its run ended): keep its
         // status; a stored answer goes where the task now is.
         await this.settleUnheldAnswer(sourceId, question.id);
         return false;
       }
 
-      if (this.answeredLink(sourceId, question.id)) {
-        // Answered while the hold was in flight: resume with the answer (a failed release stays for the sweeper).
-        await this.linkService.releaseSourceIfUnblocked(sourceId);
-        const current = this.db.prepare('SELECT status FROM bridge_tasks WHERE id = ?').get(sourceId) as { status: string };
-        return current.status === 'held';
-      }
-      return true;
+      await this.resumeIfWaitEnded(sourceId, question.id);
+      return this.task(sourceId).status === 'held';
     } finally {
       this.holding.delete(sourceId);
     }
+  }
+
+  /**
+   * The hold landed, but the wait for the answer may have ended meanwhile: answered (the retry
+   * sweep may even have released the link already), or an operator cancelled or released the
+   * link. If nothing else holds the task, resume it now so it is not left paused for nothing.
+   */
+  private async resumeIfWaitEnded(sourceId: number, questionId: number) {
+    // A release the sweep could not complete left the answer on the link: send it with this release.
+    this.db.prepare("UPDATE links SET state = 'ready' WHERE task_id = ? AND depends_on_id = ? AND state = 'error'").run(sourceId, questionId);
+    const state = this.linkStateOf(sourceId, questionId);
+    const waiting = this.db.prepare("SELECT COUNT(*) AS c FROM links WHERE task_id = ? AND state = 'waiting'").get(sourceId) as { c: number };
+    if (state === 'waiting' || waiting.c > 0) return;
+    // A ready link carries the answer itself; a failed release stays for the sweeper.
+    if (state === 'ready') {
+      await this.linkService.releaseSourceIfUnblocked(sourceId);
+      return;
+    }
+    const question = this.row(questionId)!;
+    const extra =
+      question.status === 'done' && question.answer_md != null
+        ? answerContext(question.title, question.answer_md)
+        : `## Question withdrawn\nNobody will answer question #${questionId}; continue with your best judgment and note the choice in your report.`;
+    await this.linkService.releaseSourceIfUnblocked(sourceId, extra);
   }
 
   /** The link to a question once its answer is stored on it and awaits delivery. */

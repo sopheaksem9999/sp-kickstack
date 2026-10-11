@@ -377,6 +377,105 @@ describe('Agent questions', () => {
     expect(h.linkState(resp.questionId)).toBe('released');
   });
 
+  describe('a question link settled while the pause is in flight', () => {
+    const questionLink = (questionId: number) => (h.db.prepare('SELECT id FROM links WHERE depends_on_id = ?').get(questionId) as any).id as number;
+    const notes = (goal: { engine_task_id: string | null }) => h.engines.mobile.getTaskData(goal.engine_task_id!)!.notes as string[];
+    /** Answer during the hold, let the retry sweep release the ready link, then let the hold land. */
+    const answerAndSweepDuringHold = () =>
+      h.intercept('mobile', (url) => url.endsWith('/hold'), async (pass) => {
+        const [filed] = h.questions.list({ status: 'open' });
+        await h.questions.answer(filed.id, { option: 'redis' });
+        h.clock.now += 10 * 60_000;
+        await h.sweeper.sweepOnce();
+        return pass();
+      });
+
+    it('the sweeper released the answered link: the agent still resumes with the answer', async () => {
+      const goal = await h.startGoal();
+      answerAndSweepDuringHold();
+
+      const resp = await ask(goal);
+
+      expect(resp).toMatchObject({ status: 'answered', held: false });
+      expect(h.task(goal.id).status).toBe('queued');
+      expect(h.engines.mobile.getTaskData(goal.engine_task_id!)!.status).toBe('queued');
+      expect(lastNote(goal)).toContain('redis');
+      expect(h.linkState(resp.questionId)).toBe('released');
+    });
+
+    it('the same for an agent that was running when it asked', async () => {
+      const goal = await h.startGoal();
+      h.engines.mobile.setTaskStatus(goal.engine_task_id!, 'running', 'in_progress');
+      await h.watcher.scanOnce();
+      expect(h.task(goal.id).status).toBe('running');
+      answerAndSweepDuringHold();
+
+      const resp = await ask(goal);
+
+      expect(resp.held).toBe(false);
+      expect(h.task(goal.id).status).toBe('queued');
+      expect(h.engines.mobile.getTaskData(goal.engine_task_id!)!.status).toBe('queued');
+      expect(lastNote(goal)).toContain('redis');
+      expect(h.linkState(resp.questionId)).toBe('released');
+    });
+
+    it('the sweeper failed to release the answered link: the hold path releases it once', async () => {
+      const goal = await h.startGoal();
+      let releaseFails = true;
+      h.intercept('mobile', (url) => url.endsWith('/release'), async (pass) => (releaseFails ? new Response('down', { status: 500 }) : pass()));
+      h.intercept('mobile', (url) => url.endsWith('/hold'), async (pass) => {
+        const [filed] = h.questions.list({ status: 'open' });
+        await h.questions.answer(filed.id, { option: 'redis' });
+        h.clock.now += 10 * 60_000;
+        await h.sweeper.sweepOnce();
+        expect(h.linkState(filed.id)).toBe('error');
+        releaseFails = false;
+        return pass();
+      });
+
+      const resp = await ask(goal);
+
+      expect(h.task(goal.id).status).toBe('queued');
+      expect(h.engines.mobile.getTaskData(goal.engine_task_id!)!.status).toBe('queued');
+      expect(h.linkState(resp.questionId)).toBe('released');
+      expect(notes(goal).filter((note) => note.includes('Answer from a person'))).toHaveLength(1);
+    });
+
+    it('an operator cancelled the question link: the agent resumes and is told nobody will answer', async () => {
+      const goal = await h.startGoal();
+      h.intercept('mobile', (url) => url.endsWith('/hold'), async (pass) => {
+        const [filed] = h.questions.list({ status: 'open' });
+        await h.linkService.cancelLink(questionLink(filed.id));
+        return pass();
+      });
+
+      const resp = await ask(goal);
+
+      expect(resp.held).toBe(false);
+      expect(h.task(goal.id).status).toBe('queued');
+      expect(h.engines.mobile.getTaskData(goal.engine_task_id!)!.status).toBe('queued');
+      expect(h.linkState(resp.questionId)).toBe('cancelled');
+      expect(lastNote(goal)).toBe(
+        `## Question withdrawn\nNobody will answer question #${resp.questionId}; continue with your best judgment and note the choice in your report.`
+      );
+    });
+
+    it('an operator force-released the unanswered question link: the agent resumes and is told nobody will answer', async () => {
+      const goal = await h.startGoal();
+      h.intercept('mobile', (url) => url.endsWith('/hold'), async (pass) => {
+        const [filed] = h.questions.list({ status: 'open' });
+        await h.linkService.forceRelease(questionLink(filed.id));
+        return pass();
+      });
+
+      const resp = await ask(goal);
+
+      expect(h.task(goal.id).status).toBe('queued');
+      expect(h.engines.mobile.getTaskData(goal.engine_task_id!)!.status).toBe('queued');
+      expect(lastNote(goal)).toMatch(/^## Question withdrawn\nNobody will answer question #\d+/);
+    });
+  });
+
   it('sends the answer as a note when the pause fails after the person already answered', async () => {
     const goal = await h.startGoal();
     h.intercept('mobile', (url) => url.endsWith('/hold'), async () => {

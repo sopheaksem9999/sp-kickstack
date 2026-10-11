@@ -2,12 +2,15 @@ import crypto from 'node:crypto';
 import { AppDatabase } from '../db/index.js';
 import {
   AgentQuestion,
+  AnswerDelivery,
   AnswerQuestionInput,
   AnswerQuestionInputSchema,
+  AnswerQuestionResult,
   AskQuestionInput,
   AskQuestionInputSchema,
   AskQuestionResponse,
   BridgeTask,
+  NormStatus,
   QuestionStatus,
 } from '@sp-kickstack/shared';
 import { HttpError, badRequest, conflict } from '../lib/httpError.js';
@@ -18,12 +21,32 @@ import { LinkService } from './linkService.js';
 
 export type QuestionEmit = (event: { type: string; req_id?: string; task_id?: number; payload: Record<string, unknown> }) => void;
 
-/** An asking task in one of these states can no longer wait for an answer. */
-const FINISHED = ['done', 'cancelled', 'failed'];
+/** Asker states with a live run: a question pauses it ('held' = already paused). */
+const RUNNING: NormStatus[] = ['pending', 'queued', 'running', 'needs_human', 'rate_limited'];
+/** Asker states whose run is over: a question is kept for the next run and never pauses it. */
+const STOPPED: NormStatus[] = ['in_review', 'qa', 'done', 'failed', 'cancelled'];
 const PAUSED_MESSAGE =
   'Your task is paused until a person answers. Stop working now; the answer arrives as a note when the task resumes.';
+const STOPPED_MESSAGE =
+  "Your task's run is over, so it was not paused. A person will see the question; their answer is passed to the next run of this task.";
 
-type QuestionRow = BridgeTask & { options: string | null; answer_md: string | null; answered_at: string | null };
+type QuestionRow = BridgeTask & {
+  options: string | null;
+  answer_md: string | null;
+  answered_at: string | null;
+  asker_status: NormStatus | null;
+};
+
+/** Question rows with the status of the task that asked. */
+const SELECT_QUESTIONS = `
+  SELECT q.*, a.status AS asker_status FROM bridge_tasks q
+  LEFT JOIN bridge_tasks a ON a.id = q.origin_task_id
+  WHERE q.role = 'question'`;
+
+/** The note an answer reaches the agent with. */
+function answerContext(question: string, answer: string): string {
+  return `## Answer from a person\nYou asked: ${oneLine(question, 500)}\n\n${neutralize(answer)}\n\nContinue with this answer.`;
+}
 
 function statusOf(row: QuestionRow): QuestionStatus {
   if (row.status === 'needs_human') return 'open';
@@ -43,6 +66,7 @@ function toQuestion(row: QuestionRow): AgentQuestion {
     id: row.id,
     req_id: row.req_id,
     task_id: row.origin_task_id as number,
+    asker_status: row.asker_status ?? 'cancelled',
     project: row.project,
     question: row.title,
     details: row.body_md || '',
@@ -78,14 +102,18 @@ export class QuestionService {
   public list(filter: { reqId?: string; status?: QuestionStatus } = {}): AgentQuestion[] {
     const rows = (
       filter.reqId
-        ? this.db.prepare("SELECT * FROM bridge_tasks WHERE role = 'question' AND req_id = ? ORDER BY id DESC LIMIT 200").all(filter.reqId)
-        : this.db.prepare("SELECT * FROM bridge_tasks WHERE role = 'question' ORDER BY id DESC LIMIT 200").all()
+        ? this.db.prepare(`${SELECT_QUESTIONS} AND q.req_id = ? ORDER BY q.id DESC LIMIT 200`).all(filter.reqId)
+        : this.db.prepare(`${SELECT_QUESTIONS} ORDER BY q.id DESC LIMIT 200`).all()
     ) as QuestionRow[];
     const questions = rows.map(toQuestion);
     return filter.status ? questions.filter((q) => q.status === filter.status) : questions;
   }
 
-  /** File a question for the agent's task and pause that task. Idempotent per task and question text. */
+  /**
+   * File a question for the agent's task and pause that task while its run is going. A task whose
+   * run is over (in review, merged, failed) is never paused: its answer becomes a review comment
+   * for the next run. Idempotent per task and question text.
+   */
   public async ask(input: AskQuestionInput, sourceProject: string, sourceEngineTaskId?: string): Promise<AskQuestionResponse> {
     const parsed = AskQuestionInputSchema.parse(input);
     if (!sourceEngineTaskId) {
@@ -102,7 +130,6 @@ export class QuestionService {
 
     let created = false;
     if (!row) {
-      if (FINISHED.includes(source.status)) throw conflict(`Task #${source.id} is ${source.status}; it cannot ask questions`);
       const req = this.db.prepare('SELECT status FROM requirements WHERE id = ?').get(source.req_id) as { status: string } | undefined;
       if (!req || req.status === 'cancelled' || req.status === 'done') {
         throw conflict(`Requirement ${source.req_id} is ${req?.status ?? 'missing'}; it takes no questions`);
@@ -144,18 +171,19 @@ export class QuestionService {
 
     const current = this.row(row.id)!;
     const status = statusOf(current);
+    const runOver = STOPPED.includes(current.asker_status as NormStatus);
     return {
       questionId: current.id,
       taskId: source.id,
       status,
       held,
       answer: current.answer_md ?? null,
-      message: status === 'open' ? PAUSED_MESSAGE : `This question was already ${status}.`,
+      message: status === 'open' ? (runOver ? STOPPED_MESSAGE : PAUSED_MESSAGE) : `This question was already ${status}.`,
     };
   }
 
-  /** Answer an open question and resume (or note) the asking task. */
-  public async answer(questionId: number, input: AnswerQuestionInput): Promise<AgentQuestion> {
+  /** Answer an open question and resume (or note) the asking task; says how the answer was delivered. */
+  public async answer(questionId: number, input: AnswerQuestionInput): Promise<AnswerQuestionResult> {
     const parsed = AnswerQuestionInputSchema.parse(input);
     const row = this.row(questionId);
     if (!row) throw new HttpError(404, `Question #${questionId} not found`);
@@ -172,23 +200,25 @@ export class QuestionService {
     if (claimed.changes !== 1) throw conflict(`Question #${questionId} was answered meanwhile`);
 
     const sourceId = row.origin_task_id as number;
-    const context = `## Answer from a person\nYou asked: ${oneLine(row.title, 500)}\n\n${neutralize(text)}\n\nContinue with this answer.`;
-    await this.deliverAnswer(sourceId, questionId, context);
+    const delivered = await this.deliverAnswer(sourceId, questionId, answerContext(row.title, text));
 
     this.recordEvent('question_answered', row.req_id, sourceId, {
       questionId, taskId: sourceId, reqId: row.req_id, project: row.project, answer: oneLine(text, 200),
     });
-    return this.get(questionId)!;
+    return { ...this.get(questionId)!, delivered };
   }
 
   /**
-   * Pause the asking task while its question is open; true while it is held. The question is
-   * already visible, so a person may answer while the engine call is in flight: the answer then
-   * waits on its link (see deliverAnswer) and is delivered here once the hold has settled.
+   * Pause the asking task while its question is open; true while it is held. Only a running task
+   * is paused, and 'held' is written only if the task did not move on (for example to review)
+   * while the engine call was in flight. The question is already visible, so a person may answer
+   * meanwhile: the answer then waits on its link (see deliverAnswer) and is delivered here once
+   * the hold has settled.
    */
   private async holdAsker(question: QuestionRow, sourceId: number): Promise<boolean> {
-    const source = this.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(sourceId) as BridgeTask;
+    const source = this.task(sourceId);
     if (source.status === 'held') return true;
+    if (!RUNNING.includes(source.status)) return false;
     const link = this.db.prepare('SELECT state FROM links WHERE task_id = ? AND depends_on_id = ?').get(sourceId, question.id) as
       | { state: string }
       | undefined;
@@ -202,15 +232,22 @@ export class QuestionService {
       } catch (err: any) {
         const message = err?.message || String(err);
         this.db.prepare('UPDATE bridge_tasks SET last_error = ?, updated_at = ? WHERE id = ?').run(`Hold failed: ${message}`, now, sourceId);
-        // Answered meanwhile: the task never paused, so the answer goes as a note.
-        const answered = this.answeredLink(sourceId, question.id);
-        if (answered) await this.noteAnswer(source, question.id, answered.context_md || '', true);
+        // Answered meanwhile: the task never paused, so the answer goes as a note (or a review comment).
+        await this.settleUnheldAnswer(sourceId, question.id);
         if (isRateLimit(err)) {
           throw new HttpError(503, `Question #${question.id} was filed; your task pauses once the ${source.project} engine's rate limit resets (resubmit to retry)`);
         }
         throw new HttpError(502, `Question #${question.id} was filed but your task could not be paused (${message}); resubmit to retry`);
       }
-      this.db.prepare("UPDATE bridge_tasks SET status = 'held', last_error = NULL, updated_at = ? WHERE id = ?").run(now, sourceId);
+      const wrote = this.db
+        .prepare("UPDATE bridge_tasks SET status = 'held', last_error = NULL, updated_at = ? WHERE id = ? AND status = ?")
+        .run(now, sourceId, source.status);
+      if (wrote.changes !== 1) {
+        // The task moved on while the hold was in flight (for example its run ended): keep its
+        // status; a stored answer goes where the task now is.
+        await this.settleUnheldAnswer(sourceId, question.id);
+        return false;
+      }
 
       if (this.answeredLink(sourceId, question.id)) {
         // Answered while the hold was in flight: resume with the answer (a failed release stays for the sweeper).
@@ -232,28 +269,80 @@ export class QuestionService {
   }
 
   /**
-   * Held and waiting on nothing else: release with the answer (a failed release leaves the
-   * link in 'error' for the sweeper). Otherwise send the answer as a note now; a task still
-   * held by another dependency gets it again with the final release.
+   * Run over: the answer becomes a review comment for the next run (no engine call). Held and
+   * waiting on nothing else: release with the answer (a failed release leaves the link in
+   * 'error' for the sweeper). Otherwise send the answer as a note now; a task still held by
+   * another dependency gets it again with the final release.
    */
-  private async deliverAnswer(sourceId: number, questionId: number, context: string) {
+  private async deliverAnswer(sourceId: number, questionId: number, context: string): Promise<AnswerDelivery> {
+    const source = this.task(sourceId);
+    if (STOPPED.includes(source.status)) {
+      this.db.transaction(() => {
+        this.db
+          .prepare("UPDATE links SET state = 'released', released_at = ? WHERE task_id = ? AND depends_on_id = ? AND state IN ('waiting', 'ready', 'error')")
+          .run(new Date().toISOString(), sourceId, questionId);
+        this.addAnswerComment(source, questionId);
+      })();
+      return 'review_comment';
+    }
+
     const ready = this.db
       .prepare("UPDATE links SET state = 'ready', context_md = ? WHERE task_id = ? AND depends_on_id = ? AND state = 'waiting'")
       .run(context, sourceId, questionId);
-    if (ready.changes !== 1) return;
+    if (ready.changes !== 1) {
+      // Nothing waits on the answer any more (an operator released or cancelled the wait): tell the agent.
+      await this.noteAnswer(source, questionId, context, false);
+      return 'note';
+    }
     // The task's engine hold is still in flight: holdAsker delivers the stored answer when it settles.
-    if (this.holding.has(sourceId)) return;
+    if (this.holding.has(sourceId)) return 'pending';
 
-    const source = this.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(sourceId) as BridgeTask;
     const stillWaiting = (
       this.db.prepare("SELECT COUNT(*) AS c FROM links WHERE task_id = ? AND state = 'waiting'").get(sourceId) as { c: number }
     ).c;
 
     if (source.status === 'held' && stillWaiting === 0) {
       await this.linkService.releaseSourceIfUnblocked(sourceId);
+      return this.linkStateOf(sourceId, questionId) === 'released' ? 'resumed' : 'pending';
+    }
+    if (source.status === 'held') {
+      await this.noteAnswer(source, questionId, context, false);
+      return 'noted';
+    }
+    await this.noteAnswer(source, questionId, context, true);
+    return 'note';
+  }
+
+  /**
+   * The hold did not take (it failed, or the task moved on meanwhile): an answer stored on the
+   * link goes to a running agent as a note, or becomes a review comment when its run is over.
+   */
+  private async settleUnheldAnswer(sourceId: number, questionId: number) {
+    const answered = this.answeredLink(sourceId, questionId);
+    if (!answered) return;
+    const source = this.task(sourceId);
+    if (!STOPPED.includes(source.status)) {
+      await this.noteAnswer(source, questionId, answered.context_md || '', true);
       return;
     }
-    await this.noteAnswer(source, questionId, context, source.status !== 'held');
+    this.db.transaction(() => {
+      const settled = this.db
+        .prepare("UPDATE links SET state = 'released', released_at = ? WHERE task_id = ? AND depends_on_id = ? AND state = 'ready'")
+        .run(new Date().toISOString(), sourceId, questionId);
+      if (settled.changes === 1) this.addAnswerComment(source, questionId);
+    })();
+  }
+
+  /** An open review comment with the answer, so the next "Request changes" run of the task carries it. */
+  private addAnswerComment(source: BridgeTask, questionId: number) {
+    const question = this.row(questionId)!;
+    const now = new Date().toISOString();
+    this.db
+      .prepare(`
+        INSERT INTO review_comments (req_id, task_id, file_path, line, body_md, state, created_at, updated_at)
+        VALUES (?, ?, NULL, NULL, ?, 'open', ?, ?)
+      `)
+      .run(source.req_id, source.id, `Answer to your question "${oneLine(question.title, 200)}": ${question.answer_md ?? ''}`, now, now);
   }
 
   /** Send the answer to the engine task as a note (best effort); `settle` also marks its link released. */
@@ -272,8 +361,17 @@ export class QuestionService {
     }
   }
 
+  private linkStateOf(sourceId: number, questionId: number): string | undefined {
+    return (this.db.prepare('SELECT state FROM links WHERE task_id = ? AND depends_on_id = ?').get(sourceId, questionId) as { state: string } | undefined)
+      ?.state;
+  }
+
+  private task(id: number): BridgeTask {
+    return this.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(id) as BridgeTask;
+  }
+
   private row(id: number): QuestionRow | undefined {
-    return this.db.prepare("SELECT * FROM bridge_tasks WHERE id = ? AND role = 'question'").get(id) as QuestionRow | undefined;
+    return this.db.prepare(`${SELECT_QUESTIONS} AND q.id = ?`).get(id) as QuestionRow | undefined;
   }
 
   private recordEvent(type: string, reqId: string, taskId: number, payload: Record<string, unknown>) {

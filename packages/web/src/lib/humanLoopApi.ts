@@ -1,6 +1,7 @@
 import type {
   AgentQuestion,
   AnswerQuestionInput,
+  AnswerQuestionResult,
   BridgeEvent,
   CreateReviewCommentInput,
   NotificationSettings,
@@ -37,7 +38,7 @@ export function fetchQuestions(params: { status?: QuestionStatus; reqId?: string
   return request(`${BASE}/questions${qs ? `?${qs}` : ''}`);
 }
 
-export function answerQuestion(id: number, input: AnswerQuestionInput): Promise<AgentQuestion> {
+export function answerQuestion(id: number, input: AnswerQuestionInput): Promise<AnswerQuestionResult> {
   return request(`${BASE}/questions/${id}/answer`, send('POST', input));
 }
 

@@ -4,9 +4,9 @@ import { toast } from 'sonner';
 import { CheckCircle2, HelpCircle, Send, Sparkles, XCircle } from 'lucide-react';
 import type { AgentQuestion } from '@sp-kickstack/shared';
 import { answerQuestion, fetchQuestions } from '../lib/humanLoopApi.js';
-import { LET_AGENT_DECIDE, orderQuestions } from '../lib/questions.js';
+import { LET_AGENT_DECIDE, answerSentText, askerStateText, orderQuestions } from '../lib/questions.js';
 
-/** Questions agents asked on this requirement; open ones are answered here and the agent resumes. */
+/** Questions agents asked on this requirement; open ones are answered here and the answer goes to the agent. */
 export function AgentQuestionsPanel({ reqId }: { reqId: string }) {
   const { data: questions = [] } = useQuery({ queryKey: ['questions', reqId], queryFn: () => fetchQuestions({ reqId }) });
   if (questions.length === 0) return null;
@@ -38,11 +38,12 @@ function QuestionCard({ question }: { question: AgentQuestion }) {
   const [text, setText] = useState('');
   const mutation = useMutation({
     mutationFn: (input: { option?: string; answer?: string }) => answerQuestion(question.id, input),
-    onSuccess: () => {
-      toast.success('Answer sent; the agent continues');
+    onSuccess: (result) => {
+      toast.success(answerSentText(result.delivered));
       setText('');
       queryClient.invalidateQueries({ queryKey: ['questions'] });
       queryClient.invalidateQueries({ queryKey: ['requirement-graph', question.req_id] });
+      queryClient.invalidateQueries({ queryKey: ['review-comments', question.req_id] });
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -66,9 +67,7 @@ function QuestionCard({ question }: { question: AgentQuestion }) {
   const note = text.trim();
   return (
     <div className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/60 dark:bg-amber-950/20 p-4 space-y-3">
-      <div className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">
-        The {question.project} agent is paused until you answer
-      </div>
+      <div className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">{askerStateText(question)}</div>
       <p className="text-sm font-semibold text-slate-900 dark:text-white whitespace-pre-wrap">{question.question}</p>
       {question.details && <p className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{question.details}</p>}
       {question.options.length > 0 && (

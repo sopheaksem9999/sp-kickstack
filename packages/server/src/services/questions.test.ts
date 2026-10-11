@@ -98,6 +98,8 @@ describe('Agent questions', () => {
   const ask = (goal: { engine_task_id: string | null }, question = 'Redis or Postgres for the job queue?', options = ['redis', 'postgres']) =>
     h.questions.ask({ question, options, body: 'Both work; Redis is faster to set up.' }, 'mobile', goal.engine_task_id!);
   const lastNote = (goal: { engine_task_id: string | null }) => h.engines.mobile.getTaskData(goal.engine_task_id!)!.notes.at(-1) as string;
+  const openComments = (taskId: number) =>
+    (h.db.prepare("SELECT body_md FROM review_comments WHERE task_id = ? AND state = 'open' ORDER BY id").all(taskId) as any[]).map((c) => c.body_md);
 
   it('pauses the asking agent and lists the open question', async () => {
     const goal = await h.startGoal();
@@ -111,7 +113,7 @@ describe('Agent questions', () => {
     expect(q).toMatchObject({
       id: resp.questionId, req_id: goal.req_id, task_id: goal.id, project: 'mobile',
       question: 'Redis or Postgres for the job queue?', details: 'Both work; Redis is faster to set up.',
-      options: ['redis', 'postgres'], status: 'open', answer: null,
+      options: ['redis', 'postgres'], status: 'open', answer: null, asker_status: 'held',
     });
     expect(h.events('question_asked')).toBe(1);
     expect(h.emitted.map((e) => e.type)).toContain('question_asked');
@@ -133,7 +135,7 @@ describe('Agent questions', () => {
 
     const answered = await h.questions.answer(questionId, { option: 'redis', answer: 'keep it simple' });
 
-    expect(answered).toMatchObject({ status: 'answered', answer: 'redis — keep it simple' });
+    expect(answered).toMatchObject({ status: 'answered', answer: 'redis — keep it simple', delivered: 'resumed', asker_status: 'queued' });
     expect(answered.answered_at).toBeTruthy();
     expect(h.task(goal.id).status).toBe('queued');
     expect(h.engines.mobile.getTaskData(goal.engine_task_id!)!.status).toBe('queued');
@@ -178,8 +180,9 @@ describe('Agent questions', () => {
     );
     const { questionId } = await ask(mobileGoal);
 
-    await h.questions.answer(questionId, { option: 'postgres' });
+    const answered = await h.questions.answer(questionId, { option: 'postgres' });
 
+    expect(answered.delivered).toBe('noted');
     expect(h.task(mobileGoal.id).status).toBe('held');
     expect(lastNote(mobileGoal)).toContain('postgres');
     expect(h.linkState(questionId)).toBe('ready');
@@ -191,12 +194,108 @@ describe('Agent questions', () => {
     expect(h.linkState(questionId)).toBe('released');
   });
 
-  it('refuses questions without a task, from unknown or finished tasks', async () => {
+  it('refuses questions without a task, from unknown tasks, and on a finished requirement', async () => {
     const goal = await h.startGoal();
     await expect(h.questions.ask({ question: 'Which one?' }, 'mobile', undefined)).rejects.toMatchObject({ status: 400 });
     await expect(h.questions.ask({ question: 'Which one?' }, 'mobile', 'nope')).rejects.toMatchObject({ status: 404 });
-    h.db.prepare("UPDATE bridge_tasks SET status = 'done' WHERE id = ?").run(goal.id);
+    h.db.prepare("UPDATE requirements SET status = 'done' WHERE id = ?").run(goal.req_id);
     await expect(ask(goal)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('a question from a finished task is accepted but not held', async () => {
+    const goal = await h.startGoal();
+    h.db.prepare("UPDATE bridge_tasks SET status = 'done' WHERE id = ?").run(goal.id);
+
+    const resp = await ask(goal);
+
+    expect(resp).toMatchObject({ taskId: goal.id, status: 'open', held: false, answer: null });
+    expect(resp.message).toBe(
+      "Your task's run is over, so it was not paused. A person will see the question; their answer is passed to the next run of this task."
+    );
+    expect(h.task(goal.id).status).toBe('done');
+    expect(h.engines.mobile.getTaskData(goal.engine_task_id!)!.status).not.toBe('held');
+    expect(h.questions.get(resp.questionId)).toMatchObject({ status: 'open', asker_status: 'done' });
+    expect(h.events('question_asked')).toBe(1);
+  });
+
+  it('resubmit after the run moved to review: not held, and the answer becomes a review comment', async () => {
+    const goal = await h.startGoal();
+    h.throttle.trip('mobile', 600_000);
+    await expect(ask(goal)).rejects.toMatchObject({ status: 503 });
+    h.clock.now += 601_000;
+    h.engines.mobile.setTaskStatus(goal.engine_task_id!, 'in_review', 'review');
+    await h.watcher.scanOnce();
+    expect(h.task(goal.id).status).toBe('in_review');
+    expect(h.requirementService.getRequirement(goal.req_id)!.status).toBe('in_review');
+
+    const resp = await ask(goal);
+
+    expect(resp).toMatchObject({ status: 'open', held: false });
+    expect(resp.message).toMatch(/run is over, so it was not paused/);
+    expect(h.task(goal.id).status).toBe('in_review');
+    expect(h.engines.mobile.getTaskData(goal.engine_task_id!)!.status).toBe('in_review');
+    expect(h.requirementService.getRequirement(goal.req_id)!.status).toBe('in_review');
+
+    const answered = await h.questions.answer(resp.questionId, { option: 'postgres', answer: 'we run it already' });
+
+    expect(answered).toMatchObject({ status: 'answered', delivered: 'review_comment', asker_status: 'in_review' });
+    expect(h.linkState(resp.questionId)).toBe('released');
+    expect(h.task(goal.id).status).toBe('in_review');
+    expect(openComments(goal.id)).toEqual([
+      'Answer to your question "Redis or Postgres for the job queue?": postgres — we run it already',
+    ]);
+  });
+
+  it('resubmit after merge: a done task in QA stays done, and the answer becomes a review comment', async () => {
+    const goal = await h.startGoal();
+    h.throttle.trip('mobile', 600_000);
+    await expect(ask(goal)).rejects.toMatchObject({ status: 503 });
+    h.clock.now += 601_000;
+    h.engines.mobile.setTaskStatus(goal.engine_task_id!, 'done', 'merged');
+    h.db.prepare("UPDATE bridge_tasks SET status = 'done', merged_at = 'x' WHERE id = ?").run(goal.id);
+    h.db.prepare("UPDATE requirements SET status = 'qa' WHERE id = ?").run(goal.req_id);
+
+    const resp = await ask(goal);
+
+    expect(resp).toMatchObject({ status: 'open', held: false });
+    expect(h.task(goal.id)).toMatchObject({ status: 'done', merged_at: 'x' });
+    expect(h.requirementService.getRequirement(goal.req_id)!.status).toBe('qa');
+
+    const answered = await h.questions.answer(resp.questionId, { option: 'redis' });
+
+    expect(answered.delivered).toBe('review_comment');
+    expect(h.linkState(resp.questionId)).toBe('released');
+    expect(h.task(goal.id)).toMatchObject({ status: 'done', merged_at: 'x' });
+    expect(openComments(goal.id)).toEqual(['Answer to your question "Redis or Postgres for the job queue?": redis']);
+  });
+
+  it('the held write does not overwrite a task that moved on', async () => {
+    const goal = await h.startGoal();
+    h.intercept('mobile', (url) => url.endsWith('/hold'), async (pass) => {
+      h.db.prepare("UPDATE bridge_tasks SET status = 'in_review' WHERE id = ?").run(goal.id); // the run ended meanwhile
+      return pass();
+    });
+
+    const resp = await ask(goal);
+
+    expect(resp).toMatchObject({ status: 'open', held: false });
+    expect(resp.message).toMatch(/run is over, so it was not paused/);
+    expect(h.task(goal.id).status).toBe('in_review');
+  });
+
+  it('requirement Done cancels open questions', async () => {
+    const goal = await h.startGoal();
+    const { questionId } = await ask(goal);
+    const other = await h.startGoal();
+    const { questionId: otherId } = await ask(other);
+
+    h.requirementService.updateStatus(goal.req_id, 'done');
+
+    expect(h.questions.get(questionId)!.status).toBe('cancelled');
+    expect(h.linkState(questionId)).toBe('cancelled');
+    expect(h.questions.get(otherId)!.status).toBe('open');
+    expect(h.linkState(otherId)).toBe('waiting');
+    await expect(h.questions.answer(questionId, { option: 'redis' })).rejects.toMatchObject({ status: 409 });
   });
 
   it('cancelling the requirement cancels its open questions', async () => {
@@ -231,7 +330,8 @@ describe('Agent questions', () => {
     const [q] = h.questions.list();
     h.clock.now += 601_000;
 
-    await h.questions.answer(q.id, { option: 'postgres' }); // never paused: the answer goes as a note
+    const answered = await h.questions.answer(q.id, { option: 'postgres' }); // never paused: the answer goes as a note
+    expect(answered.delivered).toBe('note');
     expect(lastNote(goal)).toContain('postgres');
     expect(h.linkState(q.id)).toBe('released');
 
@@ -247,7 +347,7 @@ describe('Agent questions', () => {
     h.intercept('mobile', (url) => url.endsWith('/release'), async (pass) => (failing ? new Response('down', { status: 500 }) : pass()));
 
     const answered = await h.questions.answer(questionId, { option: 'redis' });
-    expect(answered.status).toBe('answered');
+    expect(answered).toMatchObject({ status: 'answered', delivered: 'pending' });
     expect(h.task(goal.id).status).toBe('held');
     expect(h.linkState(questionId)).toBe('error');
 
@@ -260,14 +360,16 @@ describe('Agent questions', () => {
 
   it('resumes the agent when the person answers while the pause is still in flight', async () => {
     const goal = await h.startGoal();
+    let delivered: string | undefined;
     h.intercept('mobile', (url) => url.endsWith('/hold'), async (pass) => {
       const [filed] = h.questions.list({ status: 'open' });
-      await h.questions.answer(filed.id, { option: 'redis' }); // answered before the engine confirms the hold
+      delivered = (await h.questions.answer(filed.id, { option: 'redis' })).delivered; // answered before the engine confirms the hold
       return pass();
     });
 
     const resp = await ask(goal);
 
+    expect(delivered).toBe('pending');
     expect(resp).toMatchObject({ status: 'answered', held: false, answer: 'redis' });
     expect(h.task(goal.id).status).toBe('queued');
     expect(h.engines.mobile.getTaskData(goal.engine_task_id!)!.status).toBe('queued');

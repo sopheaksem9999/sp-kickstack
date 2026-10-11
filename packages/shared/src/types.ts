@@ -348,8 +348,10 @@ export type QuestionStatus = 'open' | 'answered' | 'cancelled';
 export interface AgentQuestion {
   id: number;
   req_id: string;
-  /** The goal/ticket that asked; it is held until the answer arrives. */
+  /** The goal/ticket that asked; held until the answer arrives while its run is still going. */
   task_id: number;
+  /** Status of the asking task: held (paused for the answer), still running, or its run is over. */
+  asker_status: NormStatus;
   project: string;
   question: string;
   details: string;
@@ -359,6 +361,18 @@ export interface AgentQuestion {
   answered_at: string | null;
   created_at: string;
 }
+
+/**
+ * How an answer reached the asking agent:
+ * - resumed: the paused task continues with the answer;
+ * - noted: sent as a note; the task stays paused for another dependency and gets the answer again when it resumes;
+ * - note: the task was running (not paused), so the answer went to it as a note;
+ * - review_comment: the task's run is over; the answer is an open review comment for its next run;
+ * - pending: saved; it reaches the agent as soon as its engine responds (the sweeper retries).
+ */
+export type AnswerDelivery = 'resumed' | 'noted' | 'note' | 'review_comment' | 'pending';
+
+export type AnswerQuestionResult = AgentQuestion & { delivered: AnswerDelivery };
 
 export interface AskQuestionResponse {
   questionId: number;

@@ -291,6 +291,18 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
     this.db.prepare(`
       UPDATE requirements SET status = ?, updated_at = datetime('now') WHERE id = ?
     `).run(status, id);
+    // A finished requirement takes no more answers: close its open agent questions.
+    if (status === 'done') {
+      this.db
+        .prepare("UPDATE bridge_tasks SET status = 'cancelled', updated_at = ? WHERE req_id = ? AND role = 'question' AND status = 'needs_human'")
+        .run(new Date().toISOString(), id);
+      this.db
+        .prepare(`
+          UPDATE links SET state = 'cancelled'
+          WHERE state = 'waiting' AND depends_on_id IN (SELECT id FROM bridge_tasks WHERE req_id = ? AND role = 'question')
+        `)
+        .run(id);
+    }
   }
 
   /**

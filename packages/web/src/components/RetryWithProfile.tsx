@@ -7,7 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.js';
 import { AgentProfileFields } from './AgentProfilePicker.js';
 import { retryTaskWith } from '../lib/humanLoopApi.js';
 import { retryOutcome } from '../lib/taskActions.js';
-import { describeProfile, profilePatch } from '../lib/agentProfile.js';
+import { describeProfile, retryBody } from '../lib/agentProfile.js';
 import type { ProfileValue } from '../lib/agentProfile.js';
 
 const KEEP: ProfileValue = { model: null, effort: null };
@@ -19,13 +19,26 @@ export function RetryWithProfile({ task }: { task: Pick<BridgeTask, 'id' | 'req_
   const [value, setValue] = useState<ProfileValue>(KEEP);
   const [clearPin, setClearPin] = useState(false);
   const pin = describeProfile({ model: task.model_override, effort: task.effort_override });
+  const hasPin = pin !== '';
+  // A Clear pin ticked before the pin went away (the task refreshed) must not stay in effect.
+  const clearing = clearPin && hasPin;
+
+  // Radix does not call onOpenChange for a programmatic close, so every close path goes through here.
+  const reset = () => {
+    setValue(KEEP);
+    setClearPin(false);
+  };
+  const close = () => {
+    setOpen(false);
+    reset();
+  };
 
   const retry = useMutation({
-    mutationFn: () => retryTaskWith(task.id, clearPin ? { model: null, effort: null } : profilePatch(value)),
+    mutationFn: () => retryTaskWith(task.id, retryBody(value, clearPin, hasPin)),
     onSuccess: (retried) => {
       const outcome = retryOutcome(retried);
       toast[outcome.kind](outcome.message);
-      setOpen(false);
+      close();
       queryClient.invalidateQueries({ queryKey: ['requirement-graph', task.req_id] });
       queryClient.invalidateQueries({ queryKey: ['requirement', task.req_id] });
     },
@@ -33,11 +46,8 @@ export function RetryWithProfile({ task }: { task: Pick<BridgeTask, 'id' | 'req_
   });
 
   const onOpenChange = (next: boolean) => {
-    setOpen(next);
-    if (!next) {
-      setValue(KEEP);
-      setClearPin(false);
-    }
+    if (next) setOpen(true);
+    else close();
   };
 
   return (
@@ -60,7 +70,7 @@ export function RetryWithProfile({ task }: { task: Pick<BridgeTask, 'id' | 'req_
           </p>
         </div>
 
-        <AgentProfileFields value={value} onChange={setValue} disabled={clearPin} defaultTitle="Keep this task's current setting" />
+        <AgentProfileFields value={value} onChange={setValue} disabled={clearing} defaultTitle="Keep this task's current setting" />
 
         {pin && (
           <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">

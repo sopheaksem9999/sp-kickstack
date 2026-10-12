@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { defaultProfileLabel, describeProfile, effectiveProfile, isValidModel, profilePatch } from './agentProfile';
+import { defaultProfileLabel, describeProfile, effectiveProfile, isValidModel, profilePatch, retryBody } from './agentProfile';
 
 describe('describeProfile', () => {
   it('joins model and effort', () => {
@@ -74,5 +74,23 @@ describe('defaultProfileLabel', () => {
     expect(defaultProfileLabel({ value: { model: null, effort: null }, from: 'workspace' })).toBe('Engine default');
     expect(defaultProfileLabel(null)).toBe('Engine default');
     expect(defaultProfileLabel(undefined, "Keep each task's setting")).toBe("Keep each task's setting");
+  });
+});
+
+describe('retryBody', () => {
+  it('keeps the pin when Default is left alone', () => {
+    expect(retryBody({ model: null, effort: null }, false, true)).toEqual({});
+    expect(retryBody({ model: null, effort: null }, false, false)).toEqual({});
+  });
+  it('pins only what was picked', () => {
+    expect(retryBody({ model: 'opus', effort: null }, false, false)).toEqual({ model: 'opus' });
+    expect(retryBody({ model: 'opus', effort: 'high' }, false, true)).toEqual({ model: 'opus', effort: 'high' });
+  });
+  it('clears both parts when Clear pin is on and the task has a pin', () => {
+    expect(retryBody({ model: 'opus', effort: 'high' }, true, true)).toEqual({ model: null, effort: null });
+  });
+  it('ignores a stale Clear pin once the task has no pin', () => {
+    expect(retryBody({ model: 'opus', effort: null }, true, false)).toEqual({ model: 'opus' });
+    expect(retryBody({ model: null, effort: null }, true, false)).toEqual({});
   });
 });

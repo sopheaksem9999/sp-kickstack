@@ -51,3 +51,12 @@ export function defaultProfileLabel(
   const text = describeProfile(inherited?.value);
   return text ? `Default: ${text} (${inherited!.from})` : fallback;
 }
+
+/** Body for Retry: Clear pin (only while the task has a pin) sends null for both parts, otherwise just what was picked. */
+export function retryBody(
+  value: ProfileValue,
+  clearPin: boolean,
+  hasPin: boolean
+): { model?: string | null; effort?: ReasoningEffort | null } {
+  return clearPin && hasPin ? { model: null, effort: null } : profilePatch(value);
+}

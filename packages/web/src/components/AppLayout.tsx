@@ -14,6 +14,7 @@ import {
   PanelLeftOpen,
   BarChart3,
   Sparkles,
+  ListTodo,
 } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
@@ -55,6 +56,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   const navItems = [
     { label: 'Requirements', path: '/requirements', icon: Layers, badge: 'Tasks' },
+    { label: 'Agent Queue', path: '/queue', icon: ListTodo, badge: 'Live' },
     { label: 'AI Architect Chat', path: '/chat', icon: Sparkles, badge: 'AI Hub' },
     { label: 'Attachments Hub', path: '/attachments', icon: Paperclip, badge: 'Files' },
     { label: 'Repositories', path: '/projects', icon: FolderGit2, badge: 'Git' },
@@ -75,6 +77,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     if (currentSubpath === '/requirements/new') return 'New Requirement';
     if (currentSubpath.startsWith('/requirements/')) return 'Requirement Detail';
     if (currentSubpath === '/requirements') return 'Requirements';
+    if (currentSubpath === '/queue') return 'Agent Queue';
     if (currentSubpath === '/chat') return 'AI Architect Chat';
     if (currentSubpath === '/attachments') return 'Attachments & Assets';
     if (currentSubpath === '/projects') return 'Repositories';

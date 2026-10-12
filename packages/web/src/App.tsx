@@ -4,6 +4,7 @@ import { AppLayout } from './components/AppLayout.js';
 import { RequirementsPage } from './pages/RequirementsPage.js';
 import { NewRequirementPage } from './pages/NewRequirementPage.js';
 import { RequirementDetailPage } from './pages/RequirementDetailPage.js';
+import { QueuePage } from './pages/QueuePage.js';
 import { ProjectsPage } from './pages/ProjectsPage.js';
 import { AttachmentsPage } from './pages/AttachmentsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
@@ -46,6 +47,7 @@ function AppRoutes() {
         <Route path="/w/:workspaceId/requirements" element={<RequirementsPage />} />
         <Route path="/w/:workspaceId/requirements/new" element={<NewRequirementPage />} />
         <Route path="/w/:workspaceId/requirements/:id" element={<RequirementDetailPage />} />
+        <Route path="/w/:workspaceId/queue" element={<QueuePage />} />
         <Route path="/w/:workspaceId/chat" element={<AiChatPage />} />
         <Route path="/w/:workspaceId/attachments" element={<AttachmentsPage />} />
         <Route path="/w/:workspaceId/projects" element={<ProjectsPage />} />
@@ -57,6 +59,7 @@ function AppRoutes() {
         <Route path="/requirements" element={<LegacyRedirect to="/requirements" />} />
         <Route path="/requirements/new" element={<LegacyRedirect to="/requirements/new" />} />
         <Route path="/requirements/:id" element={<LegacyRedirect />} />
+        <Route path="/queue" element={<LegacyRedirect to="/queue" />} />
         <Route path="/chat" element={<LegacyRedirect to="/chat" />} />
         <Route path="/attachments" element={<LegacyRedirect to="/attachments" />} />
         <Route path="/projects" element={<LegacyRedirect to="/projects" />} />

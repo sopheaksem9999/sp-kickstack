@@ -5,6 +5,7 @@ import {
   Search,
   Layers,
   Sparkles,
+  ListTodo,
   Paperclip,
   FolderGit2,
   BarChart3,
@@ -127,6 +128,18 @@ export function CommandPaletteModal({
       action: () => {
         onClose();
         navigate(wsPath('/requirements'));
+      },
+    });
+
+    list.push({
+      id: 'nav-queue',
+      category: 'Navigation',
+      title: 'Agent Queue',
+      subtitle: 'Watch agent tasks per repository, then retry, mark done or open logs',
+      icon: ListTodo,
+      action: () => {
+        onClose();
+        navigate(wsPath('/queue'));
       },
     });
 

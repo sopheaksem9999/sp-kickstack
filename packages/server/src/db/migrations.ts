@@ -159,6 +159,19 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 7,
+    name: 'agent model and effort per workspace, requirement and task',
+    up: (db) => {
+      for (const table of ['workspaces', 'requirements']) {
+        addColumn(db, table, 'agent_model', 'TEXT');
+        addColumn(db, table, 'agent_effort', 'TEXT');
+      }
+      for (const column of ['model', 'effort', 'model_override', 'effort_override']) {
+        addColumn(db, 'bridge_tasks', column, 'TEXT');
+      }
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

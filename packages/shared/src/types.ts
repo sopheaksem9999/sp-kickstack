@@ -95,6 +95,9 @@ export interface Workspace {
   description?: string;
   rules?: string;
   context?: string;
+  /** Default agent model / effort for agent runs (null = inherit; at the end the engine decides). */
+  agent_model?: string | null;
+  agent_effort?: ReasoningEffort | null;
   created_at: string;
   updated_at: string;
 }
@@ -149,6 +152,9 @@ export interface Requirement {
   merge_policy?: BranchMergePolicy | null;
   merge_state?: MergeState;
   merge_error?: string | null;
+  /** Default agent model / effort for agent runs (null = inherit; at the end the engine decides). */
+  agent_model?: string | null;
+  agent_effort?: ReasoningEffort | null;
   created_at: string;
   updated_at: string;
 }
@@ -182,6 +188,12 @@ export interface BridgeTask {
   /** role 'question': the person's answer. */
   answer_md?: string | null;
   answered_at?: string | null;
+  /** Model / effort sent with the current engine task (what this run used). */
+  model?: string | null;
+  effort?: ReasoningEffort | null;
+  /** Model / effort pinned for this task by Retry or Request changes (null = inherit). */
+  model_override?: string | null;
+  effort_override?: ReasoningEffort | null;
   created_at: string;
   updated_at: string;
 }

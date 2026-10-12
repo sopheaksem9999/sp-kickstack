@@ -102,11 +102,27 @@ export const CreateWorkspaceInputSchema = z.object({
   context: z.string().optional().default(''),
 });
 
+export const ReasoningEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
+
+/** An agent model id the engine understands, e.g. opus, sonnet, claude-opus-5-5. */
+export const AgentModelSchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,79}$/, 'Model ids use letters, digits and . _ : / - (up to 80 characters), e.g. opus');
+
+/** Agent model/effort for a workspace, requirement or task: undefined keeps the current value, null clears it. */
+export const AgentProfileInputSchema = z.object({
+  model: AgentModelSchema.nullable().optional(),
+  effort: ReasoningEffortSchema.nullable().optional(),
+});
+
 export const UpdateWorkspaceInputSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
   rules: z.string().optional(),
   context: z.string().optional(),
+  agent_model: AgentModelSchema.nullable().optional(),
+  agent_effort: ReasoningEffortSchema.nullable().optional(),
 });
 
 export const ProjectSchema = z.object({
@@ -299,8 +315,7 @@ export type CreateReviewCommentInput = z.input<typeof CreateReviewCommentInputSc
 export type UpdateReviewCommentInput = z.input<typeof UpdateReviewCommentInputSchema>;
 export type RequestChangesInput = z.input<typeof RequestChangesInputSchema>;
 export type SendTaskNoteInput = z.input<typeof SendTaskNoteInputSchema>;
-
-export const ReasoningEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
+export type AgentProfileInput = z.input<typeof AgentProfileInputSchema>;
 
 export const SingleCliConfigSchema = z.object({
   enabled: z.boolean().default(true),

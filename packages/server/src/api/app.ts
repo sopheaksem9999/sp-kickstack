@@ -812,7 +812,7 @@ export function createApp(deps: AppDependencies): Express {
 
   app.post('/api/tickets', requireAgentToken, handleCreateTicket);
   app.post('/api/agent/tickets', requireAgentToken, handleCreateTicket);
-  registerHumanLoopRoutes(app, { questionService, reviewService, settingsService, notificationService, broadcaster: deps.broadcaster, requireAgentToken });
+  registerHumanLoopRoutes(app, { questionService, reviewService, requirementService: deps.requirementService, settingsService, notificationService, broadcaster: deps.broadcaster, requireAgentToken });
 
   // VCS Webhooks Sync
   const hasValidGitHubSignature = (req: Request): boolean => {

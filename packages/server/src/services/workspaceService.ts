@@ -25,6 +25,8 @@ export class WorkspaceService {
       description: r.description || '',
       rules: r.rules || '',
       context: r.context || '',
+      agent_model: r.agent_model ?? null,
+      agent_effort: r.agent_effort ?? null,
       created_at: r.created_at,
       updated_at: r.updated_at,
     }));
@@ -40,6 +42,8 @@ export class WorkspaceService {
       description: row.description || '',
       rules: row.rules || '',
       context: row.context || '',
+      agent_model: row.agent_model ?? null,
+      agent_effort: row.agent_effort ?? null,
       created_at: row.created_at,
       updated_at: row.updated_at,
     };
@@ -96,6 +100,24 @@ export class WorkspaceService {
       context: validated.context ?? null,
       updated_at: now,
     });
+
+    // The agent defaults can be cleared, which COALESCE cannot express: undefined keeps, null clears.
+    if (validated.agent_model !== undefined || validated.agent_effort !== undefined) {
+      this.db
+        .prepare(`
+          UPDATE workspaces SET
+            agent_model = CASE WHEN @setModel = 1 THEN @model ELSE agent_model END,
+            agent_effort = CASE WHEN @setEffort = 1 THEN @effort ELSE agent_effort END
+          WHERE id = @id
+        `)
+        .run({
+          id,
+          setModel: validated.agent_model !== undefined ? 1 : 0,
+          model: validated.agent_model ?? null,
+          setEffort: validated.agent_effort !== undefined ? 1 : 0,
+          effort: validated.agent_effort ?? null,
+        });
+    }
 
     return this.getWorkspace(id)!;
   }

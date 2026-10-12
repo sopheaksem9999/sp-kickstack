@@ -1,0 +1,36 @@
+import { AppDatabase } from '../db/index.js';
+import type { ReasoningEffort } from '@sp-kickstack/shared';
+
+export interface AgentProfile {
+  model: string | null;
+  effort: ReasoningEffort | null;
+}
+
+/**
+ * Model and effort for a task's next run, each resolved on its own: the task's pin (Retry /
+ * Request changes), else its requirement's choice, else its workspace's default; null = the
+ * engine decides.
+ */
+export function resolveAgentProfile(db: AppDatabase, taskId: number): AgentProfile {
+  const row = db
+    .prepare(`
+      SELECT t.model_override, t.effort_override,
+             r.agent_model AS req_model, r.agent_effort AS req_effort,
+             w.agent_model AS ws_model, w.agent_effort AS ws_effort
+      FROM bridge_tasks t
+      JOIN requirements r ON r.id = t.req_id
+      LEFT JOIN workspaces w ON w.id = r.workspace_id
+      WHERE t.id = ?
+    `)
+    .get(taskId) as Record<string, string | null> | undefined;
+  if (!row) return { model: null, effort: null };
+  return {
+    model: row.model_override ?? row.req_model ?? row.ws_model ?? null,
+    effort: (row.effort_override ?? row.req_effort ?? row.ws_effort ?? null) as ReasoningEffort | null,
+  };
+}
+
+/** Fields for the engine create call: only what is set, so engines without support see no change. */
+export function engineProfile(profile: AgentProfile): { model?: string; effort?: ReasoningEffort } {
+  return { ...(profile.model ? { model: profile.model } : {}), ...(profile.effort ? { effort: profile.effort } : {}) };
+}

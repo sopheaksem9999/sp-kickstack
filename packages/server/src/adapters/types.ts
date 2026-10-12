@@ -1,10 +1,14 @@
-import { EngineTask, EngineType, NormStatus } from '@sp-kickstack/shared';
+import { EngineTask, EngineType, NormStatus, ReasoningEffort } from '@sp-kickstack/shared';
 
 export interface CreateEngineTaskInput {
   title: string;
   bodyMd: string;
   priority?: string;
   labels?: string[];
+  /** Agent model id for this task; omitted when none is set so engines without support see no change. */
+  model?: string;
+  /** Agent reasoning effort for this task; omitted when none is set. */
+  effort?: ReasoningEffort;
 }
 
 export interface EngineAdapter {

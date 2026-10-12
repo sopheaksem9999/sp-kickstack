@@ -2,6 +2,7 @@ import type { Express, RequestHandler } from 'express';
 import { AskQuestionInputSchema, QuestionStatus } from '@sp-kickstack/shared';
 import { badRequest } from '../lib/httpError.js';
 import type { QuestionService } from '../services/questionService.js';
+import type { RequirementService } from '../services/requirementService.js';
 import type { ReviewService } from '../services/reviewService.js';
 import type { SettingsService } from '../services/settingsService.js';
 import type { NotificationService } from '../notify/notificationService.js';
@@ -10,6 +11,7 @@ import type { SseBroadcaster } from '../sse/broadcaster.js';
 export interface HumanLoopRouteDeps {
   questionService: QuestionService;
   reviewService: ReviewService;
+  requirementService: RequirementService;
   settingsService: SettingsService;
   notificationService: NotificationService;
   broadcaster: SseBroadcaster;
@@ -51,6 +53,17 @@ export function registerHumanLoopRoutes(app: Express, deps: HumanLoopRouteDeps) 
   app.post('/api/questions/:id/answer', async (req, res, next) => {
     try {
       res.json(await questionService.answer(Number(req.params.id), req.body ?? {}));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Agent model / effort for a requirement's runs; undefined keeps a value, null clears it.
+  app.put('/api/requirements/:id/agent-profile', (req, res, next) => {
+    try {
+      const updated = deps.requirementService.updateAgentProfile(req.params.id, req.body ?? {});
+      deps.broadcaster.broadcast({ type: 'requirement_updated', payload: { id: updated.id } });
+      res.json(updated);
     } catch (err) {
       next(err);
     }

@@ -16,6 +16,7 @@ import { BranchService, branchInstructions, taskBranchName } from './branchServi
 import { isRateLimit } from '../adapters/rateLimit.js';
 import { pauseForRateLimit } from './rateLimitPause.js';
 import { prepareRetry } from './taskRetry.js';
+import { resolveAgentProfile, engineProfile } from './agentProfile.js';
 
 function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -212,17 +213,20 @@ ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input
       // The work branch must exist before an agent is told to use it.
       this.branches.ensureTaskBranch(ticketId);
       const adapter = this.getAdapter(ticket.project);
+      const profile = resolveAgentProfile(this.db, ticketId);
       const engineTask = await adapter.createTask({
         title: ticket.title,
         bodyMd: ticket.body_md || '',
+        ...engineProfile(profile),
       });
       const stored = this.db
         .prepare(`
           UPDATE bridge_tasks
-          SET engine_task_id = ?, status = ?, engine_status_raw = ?, engine_url = ?, last_error = NULL, updated_at = ?
+          SET engine_task_id = ?, status = ?, engine_status_raw = ?, engine_url = ?, last_error = NULL,
+              model = ?, effort = ?, updated_at = ?
           WHERE id = ? AND status = 'pending'
         `)
-        .run(engineTask.id, engineTask.status, engineTask.rawStatus, engineTask.url || null, new Date().toISOString(), ticketId);
+        .run(engineTask.id, engineTask.status, engineTask.rawStatus, engineTask.url || null, profile.model, profile.effort, new Date().toISOString(), ticketId);
       if (stored.changes === 0) {
         await cancelOrphan(this.db, adapter, ticketId, engineTask.id);
       }

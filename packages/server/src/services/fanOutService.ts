@@ -12,6 +12,7 @@ import { BranchService, branchInstructions, taskBranchName } from './branchServi
 import { isRateLimit } from '../adapters/rateLimit.js';
 import { pauseForRateLimit } from './rateLimitPause.js';
 import { prepareRetry } from './taskRetry.js';
+import { resolveAgentProfile, engineProfile } from './agentProfile.js';
 
 export type AdapterFactory = (projectName: string) => EngineAdapter;
 
@@ -201,14 +202,16 @@ ${wrapUntrusted('requirement', requirementMd)}
         // The work branch must exist before an agent is told to use it.
         this.branches.ensureTaskBranch(taskId);
         const adapter = this.getAdapter(task.project);
-        const engineTask = await adapter.createGoal({ title: task.title, bodyMd: task.body_md || '' });
+        const profile = resolveAgentProfile(this.db, taskId);
+        const engineTask = await adapter.createGoal({ title: task.title, bodyMd: task.body_md || '', ...engineProfile(profile) });
         const stored = this.db
           .prepare(`
             UPDATE bridge_tasks
-            SET engine_task_id = ?, status = 'queued', engine_status_raw = ?, engine_url = ?, last_error = NULL, updated_at = ?
+            SET engine_task_id = ?, status = 'queued', engine_status_raw = ?, engine_url = ?, last_error = NULL,
+                model = ?, effort = ?, updated_at = ?
             WHERE id = ? AND status = 'pending'
           `)
-          .run(engineTask.id, engineTask.rawStatus || null, engineTask.url || null, new Date().toISOString(), taskId);
+          .run(engineTask.id, engineTask.rawStatus || null, engineTask.url || null, profile.model, profile.effort, new Date().toISOString(), taskId);
         if (stored.changes === 0) {
           await cancelOrphan(this.db, adapter, taskId, engineTask.id);
         }

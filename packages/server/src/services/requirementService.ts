@@ -6,6 +6,8 @@ import {
   RequirementStatus,
   NormStatus,
   AttachmentItem,
+  AgentProfileInput,
+  AgentProfileInputSchema,
 } from '@sp-kickstack/shared';
 import { HttpError, badRequest, conflict } from '../lib/httpError.js';
 import fs from 'node:fs';
@@ -157,6 +159,8 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
       attachments: this.parseAttachments(row.attachments),
       merge_policy: row.merge_policy || null,
       sprint_id: row.sprint_id || null,
+      agent_model: row.agent_model ?? null,
+      agent_effort: row.agent_effort ?? null,
     };
   }
 
@@ -306,6 +310,19 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
 
     this.db.prepare("UPDATE requirements SET merge_policy = ?, updated_at = datetime('now') WHERE id = ?").run(mergePolicy || null, id);
     return this.getRequirement(id);
+  }
+
+  /** Agent model / effort for this requirement's runs: undefined keeps a value, null clears it. */
+  public updateAgentProfile(id: string, input: AgentProfileInput): Requirement {
+    const parsed = AgentProfileInputSchema.parse(input ?? {});
+    const req = this.getRequirement(id);
+    if (!req) throw new HttpError(404, `Requirement ${id} not found`);
+    const model = parsed.model === undefined ? req.agent_model ?? null : parsed.model;
+    const effort = parsed.effort === undefined ? req.agent_effort ?? null : parsed.effort;
+    this.db
+      .prepare("UPDATE requirements SET agent_model = ?, agent_effort = ?, updated_at = datetime('now') WHERE id = ?")
+      .run(model, effort, id);
+    return this.getRequirement(id)!;
   }
 
   public updateStatus(id: string, status: RequirementStatus) {

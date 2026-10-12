@@ -1,7 +1,7 @@
 import { EngineTask, NormStatus } from '@sp-kickstack/shared';
 
 export class FakeEngineServer {
-  private tasks = new Map<string, EngineTask & { notes: string[] }>();
+  private tasks = new Map<string, EngineTask & { notes: string[]; model?: string; effort?: string }>();
   private nextId = 1;
   public url = 'http://127.0.0.1:3457';
 
@@ -45,13 +45,15 @@ export class FakeEngineServer {
 
     if (method === 'POST' && pathname === '/api/goals') {
       const id = String(this.nextId++);
-      const task: EngineTask & { notes: string[] } = {
+      const task: EngineTask & { notes: string[]; model?: string; effort?: string } = {
         id,
         title: body.title,
         status: 'queued',
         rawStatus: 'ready',
         url: `${this.url}/tasks/${id}`,
         notes: body.bodyMd ? [body.bodyMd] : [],
+        model: body.model,
+        effort: body.effort,
       };
       this.tasks.set(id, task);
       return new Response(JSON.stringify(task), {
@@ -62,13 +64,15 @@ export class FakeEngineServer {
 
     if (method === 'POST' && pathname === '/api/tasks') {
       const id = String(this.nextId++);
-      const task: EngineTask & { notes: string[] } = {
+      const task: EngineTask & { notes: string[]; model?: string; effort?: string } = {
         id,
         title: body.title,
         status: 'queued',
         rawStatus: 'ready',
         url: `${this.url}/tasks/${id}`,
         notes: body.bodyMd ? [body.bodyMd] : [],
+        model: body.model,
+        effort: body.effort,
       };
       this.tasks.set(id, task);
       return new Response(JSON.stringify(task), {

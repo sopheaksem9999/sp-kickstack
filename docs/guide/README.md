@@ -86,7 +86,7 @@ explained in [Requirements and fan-out](03-requirements-and-fan-out.md#task-stat
 |---|---|
 | [01 Getting started](01-getting-started.md) | Install, start, demo, first project, first requirement, where data lives |
 | [02 Projects and engines](02-projects-and-engines.md) | Register projects, Manual and Stoneforge engines, engine health, `projects.yaml` |
-| [03 Requirements and fan-out](03-requirements-and-fan-out.md) | Write a requirement, Start Fan-Out, task statuses, moves you may make, Cancel, Mark Done |
+| [03 Requirements and fan-out](03-requirements-and-fan-out.md) | Write a requirement, Start Fan-Out, task statuses, the Agent Queue, moves you may make, Cancel, Mark Done |
 | [04 Agents, tickets and questions](04-agents-tickets-and-questions.md) | For whoever configures agents: `xticket create`, `xticket ask`, outbox, env vars |
 | [05 Answering questions and notes](05-answering-questions-and-notes.md) | Answer agent questions, Let the agent decide, send a Note |
 | [06 Review, QA and merge](06-review-qa-and-merge.md) | Review comments, Request changes, merge policies, Merge & move to QA, QA to Done |
@@ -95,7 +95,8 @@ explained in [Requirements and fan-out](03-requirements-and-fan-out.md#task-stat
 | [09 Settings and environment](09-settings-and-environment.md) | Every Settings tab and every environment variable |
 | [10 Troubleshooting](10-troubleshooting.md) | Common error messages and what to do |
 
-The sidebar also has **AI Architect Chat** (see [03](03-requirements-and-fan-out.md)),
+The sidebar also has **Agent Queue** (every agent task of the workspace in one list, see
+[03](03-requirements-and-fan-out.md#agent-queue)), **AI Architect Chat** (see [03](03-requirements-and-fan-out.md)),
 **Attachments Hub** (shared files whose names and notes are added to every agent prompt in the
 workspace) and **Telemetry & Sprints** (sprint and timing charts).
 

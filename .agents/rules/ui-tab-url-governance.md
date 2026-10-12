@@ -62,18 +62,20 @@ All screens with tabs in SP-Kickstack must implement this pattern:
 
 | Screen | Route | Tab Param | Supported Values | Default |
 | :--- | :--- | :--- | :--- | :--- |
-| **Settings** | `/settings` | `?tab=` | `ai`, `git`, `ide`, `appearance`, `safety` | `ai` |
+| **Settings** | `/settings` | `?tab=` | `ai`, `git`, `ide`, `appearance`, `safety`, `notifications` | `ai` |
 | **Requirements List** | `/requirements` | `?tab=` | `sprint`, `backlog`, `all` | `sprint` |
 | **Requirement Detail** | `/requirements/:id` | `?tab=` | `board`, `dag` | `board` |
 | **AI Architect Chat** | `/chat` | `?tab=` (or `?session=`) | `<sessionId>` (chat session id) | First / active session |
 | **Repositories** | `/projects` | `?tab=` | `review`, `terminal` | `review` |
 | **Git Review** | `/projects/:name/review` | `?tab=` | `changes`, `tree`, `commits` | `changes` |
 | **Attachments Hub** | `/attachments` | `?tab=` | `ticket`, `shared` | `ticket` |
+| **Agent Queue** | `/queue` | `?tab=` | `all`, `queued`, `running`, `failed`, `done` | `all` |
 
 ---
 
 ## 3. Implementation Best Practices
 
 1. **Use Radix UI / Accessible Buttons**: Tab triggers should use Radix UI or accessible buttons styled with Tailwind CSS, supporting keyboard navigation (`Enter`, `Space`, arrow keys).
+   With Radix Tabs, set `activationMode="manual"` when the tab is written to the URL. Automatic activation calls `onValueChange` on mouse down and again on focus, so one click pushes two history entries and the Back button seems to do nothing. A page that derives its tab from `searchParams` (no copy in React state) and uses manual activation has one history entry per tab change (see `QueuePage`).
 2. **Never Break Breadcrumbs**: Navigation breadcrumbs and sidebar active indicators must remain highlighted regardless of active `?tab=` query parameter.
 3. **Graceful Degradation**: If an unknown tab ID is supplied in the URL (e.g. `?tab=invalid`), silently fall back to the default tab without flickering or breaking queries.

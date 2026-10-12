@@ -201,6 +201,72 @@ is `Pinned for this task by Retry or Request changes`. To remove the pin, see
 Placeholder cards titled `Waiting on <project> #<id>` stand for a blocking ticket another task
 waits for.
 
+## Agent Queue
+
+**Agent Queue** in the sidebar (badge **Live**) lists the agents' tasks of the active workspace in
+one place, across all its requirements and projects. Use it to see what is running, what is stuck
+and what needs you, without opening each requirement.
+
+- It lists **goals** and **tickets** only. Questions for a person (see
+  [05](05-answering-questions-and-notes.md)) and the `Waiting on <project> #<id>` placeholder cards
+  are not listed.
+- It shows the active workspace only. Choose another workspace in the sidebar to see its tasks.
+- The most recently updated task is first.
+- A card shows the requirement id (a button), the priority when it is `urgent` or `high`, the
+  project, `goal` or `ticket`, the branch, the status badge, the task title, the engine ID and
+  `Updated 5 minutes ago`. From the second start it also shows `Attempt <n>`. A RATE LIMITED task
+  shows when it resumes, and a stopped task shows its last error.
+
+### Tabs
+
+| Tab | Shows |
+|---|---|
+| **All Tasks** | Every task, including those no other tab shows: WAITING / HELD, IN REVIEW, QA / TESTING and CLOSED. |
+| **Queued** | QUEUED and PENDING. |
+| **In Progress** | IN PROGRESS. |
+| **Failed / Needs Human** | FAILED, NEEDS HUMAN and RATE LIMITED. |
+| **Completed** | COMPLETE. |
+
+The number on a tab is how many tasks it shows with the current search and repository filter.
+The tab is kept in the address: `?tab=queued`, `?tab=running`, `?tab=failed` or `?tab=done`
+(**All Tasks** needs none). The browser's Back and Forward buttons, a reload and a copied link all
+bring you back to the same tab. Use the arrow keys to move between the tabs and Enter or Space to
+open one.
+
+### Filters
+
+- **Search tasks**: type part of a task title, a requirement id or title, a project, a branch or an
+  engine ID. Capital letters do not matter. The **x** in the box clears it.
+- **All repositories**: opens a list of the workspace's projects. Choose one to see only its tasks
+  (arrow keys and Enter work, Esc closes the list), or choose **All repositories** to see every
+  project again.
+
+The filters work together with the tab. When nothing matches, the page says
+`No tasks match this view`. When the workspace has no goals or tickets yet it says
+`No agent tasks in this workspace yet`; they appear after **Start Fan-Out** on a requirement.
+
+### What you can do on a card
+
+- **Logs**: opens the task's terminal output and events, the same panel as **CLI Logs** on the
+  requirement page.
+- **Retry**: shown for a FAILED, NEEDS HUMAN or RATE LIMITED goal or ticket whose requirement is
+  not Done or Cancelled. It does the same as **Retry** on the requirement page
+  (see [08](08-rate-limits-and-retry.md)): the task is sent to its engine again on its branch.
+  There is no arrow here; to retry with another model or effort, use the requirement page.
+- **Mark Done**: shown until the task is COMPLETE or CLOSED. See
+  [Mark a task done](#mark-a-task-done).
+- The requirement id (for example `REQ-007`): opens that requirement's side panel.
+
+A toast tells you the result. When an action fails, the toast gives the reason and asks you to
+refresh the queue to see the task's current state.
+
+### Keeping it up to date
+
+The queue refreshes by itself when the bridge reports a change, and at least every 10 seconds.
+**Refresh** reloads it at once. If the bridge cannot be reached, the page says
+`The queue could not be loaded`, or `Could not refresh the queue` above the last result it has,
+and tries again on its own; start the bridge (`npm run dev`) and press **Refresh**.
+
 ## Change the requirement status by hand
 
 Before fan-out, you can move a requirement freely (board drag, or the **State** select on its

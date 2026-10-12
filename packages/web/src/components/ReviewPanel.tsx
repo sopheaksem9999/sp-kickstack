@@ -6,6 +6,9 @@ import type { BridgeTask, Requirement, ReviewComment } from '@sp-kickstack/share
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog.js';
 import { addReviewComment, deleteReviewComment, fetchReviewComments, requestChanges, updateReviewComment } from '../lib/humanLoopApi.js';
 import { commentLocation, requestChangesOutcome, requestChangesState, reviewableTasks } from '../lib/reviewActions.js';
+import { profilePatch } from '../lib/agentProfile.js';
+import type { ProfileValue } from '../lib/agentProfile.js';
+import { AgentProfilePicker } from './AgentProfilePicker.js';
 
 const STATE_STYLE: Record<ReviewComment['state'], string> = {
   open: 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300',
@@ -23,6 +26,7 @@ export function ReviewPanel({ req, tasks }: { req: Requirement; tasks: BridgeTas
   const [line, setLine] = useState('');
   const [body, setBody] = useState('');
   const [confirming, setConfirming] = useState(false);
+  const [profile, setProfile] = useState<ProfileValue>({ model: null, effort: null });
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['review-comments', req.id] });
@@ -53,11 +57,12 @@ export function ReviewPanel({ req, tasks }: { req: Requirement; tasks: BridgeTas
   });
   const remove = useMutation({ mutationFn: (id: number) => deleteReviewComment(id), onSuccess: refresh, onError: fail });
   const send = useMutation({
-    mutationFn: () => requestChanges(req.id),
+    mutationFn: () => requestChanges(req.id, undefined, profilePatch(profile)),
     onSuccess: (result) => {
       const outcome = requestChangesOutcome(result);
       toast[outcome.kind](outcome.message);
       setConfirming(false);
+      setProfile({ model: null, effort: null });
       refresh();
     },
     onError: (err: Error) => {
@@ -214,6 +219,15 @@ export function ReviewPanel({ req, tasks }: { req: Requirement; tasks: BridgeTas
               the same branch{req.status === 'qa' ? '; the merge is redone afterwards' : ''}, and {req.id} moves back to In Progress.
             </DialogDescription>
           </DialogHeader>
+          <div className="space-y-1.5">
+            <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">Model for this round (optional)</div>
+            <AgentProfilePicker
+              value={profile}
+              onChange={setProfile}
+              defaultLabel="Keep each task's setting"
+              className="w-full justify-between max-w-none rounded-lg border border-slate-200 dark:border-[#2e303d] bg-white dark:bg-[#1a1b23] px-3 py-2"
+            />
+          </div>
           <DialogFooter>
             <button
               type="button"

@@ -78,3 +78,45 @@ describe('notification api', () => {
     expect(JSON.parse(String(calls[4].init?.body))).toEqual({ channel_id: 'team' });
   });
 });
+
+describe('agent profile api', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('saves the requirement profile with PUT', async () => {
+    const calls = respond(200, { id: 'REQ-001' });
+    await api.updateRequirementAgentProfile('REQ-001', { model: 'opus' });
+    expect(calls[0].url).toBe('/api/requirements/REQ-001/agent-profile');
+    expect(calls[0].init?.method).toBe('PUT');
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ model: 'opus' });
+  });
+
+  it('sends null to clear a requirement setting', async () => {
+    const calls = respond(200, { id: 'REQ-001' });
+    await api.updateRequirementAgentProfile('REQ-001', { model: null, effort: null });
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ model: null, effort: null });
+  });
+
+  it('retries a task with a pinned profile', async () => {
+    const calls = respond(200, { id: 3, status: 'queued' });
+    const task = await api.retryTaskWith(3, { effort: 'high' });
+    expect(calls[0].url).toBe('/api/tasks/3/retry');
+    expect(calls[0].init?.method).toBe('POST');
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ effort: 'high' });
+    expect(task).toMatchObject({ id: 3 });
+  });
+
+  it('surfaces the server error when a retry is refused', async () => {
+    respond(400, { error: 'Task #3 cannot be retried' });
+    await expect(api.retryTaskWith(3, {})).rejects.toThrow('Task #3 cannot be retried');
+  });
+
+  it('passes the profile to request-changes, and keeps task_ids', async () => {
+    const calls = respond(200, { started: [] });
+    await api.requestChanges('REQ-001', undefined, { model: 'opus' });
+    await api.requestChanges('REQ-001', [3], { effort: 'max' });
+    await api.requestChanges('REQ-001');
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ model: 'opus' });
+    expect(JSON.parse(String(calls[1].init?.body))).toEqual({ task_ids: [3], effort: 'max' });
+    expect(JSON.parse(String(calls[2].init?.body))).toEqual({});
+  });
+});

@@ -26,6 +26,9 @@ import { DependencyGraphCanvas } from '../components/DependencyGraphCanvas.js';
 import { AgentQuestionsPanel } from '../components/AgentQuestionsPanel.js';
 import { ReviewPanel } from '../components/ReviewPanel.js';
 import { TaskNoteDialog } from '../components/TaskNoteDialog.js';
+import { RequirementAgentControl } from '../components/RequirementAgentControl.js';
+import { RetryWithProfile } from '../components/RetryWithProfile.js';
+import { describeProfile } from '../lib/agentProfile.js';
 import { BridgeTask, RequirementStatus, BranchMergePolicy } from '@sp-kickstack/shared';
 import { toast } from 'sonner';
 import {
@@ -339,6 +342,9 @@ export function RequirementDetailPage() {
                   </option>
                 </select>
               </div>
+
+              {/* Agent model & effort for this requirement's runs */}
+              <RequirementAgentControl req={req} />
 
               <span className="text-xs text-slate-400 font-mono">rev.{req.revision}</span>
             </div>
@@ -675,6 +681,22 @@ export function RequirementDetailPage() {
                         )}
                       </div>
 
+                      {(task.model || task.effort || task.model_override || task.effort_override) && (
+                        <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                          {(task.model || task.effort) && (
+                            <span title="Model and effort this run uses">{describeProfile({ model: task.model, effort: task.effort })}</span>
+                          )}
+                          {(task.model_override || task.effort_override) && (
+                            <span
+                              title="Pinned for this task by Retry or Request changes"
+                              className="px-1.5 py-px rounded bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 font-sans font-bold"
+                            >
+                              pinned
+                            </span>
+                          )}
+                        </div>
+                      )}
+
                       {pausedLabel(task) && (
                         <div className="p-2 rounded bg-yellow-50 dark:bg-yellow-950/40 text-yellow-700 dark:text-yellow-300 text-[10px] font-semibold">
                           {pausedLabel(task)}
@@ -713,14 +735,17 @@ export function RequirementDetailPage() {
                         </div>
 
                         {canRetry(task, req.status) && (
-                          <button
-                            onClick={() => retryMutation.mutate(task.id)}
-                            disabled={retryMutation.isPending}
-                            className="flex items-center gap-1 px-2.5 py-1 rounded bg-amber-100 dark:bg-amber-950/40 hover:bg-amber-200 dark:hover:bg-amber-900/50 text-[10px] font-bold text-amber-700 dark:text-amber-300 transition-colors"
-                            title="Send this task to its engine again on the same branch (the old engine task is cancelled)"
-                          >
-                            <span>Retry</span>
-                          </button>
+                          <div className="flex items-center">
+                            <button
+                              onClick={() => retryMutation.mutate(task.id)}
+                              disabled={retryMutation.isPending}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-l bg-amber-100 dark:bg-amber-950/40 hover:bg-amber-200 dark:hover:bg-amber-900/50 text-[10px] font-bold text-amber-700 dark:text-amber-300 transition-colors"
+                              title="Send this task to its engine again on the same branch (the old engine task is cancelled)"
+                            >
+                              <span>Retry</span>
+                            </button>
+                            <RetryWithProfile task={task} />
+                          </div>
                         )}
 
                         {canSendNote(task) && <TaskNoteDialog task={task} />}

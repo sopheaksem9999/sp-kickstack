@@ -1,12 +1,15 @@
 import type {
+  AgentProfileInput,
   AgentQuestion,
   AnswerQuestionInput,
   AnswerQuestionResult,
   BridgeEvent,
+  BridgeTask,
   CreateReviewCommentInput,
   NotificationSettings,
   NotificationTestResult,
   QuestionStatus,
+  Requirement,
   RequestChangesResult,
   ReviewComment,
   UpdateNotificationSettingsInput,
@@ -58,8 +61,22 @@ export function deleteReviewComment(id: number): Promise<{ ok: true }> {
   return request(`${BASE}/comments/${id}`, { method: 'DELETE' });
 }
 
-export function requestChanges(reqId: string, taskIds?: number[]): Promise<RequestChangesResult> {
-  return request(`${BASE}/requirements/${encodeURIComponent(reqId)}/request-changes`, send('POST', taskIds ? { task_ids: taskIds } : {}));
+/** Request changes; `profile` pins a model / effort on the re-run tasks (omitted parts keep each task's setting). */
+export function requestChanges(reqId: string, taskIds?: number[], profile?: AgentProfileInput): Promise<RequestChangesResult> {
+  return request(
+    `${BASE}/requirements/${encodeURIComponent(reqId)}/request-changes`,
+    send('POST', { ...(taskIds ? { task_ids: taskIds } : {}), ...(profile ?? {}) })
+  );
+}
+
+/** Model / effort for a requirement's runs: undefined keeps a value, null clears it (inherit). */
+export function updateRequirementAgentProfile(reqId: string, input: AgentProfileInput): Promise<Requirement> {
+  return request(`${BASE}/requirements/${encodeURIComponent(reqId)}/agent-profile`, send('PUT', input));
+}
+
+/** Retry a stopped task; `input` pins a model / effort on it (undefined keeps the pin, null clears it). */
+export function retryTaskWith(taskId: number, input: AgentProfileInput): Promise<BridgeTask> {
+  return request(`${BASE}/tasks/${taskId}/retry`, send('POST', input));
 }
 
 export function sendTaskNote(taskId: number, body: string): Promise<{ ok: true }> {

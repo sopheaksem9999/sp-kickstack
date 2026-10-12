@@ -3,6 +3,8 @@ import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { createWorkspace, updateWorkspace } from '../lib/api.js';
 import { toast } from 'sonner';
 import { X, Plus, BookOpen, Save } from 'lucide-react';
+import { AgentProfilePicker } from './AgentProfilePicker.js';
+import type { ProfileValue } from '../lib/agentProfile.js';
 
 interface CreateWorkspaceModalProps {
   isOpen: boolean;
@@ -191,12 +193,17 @@ export function WorkspaceRulesModal({ isOpen, onClose }: WorkspaceRulesModalProp
   const { activeWorkspace, upsertWorkspace } = useWorkspace();
   const [rules, setRules] = useState(activeWorkspace?.rules || '');
   const [context, setContext] = useState(activeWorkspace?.context || '');
+  const [agent, setAgent] = useState<ProfileValue>({
+    model: activeWorkspace?.agent_model ?? null,
+    effort: activeWorkspace?.agent_effort ?? null,
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (activeWorkspace) {
       setRules(activeWorkspace.rules || '');
       setContext(activeWorkspace.context || '');
+      setAgent({ model: activeWorkspace.agent_model ?? null, effort: activeWorkspace.agent_effort ?? null });
     }
   }, [activeWorkspace]);
 
@@ -209,6 +216,8 @@ export function WorkspaceRulesModal({ isOpen, onClose }: WorkspaceRulesModalProp
       const updated = await updateWorkspace(activeWorkspace.id, {
         rules,
         context,
+        agent_model: agent.model,
+        agent_effort: agent.effort,
       });
       toast.success('Workspace shared rules & context updated');
       upsertWorkspace(updated, false);
@@ -273,6 +282,21 @@ export function WorkspaceRulesModal({ isOpen, onClose }: WorkspaceRulesModalProp
               value={context}
               onChange={(e) => setContext(e.target.value)}
               className="w-full px-3 py-2 bg-slate-50 dark:bg-[#14151b] border border-slate-300 dark:border-[#2e303d] rounded-lg text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                Default agent model & effort
+              </span>
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">A requirement or a task can choose its own</span>
+            </div>
+            <AgentProfilePicker
+              value={agent}
+              onChange={setAgent}
+              defaultLabel="Engine default"
+              className="w-full justify-between max-w-none px-3 py-2 bg-slate-50 dark:bg-[#14151b] border border-slate-300 dark:border-[#2e303d] rounded-lg"
             />
           </div>
 

@@ -314,7 +314,7 @@ What feature, solution, or refactoring would you like to design today? Tell me w
 Analyze the ENTIRE conversation history below between Developer and Architect.
 Synthesize all user requests, architectural designs, contracts, acceptance criteria, constraints, and edge cases discussed into a comprehensive, production-ready Requirement Ticket Specification.
 
-${this.compileWorkspaceContext()}
+${this.compileWorkspaceContext(session.workspace_id)}
 
 Guidelines:
 1. Title: Concise, clear architectural feature title.
@@ -454,10 +454,11 @@ You MUST return your specification strictly in a \`\`\`json:spec block:
         spec.acceptance_criteria && spec.acceptance_criteria.length > 0
           ? spec.acceptance_criteria
           : ['Implementation complete and verified with tests'],
-      affected_projects:
-        spec.affected_projects && spec.affected_projects.length > 0
-          ? spec.affected_projects
-          : this.projectService.listProjects(session.workspace_id).map((p) => p.name).slice(0, 2),
+      // Only this workspace's repositories, whatever the AI suggested.
+      affected_projects: (() => {
+        const chosen = (spec.affected_projects || []).filter((p) => availableProjects.includes(p));
+        return chosen.length > 0 ? chosen : availableProjects.slice(0, 2);
+      })(),
       api_hints: spec.api_hints,
       notes: discussionNotes,
       attachments: sessionAttachments,
@@ -495,8 +496,9 @@ You can click **Open Info** on ticket #${createdRequirement.id} in the right sid
     };
   }
 
-  public compileWorkspaceContext(): string {
-    const projects = this.projectService.listProjects();
+  /** Context for the AI architect: the projects of one workspace only (all workspaces when none is given). */
+  public compileWorkspaceContext(workspaceId?: string): string {
+    const projects = this.projectService.listProjects(workspaceId);
     const projLines = projects.map(
       (p) => `- **${p.name}** (kind: \`${p.kind}\`, repo: \`${p.repo_path}\`, base_branch: \`${p.base_branch || 'develop'}\`, engine: \`${p.engine_type}\`)`
     );
@@ -761,7 +763,7 @@ ${reqLines.length > 0 ? `\n### Existing Workspace Requirements / Tickets (refere
       }
     }
 
-    const workspaceContext = this.compileWorkspaceContext();
+    const workspaceContext = this.compileWorkspaceContext(req.workspace_id);
     const systemPrompt = `You are the Principal Software Architect for this multi-project workspace.
 You collaborate with the developer to design, clarify, and formulate feature requirements.
 You know the local workspace stack, repositories, and branch policies.

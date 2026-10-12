@@ -7,7 +7,7 @@ import {
   NormStatus,
   AttachmentItem,
 } from '@sp-kickstack/shared';
-import { HttpError, conflict } from '../lib/httpError.js';
+import { HttpError, badRequest, conflict } from '../lib/httpError.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -73,6 +73,7 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
   }
 
   public createRequirement(input: CreateRequirementInput): Requirement {
+    const scoped = { ...input, affected_projects: this.ownWorkspaceProjects(input.workspace_id || 'default', input.affected_projects) };
     const now = new Date().toISOString();
     const status: RequirementStatus = input.status || 'draft';
     const revision = 1;
@@ -85,7 +86,7 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
       const seq = this.getNextSeq();
       const id = this.formatId(seq);
       const filePath = path.join(reqDir, `${id}.md`);
-      const bodyMd = this.renderMarkdown(id, input, status, revision);
+      const bodyMd = this.renderMarkdown(id, scoped, status, revision);
 
       this.db.prepare(`
         INSERT INTO requirements (id, workspace_id, session_id, seq, title, status, priority, body_md, file_path, revision, attachments, merge_policy, sprint_id, created_at, updated_at)
@@ -111,7 +112,7 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
       const insertProj = this.db.prepare(`
         INSERT INTO requirement_projects (req_id, project) VALUES (?, ?)
       `);
-      for (const proj of input.affected_projects) {
+      for (const proj of scoped.affected_projects) {
         insertProj.run(id, proj);
       }
 
@@ -265,11 +266,12 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
   public updateRequirementProjects(id: string, projects: string[]): Requirement | null {
     const req = this.getRequirement(id);
     if (!req) throw new Error(`Requirement ${id} not found`);
+    const scoped = this.ownWorkspaceProjects(req.workspace_id || 'default', projects);
 
     const updateTx = this.db.transaction(() => {
       this.db.prepare('DELETE FROM requirement_projects WHERE req_id = ?').run(id);
       const insertProj = this.db.prepare('INSERT INTO requirement_projects (req_id, project) VALUES (?, ?)');
-      for (const proj of projects) {
+      for (const proj of scoped) {
         insertProj.run(id, proj);
       }
       this.db.prepare("UPDATE requirements SET updated_at = datetime('now') WHERE id = ?").run(id);
@@ -277,6 +279,25 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
     updateTx();
 
     return this.getRequirement(id);
+  }
+
+  /**
+   * A requirement targets repositories of its own workspace only: names registered to another
+   * workspace are dropped (AI suggestions can include them). Refuses when every chosen
+   * repository belongs to another workspace.
+   */
+  private ownWorkspaceProjects(workspaceId: string, projects: string[]): string[] {
+    const rows = this.db.prepare('SELECT name, workspace_id FROM projects').all() as Array<{ name: string; workspace_id: string | null }>;
+    const workspaceOf = new Map(rows.map((r) => [r.name, r.workspace_id || 'default']));
+    const kept = projects.filter((p) => !workspaceOf.has(p) || workspaceOf.get(p) === workspaceId);
+    if (projects.length > 0 && kept.length === 0) {
+      const own = rows.filter((r) => (r.workspace_id || 'default') === workspaceId).map((r) => r.name).sort();
+      throw badRequest(
+        `${projects.join(', ')} ${projects.length === 1 ? 'belongs' : 'belong'} to another workspace. ` +
+          (own.length > 0 ? `Pick from this workspace's repositories: ${own.join(', ')}.` : 'Register a project in this workspace first.')
+      );
+    }
+    return kept;
   }
 
   public updateRequirementMergePolicy(id: string, mergePolicy: any): Requirement | null {

@@ -52052,20 +52052,40 @@ function createApp(deps) {
     }
   });
   app2.get("/api/tasks", (req, res) => {
-    const { req: reqId, project } = req.query;
-    let query = "SELECT * FROM bridge_tasks WHERE 1=1";
+    const one = (value) => typeof value === "string" && value !== "" ? value : void 0;
+    const reqId = one(req.query.req);
+    const project = one(req.query.project);
+    const status = one(req.query.status);
+    const workspace = one(req.query.workspace);
+    const roles = (one(req.query.role) ?? "").split(",").map((r) => r.trim()).filter(Boolean);
+    let query = `
+      SELECT t.*, r.title AS req_title, r.priority AS req_priority, r.status AS req_status
+      FROM bridge_tasks t
+      LEFT JOIN requirements r ON r.id = t.req_id
+      WHERE 1=1`;
     const params = [];
     if (reqId) {
-      query += " AND req_id = ?";
+      query += " AND t.req_id = ?";
       params.push(reqId);
     }
     if (project) {
-      query += " AND project = ?";
+      query += " AND t.project = ?";
       params.push(project);
     }
-    query += " ORDER BY id ASC";
-    const tasks = deps.db.prepare(query).all(...params);
-    res.json(tasks);
+    if (status) {
+      query += " AND t.status = ?";
+      params.push(status);
+    }
+    if (workspace) {
+      query += " AND r.workspace_id = ?";
+      params.push(workspace);
+    }
+    if (roles.length > 0) {
+      query += ` AND t.role IN (${roles.map(() => "?").join(", ")})`;
+      params.push(...roles);
+    }
+    query += " ORDER BY t.id ASC";
+    res.json(deps.db.prepare(query).all(...params));
   });
   app2.post("/api/tasks/:id/mark-done", async (req, res, next) => {
     try {

@@ -51,7 +51,7 @@ export const ProjectGitReviewView: React.FC<ProjectGitReviewViewProps> = ({
   projectName,
   repoPath,
   baseBranch = 'develop',
-  targetBranch = 'main',
+  targetBranch = 'HEAD',
   requirementTitle,
   onMergeToMain,
   isMerging = false,
@@ -60,11 +60,17 @@ export const ProjectGitReviewView: React.FC<ProjectGitReviewViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<ReviewViewTab>('changes');
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  const [selectedTarget, setSelectedTarget] = useState<string>(targetBranch || 'HEAD');
   const [diffMode, setDiffMode] = useState<DiffMode>('split');
   const [copied, setCopied] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['', 'src']));
 
   const mergeText = mergeCopy(useDemoMode());
+
+  // Sync selectedTarget if targetBranch prop or projectName changes
+  useEffect(() => {
+    setSelectedTarget(targetBranch || 'HEAD');
+  }, [targetBranch, projectName]);
 
   // 1. Fetch Review Summary (changed files & commits)
   const {
@@ -72,8 +78,8 @@ export const ProjectGitReviewView: React.FC<ProjectGitReviewViewProps> = ({
     isLoading: isSummaryLoading,
     refetch: refetchSummary,
   } = useQuery({
-    queryKey: ['git-review-summary', projectName, targetBranch],
-    queryFn: () => (projectName ? fetchGitReviewSummary(projectName, targetBranch) : null),
+    queryKey: ['git-review-summary', projectName, selectedTarget],
+    queryFn: () => (projectName ? fetchGitReviewSummary(projectName, selectedTarget) : null),
     enabled: Boolean(projectName),
     refetchInterval: 6000,
   });
@@ -84,15 +90,17 @@ export const ProjectGitReviewView: React.FC<ProjectGitReviewViewProps> = ({
       if (!selectedFilePath || !summary.changedFiles.some((f) => f.path === selectedFilePath)) {
         setSelectedFilePath(summary.changedFiles[0].path);
       }
+    } else {
+      setSelectedFilePath(null);
     }
   }, [summary, projectName]);
 
   // 2. Fetch File Diff
   const { data: fileDiff, isLoading: isDiffLoading } = useQuery({
-    queryKey: ['git-file-diff', projectName, selectedFilePath, targetBranch],
+    queryKey: ['git-file-diff', projectName, selectedFilePath, selectedTarget],
     queryFn: () =>
       projectName && selectedFilePath
-        ? fetchFileDiff(projectName, selectedFilePath, targetBranch)
+        ? fetchFileDiff(projectName, selectedFilePath, selectedTarget)
         : null,
     enabled: Boolean(projectName && selectedFilePath && activeTab === 'changes'),
   });
@@ -212,12 +220,49 @@ export const ProjectGitReviewView: React.FC<ProjectGitReviewViewProps> = ({
       {/* Top Context Subheader */}
       <div className="flex flex-wrap items-center justify-between px-4 py-2 bg-[#12141c] border-b border-slate-800/80 gap-3 shrink-0 select-none">
         <div className="flex items-center gap-2.5 flex-wrap min-w-0">
-          <span className="inline-flex items-center gap-1 text-xs font-mono font-bold text-purple-300 bg-purple-950/60 px-2.5 py-1 rounded-lg border border-purple-800/50">
-            <GitBranch className="w-3.5 h-3.5 text-purple-400" />
-            <span>{summary?.currentBranch || baseBranch}</span>
-            <span className="text-slate-500">➔</span>
-            <span>{summary?.targetBranch || targetBranch}</span>
-          </span>
+          {/* Branch & Comparator Target Selector */}
+          <div className="inline-flex items-center gap-1.5 text-xs bg-slate-900/90 px-2 py-1 rounded-lg border border-slate-800">
+            <span className="inline-flex items-center gap-1 font-mono font-bold text-purple-300">
+              <GitBranch className="w-3.5 h-3.5 text-purple-400" />
+              <span>{summary?.currentBranch || baseBranch}</span>
+            </span>
+            <span className="text-slate-500 font-bold">➔</span>
+            <select
+              value={selectedTarget}
+              onChange={(e) => setSelectedTarget(e.target.value)}
+              className="bg-slate-800/90 text-slate-200 text-xs rounded px-2 py-0.5 border border-slate-700/80 focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer font-mono font-semibold"
+              title="Select comparison target"
+            >
+              <optgroup label="Local Working Tree (IDE View)">
+                <option value="HEAD">HEAD (Working Tree / git status)</option>
+              </optgroup>
+              <optgroup label="Branch Merge / Pull Request">
+                <option value="main">main (PR Merge Diff)</option>
+                {summary?.availableBranches
+                  ?.filter((b) => b !== 'main' && b !== (summary?.currentBranch || baseBranch))
+                  .map((b) => (
+                    <option key={b} value={b}>{b} (Branch Diff)</option>
+                  ))}
+              </optgroup>
+            </select>
+          </div>
+
+          {/* Mode Pill */}
+          {selectedTarget === 'HEAD' ? (
+            <span
+              className="text-[11px] font-mono font-semibold text-cyan-300 bg-cyan-950/50 border border-cyan-800/50 px-2 py-0.5 rounded-md hidden md:inline-flex items-center gap-1"
+              title="Showing uncommitted changes in your working tree, matching your IDE Source Control"
+            >
+              <span>⚡ IDE Working Tree Mode</span>
+            </span>
+          ) : (
+            <span
+              className="text-[11px] font-mono font-semibold text-amber-300 bg-amber-950/50 border border-amber-800/50 px-2 py-0.5 rounded-md hidden md:inline-flex items-center gap-1"
+              title={`Showing commits on ${summary?.currentBranch || baseBranch} awaiting merge into ${selectedTarget}`}
+            >
+              <span>🔀 PR Merge Diff</span>
+            </span>
+          )}
 
           {summary && (
             <div className="inline-flex items-center gap-2 text-xs font-mono text-slate-300 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800">
@@ -340,42 +385,78 @@ export const ProjectGitReviewView: React.FC<ProjectGitReviewViewProps> = ({
                 {isSummaryLoading ? (
                   <div className="p-8 text-center text-slate-500 text-xs">Loading git diff...</div>
                 ) : summary?.changedFiles && summary.changedFiles.length > 0 ? (
-                  summary.changedFiles.map((file) => {
-                    const isSelected = selectedFilePath === file.path;
-                    return (
-                      <div
-                        key={file.path}
-                        onClick={() => setSelectedFilePath(file.path)}
-                        className={`p-2.5 rounded-xl cursor-pointer transition-all border flex items-center justify-between ${
-                          isSelected
-                            ? 'bg-purple-600/20 border-purple-500/40 text-white shadow-xs'
-                            : 'bg-slate-900/60 border-slate-800/60 text-slate-300 hover:bg-slate-900 hover:border-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          {getStatusIcon(file.status)}
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold truncate">{file.path.split('/').pop()}</p>
-                            <p className="text-[10px] text-slate-500 font-mono truncate">
-                              {file.path.includes('/') ? file.path.substring(0, file.path.lastIndexOf('/')) : '.'}
-                            </p>
+                  <>
+                    {/* Informational Context Banner */}
+                    {selectedTarget !== 'HEAD' && (
+                      <div className="p-2.5 mb-2 rounded-xl bg-purple-950/40 border border-purple-800/40 text-[11px] text-purple-200/90 space-y-1">
+                        <div className="flex items-center gap-1 font-semibold text-purple-300">
+                          <GitBranch className="w-3.5 h-3.5" />
+                          <span>PR Merge Diff ({summary.currentBranch} ➔ {selectedTarget})</span>
+                        </div>
+                        <p className="text-[10.5px] text-slate-300 leading-snug">
+                          Showing commits awaiting merge into <span className="font-mono text-white font-bold">{selectedTarget}</span>. In your IDE, these files are already committed. To see uncommitted local edits only, switch to{' '}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTarget('HEAD')}
+                            className="underline text-purple-300 hover:text-white font-bold"
+                          >
+                            HEAD (Working Tree)
+                          </button>.
+                        </p>
+                      </div>
+                    )}
+
+                    {summary.changedFiles.map((file) => {
+                      const isSelected = selectedFilePath === file.path;
+                      return (
+                        <div
+                          key={file.path}
+                          onClick={() => setSelectedFilePath(file.path)}
+                          className={`p-2.5 rounded-xl cursor-pointer transition-all border flex items-center justify-between ${
+                            isSelected
+                              ? 'bg-purple-600/20 border-purple-500/40 text-white shadow-xs'
+                              : 'bg-slate-900/60 border-slate-800/60 text-slate-300 hover:bg-slate-900 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            {getStatusIcon(file.status)}
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold truncate">{file.path.split('/').pop()}</p>
+                              <p className="text-[10px] text-slate-500 font-mono truncate">
+                                {file.path.includes('/') ? file.path.substring(0, file.path.lastIndexOf('/')) : '.'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 text-[10px] font-mono shrink-0 ml-2">
+                            <span className="text-emerald-400 font-bold">+{file.additions}</span>
+                            <span className="text-rose-400 font-bold">-{file.deletions}</span>
                           </div>
                         </div>
-
-                        <div className="flex items-center gap-1.5 text-[10px] font-mono shrink-0 ml-2">
-                          <span className="text-emerald-400 font-bold">+{file.additions}</span>
-                          <span className="text-rose-400 font-bold">-{file.deletions}</span>
-                        </div>
-                      </div>
-                    );
-                  })
+                      );
+                    })}
+                  </>
                 ) : (
-                  <div className="p-8 text-center space-y-2">
+                  <div className="p-8 text-center space-y-2.5">
                     <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
-                    <p className="text-xs font-bold text-white">Working Tree is Clean</p>
-                    <p className="text-[11px] text-slate-400">
-                      No changes detected between {summary?.currentBranch || baseBranch} and {summary?.targetBranch || targetBranch}.
+                    <p className="text-xs font-bold text-white">
+                      {selectedTarget === 'HEAD' ? 'Working Tree is Clean' : 'Branch is Up to Date'}
                     </p>
+                    <p className="text-[11px] text-slate-400 max-w-sm mx-auto leading-relaxed">
+                      {selectedTarget === 'HEAD'
+                        ? 'No uncommitted changes in your local directory (matches your IDE Source Control).'
+                        : `No pending commits between ${summary?.currentBranch || baseBranch} and ${selectedTarget}. All branch changes have been merged.`}
+                    </p>
+                    {selectedTarget === 'HEAD' && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTarget('main')}
+                        className="mt-1.5 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-purple-300 bg-purple-950/60 border border-purple-800/50 rounded-lg hover:bg-purple-900/60 transition shadow-xs"
+                      >
+                        <GitBranch className="w-3.5 h-3.5" />
+                        <span>View PR Diff (➔ main)</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </>

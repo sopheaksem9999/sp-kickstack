@@ -2,8 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execa } from 'execa';
 import type { SettingsService } from './settingsService.js';
-import type { ReasoningEffort, DraftRequirementResult } from '@sp-kickstack/shared';
-export type { DraftRequirementResult };
+import type {
+  ReasoningEffort,
+  DraftRequirementResult,
+  EngineRateLimitInfo,
+  EngineProviderStatus,
+} from '@sp-kickstack/shared';
+export type { DraftRequirementResult, EngineRateLimitInfo, EngineProviderStatus };
 
 export type AiProviderType =
   | 'auto'
@@ -24,30 +29,32 @@ export interface AiDraftOptions {
   apiKey?: string;
 }
 
-export interface ProviderStatus {
-  id: string;
-  name: string;
-  available: boolean;
-  models?: string[];
-  note?: string;
-}
+export type ProviderStatus = EngineProviderStatus;
 
 export function findCliBinary(name: string): string | null {
   const home = process.env.HOME || '';
-  const candidates = [
-    name,
-    path.join(home, '.local', 'bin', name),
-    path.join('/usr', 'local', 'bin', name),
-    path.join('/opt', 'homebrew', 'bin', name),
+  const pathDirs = (process.env.PATH || '').split(':').filter(Boolean);
+  const extraDirs = [
+    path.join(home, '.local', 'bin'),
+    path.join(home, '.cargo', 'bin'),
+    path.join(home, '.npm-global', 'bin'),
+    '/usr/local/bin',
+    '/opt/homebrew/bin',
+    '/usr/bin',
+    '/bin',
   ];
 
-  for (const c of candidates) {
-    if (c.startsWith('/') && fs.existsSync(c)) {
-      try {
-        fs.accessSync(c, fs.constants.X_OK);
-        return c;
-      } catch {}
-    }
+  const allDirs = Array.from(new Set([...pathDirs, ...extraDirs]));
+
+  for (const dir of allDirs) {
+    const candidate = path.join(dir, name);
+    try {
+      if (fs.existsSync(candidate)) {
+        fs.accessSync(candidate, fs.constants.X_OK);
+        fs.realpathSync(candidate);
+        return candidate;
+      }
+    } catch {}
   }
   return null;
 }
@@ -55,115 +62,204 @@ export function findCliBinary(name: string): string | null {
 export class AiDraftService {
   private defaultOllamaUrl: string;
   private settingsService?: SettingsService;
+  private db?: any;
 
   constructor(
     ollamaUrl: string = process.env.OLLAMA_URL || 'http://127.0.0.1:11434',
-    settingsService?: SettingsService
+    settingsService?: SettingsService,
+    db?: any
   ) {
     this.defaultOllamaUrl = ollamaUrl;
     this.settingsService = settingsService;
+    this.db = db;
   }
 
-  public async getProviders(): Promise<ProviderStatus[]> {
+  public async getProviders(): Promise<EngineProviderStatus[]> {
     const cliSettings = this.settingsService?.getAiCliSettings();
 
-    const providers: ProviderStatus[] = [
-      {
-        id: 'heuristic',
-        name: 'Built-in Heuristic Generator',
-        available: true,
-        note: 'Fast, offline zero-dependency rules-based drafting (No API key)',
-      },
-    ];
+    let totalDispatches = 0;
+    let completedTasks = 0;
+    let activeTasks = 0;
+    let rateLimitEvents = 0;
+    let maxPausedUntil: string | null = null;
+    let lastUsedAt: string | null = null;
 
-    // Check Local Claude CLI
+    if (this.db) {
+      try {
+        const stats = this.db.prepare(`
+          SELECT
+            COUNT(*) as total,
+            SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) as completed,
+            SUM(CASE WHEN status = 'rate_limited' THEN 1 ELSE 0 END) as rate_limited,
+            SUM(CASE WHEN status IN ('pending', 'in_progress') THEN 1 ELSE 0 END) as active,
+            MAX(paused_until) as max_paused,
+            MAX(created_at) as last_used
+          FROM bridge_tasks
+        `).get() as any;
+
+        if (stats) {
+          totalDispatches = Number(stats.total) || 0;
+          completedTasks = Number(stats.completed) || 0;
+          rateLimitEvents = Number(stats.rate_limited) || 0;
+          activeTasks = Number(stats.active) || 0;
+          maxPausedUntil = stats.max_paused || null;
+          lastUsedAt = stats.last_used || null;
+        }
+      } catch {}
+    }
+
+    const isRateLimited = Boolean(maxPausedUntil && new Date(maxPausedUntil).getTime() > Date.now());
+
+    // 1. Check Local Claude CLI
     const claudeBin = cliSettings?.claude?.customPath || findCliBinary('claude');
-    if (claudeBin) {
-      const modelNote = cliSettings?.claude?.model ? ` [Model: ${cliSettings.claude.model}, Effort: ${cliSettings.claude.effort}]` : '';
-      providers.push({
-        id: 'claude-cli',
-        name: `Local Claude Code CLI${modelNote}`,
-        available: cliSettings?.claude?.enabled !== false,
-        note: `Discovered at ${claudeBin} (Uses local session, No API key needed)`,
-      });
-    }
+    const claudeInstalled = Boolean(claudeBin);
+    const claudeAvailable = claudeInstalled && cliSettings?.claude?.enabled !== false;
 
-    // Check Local AGY CLI
+    // 2. Check Local AGY CLI
     const agyBin = cliSettings?.agy?.customPath || findCliBinary('agy');
-    if (agyBin) {
-      const modelNote = cliSettings?.agy?.model ? ` [Model: ${cliSettings.agy.model}, Effort: ${cliSettings.agy.effort}]` : '';
-      providers.push({
-        id: 'agy-cli',
-        name: `Local Antigravity CLI (agy)${modelNote}`,
-        available: cliSettings?.agy?.enabled !== false,
-        note: `Discovered at ${agyBin} (Uses local session, No API key needed)`,
-      });
-    }
+    const agyInstalled = Boolean(agyBin);
+    const agyAvailable = agyInstalled && cliSettings?.agy?.enabled !== false;
 
-    // Check Local Codex CLI
+    // 3. Check Local Codex CLI
     const codexBin = cliSettings?.codex?.customPath || findCliBinary('codex');
-    if (codexBin) {
-      const modelNote = cliSettings?.codex?.model ? ` [Model: ${cliSettings.codex.model}, Effort: ${cliSettings.codex.effort}]` : '';
-      providers.push({
-        id: 'codex-cli',
-        name: `Local Codex CLI${modelNote}`,
-        available: cliSettings?.codex?.enabled !== false,
-        note: `Discovered at ${codexBin} (Uses local session, No API key needed)`,
-      });
-    }
+    const codexInstalled = Boolean(codexBin);
+    const codexAvailable = codexInstalled && cliSettings?.codex?.enabled !== false;
 
-    // Check Ollama
+    // 4. Check Ollama
     const ollamaUrl = cliSettings?.ollama?.url || this.defaultOllamaUrl;
+    const ollamaBin = findCliBinary('ollama');
+    let ollamaOnline = false;
+    let ollamaModels: string[] = [];
     try {
       const res = await fetch(`${ollamaUrl}/api/tags`, {
         signal: AbortSignal.timeout(1500),
       });
       if (res.ok) {
         const data = (await res.json()) as any;
-        const models = (data.models || []).map((m: any) => m.name || m.model);
-        providers.push({
-          id: 'ollama',
-          name: `Local Ollama${cliSettings?.ollama?.model ? ` (${cliSettings.ollama.model})` : ''}`,
-          available: cliSettings?.ollama?.enabled !== false,
-          models,
-          note: `Connected at ${ollamaUrl} (${models.length} models, No API key needed)`,
-        });
-      } else {
-        providers.push({
-          id: 'ollama',
-          name: 'Local Ollama',
-          available: false,
-          note: `Ollama service returned non-OK status at ${ollamaUrl}`,
-        });
+        ollamaModels = (data.models || []).map((m: any) => m.name || m.model);
+        ollamaOnline = true;
       }
-    } catch {
-      providers.push({
+    } catch {}
+    const ollamaInstalled = ollamaOnline || Boolean(ollamaBin);
+    const ollamaAvailable = ollamaOnline && cliSettings?.ollama?.enabled !== false;
+
+    const providers: EngineProviderStatus[] = [
+      {
+        id: 'claude-cli',
+        name: 'Claude Code CLI',
+        installed: claudeInstalled,
+        available: claudeAvailable,
+        path: claudeBin,
+        note: claudeBin
+          ? `Discovered at ${claudeBin} (Model: ${cliSettings?.claude?.model || 'sonnet-5'})`
+          : 'Not detected on local PC (`npm i -g @anthropic-ai/claude-code`)',
+        rateLimit: {
+          supported: true,
+          supportType: 'bridge_monitored',
+          status: isRateLimited ? 'rate_limited' : 'healthy',
+          pausedUntil: isRateLimited ? maxPausedUntil : null,
+          message: isRateLimited
+            ? `Engine rate limited; paused until ${maxPausedUntil}`
+            : 'Bridge monitors 429 rate limit backoff (CLI does not expose local quota CLI)',
+          totalDispatches,
+          completedTasks,
+          rateLimitEvents,
+          activeTasks,
+          lastUsedAt,
+        },
+      },
+      {
+        id: 'agy-cli',
+        name: 'Antigravity CLI (agy)',
+        installed: agyInstalled,
+        available: agyAvailable,
+        path: agyBin,
+        note: agyBin
+          ? `Discovered at ${agyBin} (Model: ${cliSettings?.agy?.model || 'gemini-3.8-flash'})`
+          : 'Not detected on local PC (Google Antigravity CLI)',
+        rateLimit: {
+          supported: true,
+          supportType: 'bridge_monitored',
+          status: isRateLimited ? 'rate_limited' : 'healthy',
+          pausedUntil: isRateLimited ? maxPausedUntil : null,
+          message: isRateLimited
+            ? `Engine rate limited; paused until ${maxPausedUntil}`
+            : 'Bridge monitors RPM & quota backoff (AGY handles local session)',
+          totalDispatches,
+          completedTasks,
+          rateLimitEvents,
+          activeTasks,
+          lastUsedAt,
+        },
+      },
+      {
+        id: 'codex-cli',
+        name: 'Codex CLI',
+        installed: codexInstalled,
+        available: codexAvailable,
+        path: codexBin,
+        note: codexBin
+          ? `Discovered at ${codexBin} (Model: ${cliSettings?.codex?.model || 'default'})`
+          : 'Not detected on local PC (OpenAI Codex CLI)',
+        rateLimit: {
+          supported: true,
+          supportType: 'bridge_monitored',
+          status: isRateLimited ? 'rate_limited' : 'healthy',
+          pausedUntil: isRateLimited ? maxPausedUntil : null,
+          message: isRateLimited
+            ? `Engine rate limited; paused until ${maxPausedUntil}`
+            : 'Bridge monitors OpenAI rate limits and retry sweeper',
+          totalDispatches,
+          completedTasks,
+          rateLimitEvents,
+          activeTasks,
+          lastUsedAt,
+        },
+      },
+      {
         id: 'ollama',
         name: 'Local Ollama',
-        available: false,
-        note: `Not running at ${ollamaUrl}`,
-      });
-    }
-
-    // Anthropic check
-    if (process.env.ANTHROPIC_API_KEY) {
-      providers.push({
-        id: 'anthropic',
-        name: 'Anthropic Claude (Cloud API)',
+        installed: ollamaInstalled,
+        available: ollamaAvailable,
+        path: ollamaBin || ollamaUrl,
+        models: ollamaModels,
+        note: ollamaOnline
+          ? `Connected at ${ollamaUrl} (${ollamaModels.length} models detected)`
+          : ollamaBin
+          ? `Binary discovered at ${ollamaBin} (Service not running on port 11434)`
+          : `Not running at ${ollamaUrl} (https://ollama.ai)`,
+        rateLimit: {
+          supported: false,
+          supportType: 'unlimited_offline',
+          status: 'unlimited',
+          message: 'Unlimited — Local hardware execution on your Mac (No remote API rate limits)',
+          totalDispatches,
+          completedTasks,
+          rateLimitEvents: 0,
+          activeTasks: 0,
+          lastUsedAt,
+        },
+      },
+      {
+        id: 'heuristic',
+        name: 'Built-in Heuristic Generator',
+        installed: true,
         available: true,
-        note: 'Configured via ANTHROPIC_API_KEY',
-      });
-    }
-
-    // OpenAI check
-    if (process.env.OPENAI_API_KEY) {
-      providers.push({
-        id: 'openai',
-        name: 'OpenAI (Cloud API)',
-        available: true,
-        note: 'Configured via OPENAI_API_KEY',
-      });
-    }
+        path: null,
+        note: 'Zero-latency offline deterministic rules engine (100% offline, instant)',
+        rateLimit: {
+          supported: false,
+          supportType: 'unlimited_offline',
+          status: 'unlimited',
+          message: 'Unlimited — 100% offline deterministic rules (Zero latency, no rate limits)',
+          totalDispatches,
+          completedTasks,
+          rateLimitEvents: 0,
+          activeTasks: 0,
+          lastUsedAt,
+        },
+      },
+    ];
 
     return providers;
   }

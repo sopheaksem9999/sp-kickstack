@@ -262,8 +262,8 @@ export const SingleCliConfigSchema = z.object({
 
 export const AiCliSettingsSchema = z.object({
   defaultProvider: z
-    .enum(['auto', 'claude-cli', 'agy-cli', 'codex-cli', 'ollama', 'heuristic'])
-    .default('auto'),
+    .enum(['claude-cli', 'agy-cli', 'codex-cli', 'ollama', 'heuristic', 'auto'])
+    .default('claude-cli'),
   claude: SingleCliConfigSchema.default({
     enabled: true,
     model: 'claude-3-7-sonnet',

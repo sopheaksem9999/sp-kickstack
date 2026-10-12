@@ -5,6 +5,7 @@ export const DEFAULT_WEB_ORIGINS = [
   'http://127.0.0.1:4101',
   'tauri://localhost',
   'http://tauri.localhost',
+  'https://tauri.localhost',
 ];
 
 export const DEFAULT_ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]'];

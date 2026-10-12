@@ -27,6 +27,7 @@ export interface GitReviewSummary {
   changedFiles: ChangedFile[];
   recentCommits: GitCommitInfo[];
   clean: boolean;
+  availableBranches?: string[];
   error?: string;
 }
 
@@ -74,7 +75,7 @@ export class GitReviewService {
    */
   public getReviewSummary(
     projectName: string,
-    targetBranch = 'main'
+    targetBranch = 'HEAD'
   ): GitReviewSummary {
     assertSafeRef(targetBranch);
     const project = this.projectService.getProject(projectName);
@@ -202,6 +203,12 @@ export class GitReviewService {
       }
     }
 
+    // Collect available local branches for comparator switching
+    const branchList = tryGit(repoPath, ['branch', '--list', '--format=%(refname:short)'])?.trim();
+    const availableBranches = branchList
+      ? Array.from(new Set(branchList.split('\n').map((b) => b.trim()).filter(Boolean)))
+      : [];
+
     return {
       project: projectName,
       repoPath,
@@ -212,6 +219,7 @@ export class GitReviewService {
       changedFiles,
       recentCommits,
       clean: changedFiles.length === 0,
+      availableBranches,
     };
   }
 
@@ -221,7 +229,7 @@ export class GitReviewService {
   public getFileDiff(
     projectName: string,
     filePath: string,
-    targetBranch = 'main'
+    targetBranch = 'HEAD'
   ): FileDiffResult {
     assertSafeRef(targetBranch);
     const project = this.projectService.getProject(projectName);
@@ -241,8 +249,11 @@ export class GitReviewService {
 
     let modifiedContent = '';
 
-    // Read original content from targetBranch
-    const originalContent = tryGit(repoPath, ['show', `${targetBranch}:${relPath}`]) ?? '';
+    // Read original content from targetBranch (or HEAD for uncommitted working tree diff)
+    const originalContent =
+      targetBranch === 'HEAD'
+        ? tryGit(repoPath, ['show', `HEAD:${relPath}`]) ?? ''
+        : tryGit(repoPath, ['show', `${targetBranch}:${relPath}`]) ?? '';
 
     // Read current modified content
     try {
@@ -261,8 +272,11 @@ export class GitReviewService {
     let deletions = 0;
 
     const rawDiff =
-      tryGit(repoPath, ['diff', `${targetBranch}...HEAD`, '--', relPath]) ??
-      tryGit(repoPath, ['diff', '--', relPath]);
+      targetBranch === 'HEAD'
+        ? tryGit(repoPath, ['diff', 'HEAD', '--', relPath]) ?? tryGit(repoPath, ['diff', '--', relPath])
+        : tryGit(repoPath, ['diff', `${targetBranch}...HEAD`, '--', relPath]) ??
+          tryGit(repoPath, ['diff', targetBranch, '--', relPath]) ??
+          tryGit(repoPath, ['diff', '--', relPath]);
 
     if (rawDiff !== null) {
       let oldLine = 1;

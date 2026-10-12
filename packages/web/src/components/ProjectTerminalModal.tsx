@@ -20,6 +20,7 @@ import {
   restartProjectTerminal,
   clearProjectTerminal,
   fetchActiveTerminals,
+  BASE,
 } from '../lib/api.js';
 
 interface ProjectTerminalModalProps {
@@ -160,7 +161,7 @@ export const ProjectTerminalModal: React.FC<ProjectTerminalModalProps> = ({
 
     let eventSource: EventSource | null = null;
     try {
-      eventSource = new EventSource(`/api/projects/${encodeURIComponent(activeProject)}/terminal/stream`);
+      eventSource = new EventSource(`${BASE}/projects/${encodeURIComponent(activeProject)}/terminal/stream`);
 
       eventSource.onmessage = (e) => {
         try {

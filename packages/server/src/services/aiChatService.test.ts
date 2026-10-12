@@ -317,5 +317,142 @@ The API should accept the desired language via standard headers or query paramet
     expect(extracted.acceptance_criteria.some((c) => c.includes('page_translations'))).toBe(true);
     expect(extracted.notes).toContain('CREATE TABLE service_translations');
   });
+
+  it('reviews and analyzes attached .md specification file', async () => {
+    const session = chatService.createSession({ title: 'Spec Review Session', provider: 'heuristic' });
+    const specMd = `# Multilingual Translation Module
+## Service Database Schema
+Create tables for services and service_translations with compound unique constraints.
+## API Locale Negotiation
+Support Accept-Language header with default English fallback.
+## Admin Content Management
+Admin dashboard endpoints for managing localized translations.`;
+
+    const base64Spec = Buffer.from(specMd).toString('base64');
+    const response = await chatService.sendSessionMessage(session.id, {
+      content: 'Can you review and analyze the attached requirement spec file?',
+      attachments: [
+        {
+          name: 'translation_spec.md',
+          type: 'text/markdown',
+          size: specMd.length,
+          data_url: `data:text/markdown;base64,${base64Spec}`,
+        },
+      ],
+    });
+
+    expect(response.message.content).toContain('Architectural Review & Analysis: Multilingual Translation Module');
+    expect(response.message.content).toContain('translation_spec.md');
+    expect(response.message.content).toContain('Module: Service Database Schema');
+    expect(response.message.content).toContain('Module: API Locale Negotiation');
+    expect(response.message.content).toContain('create requirement separate task from module or feature');
+  });
+
+  it('creates requirement with tasks separated by module when user asks conversationally in chat without button click', async () => {
+    const session = chatService.createSession({ title: 'Modular Creation Session', provider: 'heuristic' });
+    const specMd = `# Payment and Billing Gateway
+## Database & Stripe Ledger
+Create ledger and webhook events table.
+## Webhook Handlers
+Handle invoice.payment_succeeded with idempotency.
+## Merchant Dashboard
+Frontend views for viewing invoices.`;
+
+    const base64Spec = Buffer.from(specMd).toString('base64');
+    // First message attaches spec and reviews
+    await chatService.sendSessionMessage(session.id, {
+      content: 'Analyze this spec',
+      attachments: [
+        {
+          name: 'billing.md',
+          type: 'text/markdown',
+          size: specMd.length,
+          data_url: `data:text/markdown;base64,${base64Spec}`,
+        },
+      ],
+    });
+
+    // Second message: conversational creation requesting task separation by module
+    const createResponse = await chatService.sendSessionMessage(session.id, {
+      content: 'create the requrement seperate task form module or feature in system app',
+    });
+
+    expect(createResponse.message.content).toContain('Requirement Ticket Created in System App');
+    expect(createResponse.message.content).toMatch(/#REQ-\d+/);
+    expect(createResponse.message.content).toContain('[Module:');
+
+    // Verify it exists in SQLite requirements table
+    const reqs = db.prepare('SELECT * FROM requirements WHERE session_id = ?').all(session.id) as any[];
+    expect(reqs.length).toBe(1);
+    expect(reqs[0].body_md).toContain('## Acceptance criteria');
+    expect(reqs[0].body_md).toContain('[Module:');
+  });
+
+  it('reads actual record data from SQLite when user asks questions about created ticket in chat', async () => {
+    const session = chatService.createSession({ title: 'Query Ticket Session', provider: 'heuristic' });
+    // Create requirement first
+    await chatService.sendSessionMessage(session.id, {
+      content: 'I want to build a User Authentication microservice with JWT and OAuth',
+    });
+    const createRes = await chatService.sendSessionMessage(session.id, {
+      content: 'create ticket in system app',
+    });
+
+    const match = createRes.message.content.match(/#(REQ-\d+)/);
+    expect(match).toBeDefined();
+    const reqId = match![1];
+
+    // Query ticket in chat
+    const queryRes = await chatService.sendSessionMessage(session.id, {
+      content: `what are the acceptance criteria for ${reqId}?`,
+    });
+
+    expect(queryRes.message.content).toContain(`Record Details for [#${reqId}`);
+    expect(queryRes.message.content).toContain('Acceptance Criteria & Modular Tasks');
+    expect(queryRes.message.content).toContain(`Open Form (#${reqId})`);
+
+    // Query using "read data from record created"
+    const queryRecordRes = await chatService.sendSessionMessage(session.id, {
+      content: 'read data from record created',
+    });
+    expect(queryRecordRes.message.content).toContain(`Record Details for [#${reqId}`);
+    expect(queryRecordRes.message.content).toContain('Status');
+    expect(queryRecordRes.message.content).toContain('Priority');
+  });
+
+  it('edits requirement record from chat and confirms changes with clickable key', async () => {
+    const session = chatService.createSession({ title: 'Edit Ticket Session', provider: 'heuristic' });
+    await chatService.sendSessionMessage(session.id, {
+      content: 'I want to build a Search Service with Elasticsearch',
+    });
+    const createRes = await chatService.sendSessionMessage(session.id, {
+      content: 'create ticket',
+    });
+
+    const match = createRes.message.content.match(/#(REQ-\d+)/);
+    expect(match).toBeDefined();
+    const reqId = match![1];
+
+    // Verify initial priority is 'high'
+    const initialReq = db.prepare('SELECT * FROM requirements WHERE id = ?').get(reqId) as any;
+    expect(initialReq.priority).toBe('high');
+
+    // Conversational edit: change priority to urgent and add acceptance criteria
+    const editRes = await chatService.sendSessionMessage(session.id, {
+      content: `edit ${reqId}: change priority to urgent and add acceptance criteria: Implement query caching with Redis`,
+    });
+
+    expect(editRes.message.content).toContain('Requirement Record Updated in System');
+    expect(editRes.message.content).toContain(`#${reqId}`);
+    expect(editRes.message.content).toContain('Priority');
+    expect(editRes.message.content).toContain('urgent');
+    expect(editRes.message.content).toContain(`Open Form (#${reqId})`);
+
+    // Verify database record was updated
+    const updatedReq = db.prepare('SELECT * FROM requirements WHERE id = ?').get(reqId) as any;
+    expect(updatedReq.priority).toBe('urgent');
+    expect(updatedReq.body_md).toContain('Implement query caching with Redis');
+  });
 });
+
 

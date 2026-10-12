@@ -1,7 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchProjects, fetchSprints, createRequirement, startRequirementFanOut } from '../lib/api.js';
+import {
+  fetchProjects,
+  fetchSprints,
+  createRequirement,
+  startRequirementFanOut,
+  fetchAiProviders,
+  draftRequirementAi,
+} from '../lib/api.js';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { useCreateRequirement } from '../lib/CreateRequirementContext.js';
 import { toast } from 'sonner';
@@ -101,11 +108,7 @@ export function CreateRequirementSheet() {
 
   const { data: aiProviders } = useQuery({
     queryKey: ['ai-providers'],
-    queryFn: async () => {
-      const res = await fetch('/api/ai/providers');
-      if (!res.ok) return [];
-      return (await res.json()) as Array<{ id: string; name: string; available: boolean; note?: string }>;
-    },
+    queryFn: fetchAiProviders,
     staleTime: 30000,
   });
 
@@ -168,20 +171,11 @@ export function CreateRequirementSheet() {
     }
     setIsAiDrafting(true);
     try {
-      const res = await fetch('/api/ai/draft-requirement', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: aiPrompt,
-          workspace_id: workspaceId,
-          provider: selectedAiProvider !== 'auto' ? selectedAiProvider : undefined,
-        }),
+      const data = await draftRequirementAi({
+        prompt: aiPrompt,
+        workspace_id: workspaceId,
+        provider: selectedAiProvider !== 'auto' ? selectedAiProvider : undefined,
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Failed to draft requirement');
-      }
-      const data = await res.json();
       if (data.title) setTitle(data.title);
       if (data.goal) setGoal(data.goal);
       if (data.user_story) setUserStory(data.user_story);

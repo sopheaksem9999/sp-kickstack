@@ -191,6 +191,500 @@ What feature, solution, or refactoring would you like to design today? Tell me w
     return info.changes > 0;
   }
 
+  /**
+   * Decodes attachment text content from base64 data URLs.
+   */
+  public extractAttachmentTexts(attachments?: ChatAttachmentItem[]): Array<{ name: string; content: string }> {
+    if (!attachments || attachments.length === 0) return [];
+    const results: Array<{ name: string; content: string }> = [];
+
+    for (const att of attachments) {
+      if (
+        att.data_url &&
+        (att.type?.startsWith('text/') ||
+          att.type?.includes('json') ||
+          att.type?.includes('markdown') ||
+          att.name.match(/\.(md|markdown|txt|json|yaml|yml|sql|ts|tsx|js|jsx|css|html)$/i))
+      ) {
+        try {
+          if (att.data_url.startsWith('data:')) {
+            const base64Part = att.data_url.split(',')[1];
+            if (base64Part) {
+              const decoded = Buffer.from(base64Part, 'base64').toString('utf-8');
+              results.push({ name: att.name, content: decoded });
+            }
+          }
+        } catch {}
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Partitions acceptance criteria by module or feature tags.
+   */
+  public partitionCriteriaByModule(criteria: string[], messages: AiChatMessage[] = []): string[] {
+    if (!criteria || criteria.length === 0) return ['[Module: Core] Implementation complete and verified with tests'];
+
+    // If criteria already contain [Module: or [Feature:, return as is
+    if (criteria.some((c) => /\[(?:Module|Feature):/i.test(c))) {
+      return criteria;
+    }
+
+    // Try to extract modules from discussion or attached files
+    const attachmentTexts = messages.flatMap((m) => this.extractAttachmentTexts(m.attachments));
+    const allText = [
+      ...messages.map((m) => m.content),
+      ...attachmentTexts.map((a) => a.content),
+    ].join('\n');
+
+    const moduleHeadings = [...allText.matchAll(/#{1,3}\s*(?:Module|Feature|Part)?[:\s]*([a-zA-Z0-9_\s&/-]{3,35})/gi)]
+      .map((m) => m[1].trim())
+      .filter((m) => !/^(overview|introduction|guidelines|summary|details|context)$/i.test(m));
+
+    return criteria.map((c, idx) => {
+      const lower = c.toLowerCase();
+      let moduleName = 'Core Services';
+
+      if (lower.includes('table') || lower.includes('schema') || lower.includes('migration') || lower.includes('database') || lower.includes('sql')) {
+        moduleName = 'Database & Schema';
+      } else if (lower.includes('api') || lower.includes('endpoint') || lower.includes('header') || lower.includes('route') || lower.includes('controller') || lower.includes('negotiation') || lower.includes('locale')) {
+        moduleName = 'API & Gateway';
+      } else if (lower.includes('ui') || lower.includes('admin') || lower.includes('component') || lower.includes('page') || lower.includes('cms') || lower.includes('frontend')) {
+        moduleName = 'UI & Management';
+      } else if (lower.includes('test') || lower.includes('verify') || lower.includes('integration') || lower.includes('pass')) {
+        moduleName = 'Quality & Verification';
+      } else if (moduleHeadings.length > 0) {
+        moduleName = moduleHeadings[idx % moduleHeadings.length];
+      }
+
+      return `[Module: ${moduleName}] ${c}`;
+    });
+  }
+
+  /**
+   * Detects if user prompt intends to edit an existing requirement.
+   */
+  public isEditRequirementIntent(content: string): {
+    isEdit: boolean;
+    reqId?: string;
+    instructions: string;
+  } {
+    const trimmed = content.trim();
+    const reqMatch = trimmed.match(/#?(REQ-\d+)/i);
+    const hasEditWord = /\b(?:edit|update|change|modify|add\s+task|add\s+acceptance\s+criteria|add\s+criteria|set\s+priority|set\s+title)\b/i.test(trimmed);
+    const mentionsReqOrTicket = /\b(?:requirement|requrement|ticket|record|spec|REQ-\d+)\b/i.test(trimmed);
+
+    if (hasEditWord && (reqMatch || mentionsReqOrTicket)) {
+      return {
+        isEdit: true,
+        reqId: reqMatch ? reqMatch[1].toUpperCase() : undefined,
+        instructions: trimmed,
+      };
+    }
+
+    return { isEdit: false, instructions: trimmed };
+  }
+
+  /**
+   * Detects if user prompt intends to create a requirement/ticket in the system app.
+   */
+  public isCreateRequirementIntent(content: string): {
+    isCreate: boolean;
+    separateByModule: boolean;
+  } {
+    const trimmed = content.trim();
+
+    // Prevent queries from triggering creation
+    if (/\b(?:what\s+did\s+we\s+create|read\s+data\s+from\s+record|what\s+was\s+created|how\s+to\s+create)\b/i.test(trimmed)) {
+      return { isCreate: false, separateByModule: false };
+    }
+
+    if (trimmed.startsWith('/create')) {
+      return { isCreate: true, separateByModule: false };
+    }
+
+    const hasCreateWord = /\b(?:create|generate|dispatch|save|add|make|build)\b/i.test(trimmed);
+    const mentionsTicket = /\b(?:ticket|tick|requirement|requrement|task|tasks|record|spec)\b/i.test(trimmed);
+    const mentionsAppOrBridge = /\b(?:system\s+app|ai\s+brigith|brigith|bridge|in\s+app|system)\b/i.test(trimmed);
+    const separateByModule = /\b(?:module|feature|seperate|separate)\b/i.test(trimmed);
+
+    if (
+      (hasCreateWord && (mentionsTicket || mentionsAppOrBridge)) ||
+      (separateByModule && (mentionsTicket || hasCreateWord))
+    ) {
+      return {
+        isCreate: true,
+        separateByModule,
+      };
+    }
+
+    return { isCreate: false, separateByModule: false };
+  }
+
+  /**
+   * Detects if user prompt is asking to read or inspect data from a requirement record.
+   */
+  public isQueryRequirementIntent(content: string): {
+    isQuery: boolean;
+    reqId?: string;
+  } {
+    const trimmed = content.trim();
+    const reqMatch = trimmed.match(/#?(REQ-\d+)/i);
+    const hasQueryWord = /\b(?:what|show|tell|read|list|get|check|display|view|how|explain)\b/i.test(trimmed);
+    const mentionsRecordOrField = /\b(?:record|ticket|requirement|requrement|acceptance\s+criteria|criteria|goal|priority|status|user\s+story|affected\s+projects|data\s+from\s+record|created|tasks)\b/i.test(trimmed);
+
+    if (hasQueryWord && (reqMatch || mentionsRecordOrField)) {
+      return {
+        isQuery: true,
+        reqId: reqMatch ? reqMatch[1].toUpperCase() : undefined,
+      };
+    }
+
+    if (/\b(?:read\s+data\s+from\s+record|what\s+did\s+we\s+create|show\s+ticket|show\s+requirement|show\s+created)\b/i.test(trimmed)) {
+      return {
+        isQuery: true,
+        reqId: reqMatch ? reqMatch[1].toUpperCase() : undefined,
+      };
+    }
+
+    return { isQuery: false };
+  }
+
+  /**
+   * Handles user editing a requirement record directly through conversational chat.
+   */
+  public async handleEditRequirementInChat(
+    sessionId: string,
+    prompt: string,
+    explicitReqId?: string
+  ): Promise<{
+    session: AiChatSession;
+    message: AiChatMessage;
+    suggested_spec?: DraftRequirementResult;
+  }> {
+    const session = this.getSession(sessionId);
+    if (!session) {
+      throw new Error(`Chat session ${sessionId} not found`);
+    }
+
+    // 1. Resolve target requirement ID
+    let targetId = explicitReqId;
+    if (!targetId) {
+      const row = this.db
+        .prepare('SELECT id FROM requirements WHERE session_id = ? ORDER BY seq DESC LIMIT 1')
+        .get(sessionId) as any;
+      if (row?.id) {
+        targetId = row.id;
+      } else {
+        const latest = this.db
+          .prepare('SELECT id FROM requirements ORDER BY seq DESC LIMIT 1')
+          .get() as any;
+        if (latest?.id) {
+          targetId = latest.id;
+        }
+      }
+    }
+
+    const now = new Date().toISOString();
+    const assistantMsgId = `msg-${crypto.randomUUID()}`;
+
+    if (!targetId) {
+      const errorContent = `⚠️ **No Requirement Found to Edit**\n\nThere are no requirements created in this session or workspace yet. You can ask me to **create requirement separate task from module or feature** first!`;
+      this.db
+        .prepare(
+          `INSERT INTO ai_chat_messages (id, session_id, role, content, spec_json, attachments, created_at)
+           VALUES (?, ?, 'assistant', ?, null, '[]', ?)`
+        )
+        .run(assistantMsgId, sessionId, errorContent, now);
+      return {
+        session: this.getSession(sessionId)!,
+        message: { id: assistantMsgId, role: 'assistant', content: errorContent, timestamp: now },
+      };
+    }
+
+    const existing = this.requirementService.getRequirement(targetId);
+    if (!existing) {
+      const notFoundContent = `⚠️ **Requirement Not Found**: [#${targetId}](/requirements/${targetId}) was not found in the SQLite database.`;
+      this.db
+        .prepare(
+          `INSERT INTO ai_chat_messages (id, session_id, role, content, spec_json, attachments, created_at)
+           VALUES (?, ?, 'assistant', ?, null, '[]', ?)`
+        )
+        .run(assistantMsgId, sessionId, notFoundContent, now);
+      return {
+        session: this.getSession(sessionId)!,
+        message: { id: assistantMsgId, role: 'assistant', content: notFoundContent, timestamp: now },
+      };
+    }
+
+    if (existing.status !== 'draft' && existing.status !== 'ready') {
+      const lockedContent = `🔒 **Requirement Locked**: [#${existing.id} - ${existing.title}](/requirements/${existing.id}) is in status \`${existing.status}\`.\n\nOnly requirements in **ToDo** (\`draft\`) or **Ready for Dispatch** (\`ready\`) can be edited.`;
+      this.db
+        .prepare(
+          `INSERT INTO ai_chat_messages (id, session_id, role, content, spec_json, attachments, created_at)
+           VALUES (?, ?, 'assistant', ?, null, '[]', ?)`
+        )
+        .run(assistantMsgId, sessionId, lockedContent, now);
+      return {
+        session: this.getSession(sessionId)!,
+        message: { id: assistantMsgId, role: 'assistant', content: lockedContent, timestamp: now },
+      };
+    }
+
+    // Parse updates from prompt
+    let newPriority = existing.priority;
+    const prioMatch = prompt.match(/\b(?:priority\s*(?:to|=)?\s*|set\s+priority\s+to\s+|change\s+priority\s+to\s*)(urgent|critical|high|normal|medium|low)\b/i);
+    if (prioMatch) {
+      const p = prioMatch[1].toLowerCase();
+      if (p === 'urgent' || p === 'critical') newPriority = 'urgent';
+      else if (p === 'high') newPriority = 'high';
+      else if (p === 'low') newPriority = 'low';
+      else newPriority = 'normal';
+    }
+
+    let newTitle = existing.title;
+    const titleMatch = prompt.match(/(?:change|set|update)\s+title\s+(?:to|:)\s*["']?([^"'\n,]+)["']?/i);
+    if (titleMatch) {
+      newTitle = titleMatch[1].trim();
+    }
+
+    // Parse new criteria / tasks to add
+    const addCriteriaMatch = prompt.match(/(?:add\s+(?:acceptance\s+criteria|criteria|task|tasks|todo)\s*(?:to|:)?)\s*([\s\S]+)/i);
+    const addedTasks: string[] = [];
+    if (addCriteriaMatch) {
+      const raw = addCriteriaMatch[1].split(/\n|(?:\s*-\s+)|\band\b/i).map((s) => s.trim()).filter(Boolean);
+      for (const item of raw) {
+        const clean = item.replace(/^[-*]\s*(\[[ x]\]\s*)?/i, '').trim();
+        if (clean && clean.length > 2 && !clean.startsWith('REQ-') && !clean.toLowerCase().startsWith('to ')) {
+          addedTasks.push(clean);
+        }
+      }
+    }
+
+    let updatedBodyMd = existing.body_md;
+    if (addedTasks.length > 0) {
+      const criteriaLines = addedTasks.map((t) => `- [ ] ${t}`).join('\n');
+      if (updatedBodyMd.includes('## Acceptance criteria')) {
+        updatedBodyMd = updatedBodyMd.replace(
+          /(## Acceptance criteria[\s\S]*?)(?=\n## |$)/,
+          `$1\n${criteriaLines}`
+        );
+      } else {
+        updatedBodyMd += `\n\n## Acceptance criteria\n${criteriaLines}`;
+      }
+    }
+
+    if (newPriority !== existing.priority) {
+      updatedBodyMd = updatedBodyMd.replace(/^priority:\s*[^\n]+/m, `priority: ${newPriority}`);
+    }
+    if (newTitle !== existing.title) {
+      updatedBodyMd = updatedBodyMd.replace(/^title:\s*[^\n]+/m, `title: ${newTitle}`);
+    }
+
+    // Update in database and sync markdown file
+    this.requirementService.updateRequirement(targetId, {
+      title: newTitle,
+      priority: newPriority as any,
+      body_md: updatedBodyMd,
+    });
+
+    const updated = this.requirementService.getRequirement(targetId)!;
+
+    const changesSummary = [
+      newPriority !== existing.priority ? `- **Priority**: \`${existing.priority}\` ➔ \`${updated.priority}\`` : null,
+      newTitle !== existing.title ? `- **Title**: "${updated.title}"` : null,
+      addedTasks.length > 0
+        ? `- **Added Tasks / Acceptance Criteria**:\n${addedTasks.map((t) => `  - [ ] ${t}`).join('\n')}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const confirmContent = `✅ **Requirement Record Updated in System**: [#${updated.id} - ${updated.title}](/requirements/${updated.id})
+
+**Modifications Applied:**
+${changesSummary || '- Updated ticket details and synced to disk.'}
+
+- **Current Status**: \`${updated.status}\`
+- **Affected Projects**: \`${updated.affected_projects.join(', ')}\`
+- **File**: \`${updated.file_path}\`
+
+Click [#${updated.id}](/requirements/${updated.id}) or **Open Form (#${updated.id})** below to inspect the updated ticket form.`;
+
+    this.db
+      .prepare(
+        `INSERT INTO ai_chat_messages (id, session_id, role, content, spec_json, attachments, created_at)
+         VALUES (?, ?, 'assistant', ?, null, '[]', ?)`
+      )
+      .run(assistantMsgId, sessionId, confirmContent, now);
+
+    this.db
+      .prepare('UPDATE ai_chat_sessions SET updated_at = ? WHERE id = ?')
+      .run(now, sessionId);
+
+    return {
+      session: this.getSession(sessionId)!,
+      message: {
+        id: assistantMsgId,
+        role: 'assistant',
+        content: confirmContent,
+        timestamp: now,
+      },
+    };
+  }
+
+  /**
+   * Handles user querying record data from created requirements through conversational chat.
+   */
+  public async handleQueryRequirementInChat(
+    sessionId: string,
+    prompt: string,
+    explicitReqId?: string
+  ): Promise<{
+    session: AiChatSession;
+    message: AiChatMessage;
+    suggested_spec?: DraftRequirementResult;
+  }> {
+    const session = this.getSession(sessionId);
+    if (!session) {
+      throw new Error(`Chat session ${sessionId} not found`);
+    }
+
+    // 1. Resolve target requirement ID
+    let targetId = explicitReqId;
+    if (!targetId) {
+      const row = this.db
+        .prepare('SELECT id FROM requirements WHERE session_id = ? ORDER BY seq DESC LIMIT 1')
+        .get(sessionId) as any;
+      if (row?.id) {
+        targetId = row.id;
+      } else {
+        const latest = this.db
+          .prepare('SELECT id FROM requirements ORDER BY seq DESC LIMIT 1')
+          .get() as any;
+        if (latest?.id) {
+          targetId = latest.id;
+        }
+      }
+    }
+
+    const now = new Date().toISOString();
+    const assistantMsgId = `msg-${crypto.randomUUID()}`;
+
+    if (!targetId) {
+      const errorContent = `📋 **No Requirements Found**\n\nThere are no requirements created yet in this workspace. You can ask me to **create requirement separate task from module or feature** to create your first ticket!`;
+      this.db
+        .prepare(
+          `INSERT INTO ai_chat_messages (id, session_id, role, content, spec_json, attachments, created_at)
+           VALUES (?, ?, 'assistant', ?, null, '[]', ?)`
+        )
+        .run(assistantMsgId, sessionId, errorContent, now);
+      return {
+        session: this.getSession(sessionId)!,
+        message: { id: assistantMsgId, role: 'assistant', content: errorContent, timestamp: now },
+      };
+    }
+
+    const req = this.requirementService.getRequirement(targetId);
+    if (!req) {
+      const notFoundContent = `⚠️ **Requirement Not Found**: [#${targetId}](/requirements/${targetId}) was not found in the SQLite database.`;
+      this.db
+        .prepare(
+          `INSERT INTO ai_chat_messages (id, session_id, role, content, spec_json, attachments, created_at)
+           VALUES (?, ?, 'assistant', ?, null, '[]', ?)`
+        )
+        .run(assistantMsgId, sessionId, notFoundContent, now);
+      return {
+        session: this.getSession(sessionId)!,
+        message: { id: assistantMsgId, role: 'assistant', content: notFoundContent, timestamp: now },
+      };
+    }
+
+    // Extract sections from body_md
+    const body = req.body_md || '';
+    const goalMatch = body.match(/## Goal\s*\n([\s\S]*?)(?=\n## |$)/);
+    const storyMatch = body.match(/## User story\s*\n([\s\S]*?)(?=\n## |$)/);
+    const criteriaMatch = body.match(/## Acceptance criteria\s*\n([\s\S]*?)(?=\n## |$)/);
+    const apiMatch = body.match(/## API hints\s*\n([\s\S]*?)(?=\n## |$)/);
+
+    const goal = goalMatch ? goalMatch[1].trim() : 'No explicit goal specified.';
+    const story = storyMatch ? storyMatch[1].trim() : null;
+    const criteria = criteriaMatch ? criteriaMatch[1].trim() : '- [ ] Implementation complete and verified';
+    const apiHints = apiMatch ? apiMatch[1].trim() : null;
+
+    const replyContent = `📋 **Record Details for [#${req.id} - ${req.title}](/requirements/${req.id})**
+
+**System Record Metadata:**
+- **Ticket ID**: \`#${req.id}\`
+- **Status**: \`${req.status}\` (ToDo / Ready for Dispatch)
+- **Priority**: \`${req.priority}\`
+- **Affected Projects**: \`${req.affected_projects.join(', ')}\`
+- **Record File**: \`${req.file_path}\`
+- **Attachments Attached**: ${req.attachments?.length || 0} file(s)
+
+### 🎯 Goal
+${goal}
+
+${story ? `### 👤 User Story\n${story}\n` : ''}
+### ✅ Acceptance Criteria & Modular Tasks
+${criteria}
+
+${apiHints ? `### 🔌 API & Contract Hints\n\`${apiHints}\`\n` : ''}
+---
+💡 Click [#${req.id}](/requirements/${req.id}) or **Open Form (#${req.id})** below to open the interactive form, or tell me to edit this record (e.g. *"edit #${req.id}: change priority to urgent"*).`;
+
+    this.db
+      .prepare(
+        `INSERT INTO ai_chat_messages (id, session_id, role, content, spec_json, attachments, created_at)
+         VALUES (?, ?, 'assistant', ?, null, '[]', ?)`
+      )
+      .run(assistantMsgId, sessionId, replyContent, now);
+
+    this.db
+      .prepare('UPDATE ai_chat_sessions SET updated_at = ? WHERE id = ?')
+      .run(now, sessionId);
+
+    return {
+      session: this.getSession(sessionId)!,
+      message: {
+        id: assistantMsgId,
+        role: 'assistant',
+        content: replyContent,
+        timestamp: now,
+      },
+    };
+  }
+
+  /**
+   * Handles user creating a requirement record through conversational chat without button click.
+   */
+  public async handleCreateRequirementInChat(
+    sessionId: string,
+    prompt: string,
+    history: AiChatMessage[],
+    separateByModule: boolean
+  ): Promise<{
+    session: AiChatSession;
+    message: AiChatMessage;
+    suggested_spec?: DraftRequirementResult;
+  }> {
+    const extraInstructions = separateByModule
+      ? 'Partition acceptance criteria by module or feature with [Module: ...] prefix for each task.'
+      : prompt;
+
+    const res = await this.createRequirementFromSession(sessionId, extraInstructions);
+    const messages = res.session.messages || [];
+    const lastMsg = messages[messages.length - 1];
+
+    return {
+      session: res.session,
+      message: lastMsg,
+      suggested_spec: lastMsg?.suggested_spec,
+    };
+  }
+
   public async sendSessionMessage(
     sessionId: string,
     input: {
@@ -227,7 +721,38 @@ What feature, solution, or refactoring would you like to design today? Tell me w
 
     const currentHistory = [...(session.messages || []), userMsg];
 
-    // 2. Chat with local AI using session continuity
+    // Update session title if default
+    if (session.title === 'New Architecture Discussion' && input.content.trim()) {
+      const newTitle = input.content.length > 35 ? input.content.slice(0, 32) + '...' : input.content;
+      this.db
+        .prepare('UPDATE ai_chat_sessions SET title = ?, updated_at = ? WHERE id = ?')
+        .run(newTitle, now, sessionId);
+    }
+
+    // 2. Check if user wants to edit an existing requirement record from chat
+    const editIntent = this.isEditRequirementIntent(input.content);
+    if (editIntent.isEdit) {
+      return this.handleEditRequirementInChat(sessionId, input.content, editIntent.reqId);
+    }
+
+    // 3. Check if user wants to create requirement / ticket in system app without button click
+    const createIntent = this.isCreateRequirementIntent(input.content);
+    if (createIntent.isCreate) {
+      return this.handleCreateRequirementInChat(
+        sessionId,
+        input.content,
+        currentHistory,
+        createIntent.separateByModule
+      );
+    }
+
+    // 4. Check if user is asking to read / inspect data from created record
+    const queryIntent = this.isQueryRequirementIntent(input.content);
+    if (queryIntent.isQuery) {
+      return this.handleQueryRequirementInChat(sessionId, input.content, queryIntent.reqId);
+    }
+
+    // 5. Chat with local AI using session continuity
     const chatReq: AiChatRequest = {
       messages: currentHistory,
       provider: input.provider || session.provider,
@@ -238,7 +763,7 @@ What feature, solution, or refactoring would you like to design today? Tell me w
 
     const response = await this.chat(chatReq, sessionId);
 
-    // 3. Record assistant message
+    // 6. Record assistant message
     const assistantMsgId = `msg-${crypto.randomUUID()}`;
     const specJson = response.suggested_spec ? JSON.stringify(response.suggested_spec) : null;
 
@@ -249,18 +774,9 @@ What feature, solution, or refactoring would you like to design today? Tell me w
       )
       .run(assistantMsgId, sessionId, response.message.content, specJson, now);
 
-    // 4. Update session title if default
-    let newTitle = session.title;
-    if (session.title === 'New Architecture Discussion' && input.content.trim()) {
-      newTitle = input.content.length > 35 ? input.content.slice(0, 32) + '...' : input.content;
-      this.db
-        .prepare('UPDATE ai_chat_sessions SET title = ?, updated_at = ? WHERE id = ?')
-        .run(newTitle, now, sessionId);
-    } else {
-      this.db
-        .prepare('UPDATE ai_chat_sessions SET updated_at = ? WHERE id = ?')
-        .run(now, sessionId);
-    }
+    this.db
+      .prepare('UPDATE ai_chat_sessions SET updated_at = ? WHERE id = ?')
+      .run(now, sessionId);
 
     const updatedSession = this.getSession(sessionId)!;
     return {
@@ -410,6 +926,10 @@ You MUST return your specification strictly in a \`\`\`json:spec block:
       }
     }
 
+    if (extraInstructions && /module|feature|seperate|separate/i.test(extraInstructions)) {
+      spec.acceptance_criteria = this.partitionCriteriaByModule(spec.acceptance_criteria, session.messages);
+    }
+
     // Ensure notes has the COMPLETE architectural markdown from the conversation
     const chatArchitecturalDoc = session.messages
       .filter((m) => m.role === 'assistant')
@@ -469,15 +989,27 @@ You MUST return your specification strictly in a \`\`\`json:spec block:
     // 5. Append assistant confirmation message to session transcript
     const now = new Date().toISOString();
     const assistantMsgId = `msg-${crypto.randomUUID()}`;
-    const confirmContent = `🎯 **Ticket Created from Full Discussion Context**: [#${createdRequirement.id} - ${createdRequirement.title}](/requirements/${createdRequirement.id})
+    const formattedCriteria = (spec.acceptance_criteria || [])
+      .map((c) => `- [ ] ${c}`)
+      .join('\n');
 
-**Synthesized Scope:**
+    const confirmContent = `🎯 **Requirement Ticket Created in System App**: [#${createdRequirement.id} - ${createdRequirement.title}](/requirements/${createdRequirement.id})
+
+**Modular Task Breakdown & Criteria:**
+${formattedCriteria}
+
+**Ticket Record Details:**
+- **ID**: \`#${createdRequirement.id}\`
+- **Status**: \`${createdRequirement.status}\` (ToDo)
+- **Priority**: \`${createdRequirement.priority}\`
 - **Affected Projects**: \`${createdRequirement.affected_projects.join(', ')}\`
-- **Acceptance Criteria**: ${spec.acceptance_criteria?.length || 0} items synthesized from conversation
 - **Attachments Attached**: ${sessionAttachments.length} file(s)
-${spec.api_hints ? `- **API / Contract**: \`${spec.api_hints}\`\n` : ''}
+${spec.api_hints ? `- **API / Contract**: \`${spec.api_hints}\`\n` : ''}- **File**: \`${createdRequirement.file_path}\`
 
-You can click **Open Info** on ticket #${createdRequirement.id} in the right sidebar or reference it in chat with **#${createdRequirement.id}**.`;
+💡 **Interactive Options:**
+- Click [#${createdRequirement.id}](/requirements/${createdRequirement.id}) or **Open Form (#${createdRequirement.id})** below to inspect or edit the form.
+- Ask me questions in chat (e.g. *"what are the acceptance criteria for #${createdRequirement.id}?"*) to read data from this record.
+- Tell me to edit (e.g. *"edit #${createdRequirement.id}: change priority to urgent"* or *"add task..."*) to update this record directly.`;
 
     this.db
       .prepare(
@@ -819,24 +1351,12 @@ Guidelines:
     return messages
       .map((m) => {
         let text = `${m.role === 'user' ? 'Developer' : 'Architect'}: ${m.content}`;
-        if (m.attachments && m.attachments.length > 0) {
-          text += `\n[Attached Files: ${m.attachments.map((a) => a.name).join(', ')}]`;
-          for (const att of m.attachments) {
-            if (
-              att.data_url &&
-              (att.type?.startsWith('text/') ||
-                att.name.match(/\.(json|sql|ts|tsx|js|jsx|md|txt|yaml|yml|css|html)$/i))
-            ) {
-              try {
-                if (att.data_url.startsWith('data:')) {
-                  const base64Part = att.data_url.split(',')[1];
-                  if (base64Part) {
-                    const decoded = Buffer.from(base64Part, 'base64').toString('utf-8');
-                    text += `\n\`\`\`${att.name}\n${decoded.slice(0, 3000)}\n\`\`\``;
-                  }
-                }
-              } catch {}
-            }
+        const attTexts = this.extractAttachmentTexts(m.attachments);
+        if (attTexts.length > 0) {
+          text += `\n[Attached Files: ${attTexts.map((a) => a.name).join(', ')}]`;
+          for (const att of attTexts) {
+            const ext = att.name.split('.').pop() || 'markdown';
+            text += `\n### 📄 Attached Specification: ${att.name}\n\`\`\`${ext}\n${att.content.slice(0, 60000)}\n\`\`\``;
           }
         }
         return text;
@@ -936,11 +1456,86 @@ Guidelines:
       rawLastUser.startsWith('> Replying to ') && rawLastUser.includes('\n\n')
         ? rawLastUser.slice(rawLastUser.indexOf('\n\n') + 2).trim()
         : rawLastUser;
+
+    const attachmentTexts = req.messages.flatMap((m) => this.extractAttachmentTexts(m.attachments));
+    const attachedMd = attachmentTexts.find((a) => a.name.match(/\.(md|markdown|txt)$/i)) || attachmentTexts[0];
+
     const projects = this.projectService.listProjects().map((p) => p.name);
     const affected = projects.length > 0
-      ? projects.filter((p) => lastUserMessage.toLowerCase().includes(p.toLowerCase()))
+      ? projects.filter(
+          (p) =>
+            lastUserMessage.toLowerCase().includes(p.toLowerCase()) ||
+            (attachedMd && attachedMd.content.toLowerCase().includes(p.toLowerCase()))
+        )
       : ['backend'];
-    const resolvedAffected = affected.length > 0 ? affected : (projects.length > 0 ? projects.slice(0, 2) : ['backend']);
+    const resolvedAffected =
+      affected.length > 0 ? affected : projects.length > 0 ? projects.slice(0, 2) : ['backend'];
+
+    // If an attached specification was provided:
+    if (attachedMd && attachedMd.content.trim().length > 20) {
+      const specContent = attachedMd.content;
+      const titleMatch = specContent.match(/^#{1,2}\s+(.+)$/m);
+      const title = titleMatch ? titleMatch[1].replace(/[`*#]/g, '').trim() : attachedMd.name.replace(/\.[^.]+$/, '');
+
+      const sectionMatches = [...specContent.matchAll(/^#{2,3}\s+(.+)$/gm)].map((m) => m[1].replace(/[`*#]/g, '').trim());
+      const modules = sectionMatches.filter((s) => !/^(goal|user story|overview|notes|summary)$/i.test(s)).slice(0, 6);
+
+      const bullets = [...specContent.matchAll(/^[-*]\s+(.+)$/gm)].map((m) => m[1].trim());
+      const criteria: string[] = [];
+
+      if (modules.length > 0) {
+        for (const mod of modules) {
+          criteria.push(`[Module: ${mod}] Implementation, migration, and verification for ${mod}`);
+        }
+      } else if (bullets.length > 0) {
+        for (const b of bullets.slice(0, 5)) {
+          criteria.push(b);
+        }
+      } else {
+        criteria.push(`[Module: Core Architecture] Implement ${title} according to attached specification`);
+        criteria.push(`[Module: Quality & Testing] Automated tests verify contract compliance on develop branch`);
+      }
+
+      const spec: DraftRequirementResult = {
+        title,
+        goal: `Implement ${title} specified in attached ${attachedMd.name} across affected services.`,
+        user_story: `As a developer, I want to implement the modules from ${attachedMd.name}, so that the system operates reliably.`,
+        acceptance_criteria: criteria,
+        affected_projects: resolvedAffected,
+        api_hints: specContent.match(/(?:GET|POST|PUT|DELETE)\s+\/[a-zA-Z0-9_/-]+/i)?.[0] || undefined,
+        notes: `Analyzed from attached spec ${attachedMd.name}:\n\n${specContent.slice(0, 1500)}`,
+        provider_used: 'Local Heuristic Spec Analyzer (Offline)',
+      };
+
+      const replyContent = `### 📄 Architectural Review & Analysis: ${title}
+
+**Attached Specification**: \`${attachedMd.name}\` (${Math.round((attachedMd.content.length / 1024) * 10) / 10} KB)
+
+#### 1. Scope & Modules Identified
+${modules.length > 0 ? modules.map((m) => `- **Module: ${m}**`).join('\n') : `- **Module: Core Specification** (${title})`}
+
+#### 2. Multi-Repo Architecture & Affected Projects
+- **Affected Projects**: \`${resolvedAffected.join(', ')}\`
+- **Target Branch**: \`develop\` (contract-isolated)
+${spec.api_hints ? `- **API Contract Hint**: \`${spec.api_hints}\`\n` : ''}
+#### 3. Recommended Modular Tasks & Acceptance Criteria
+${criteria.map((c) => `- [ ] ${c}`).join('\n')}
+
+---
+💡 **Next Step**: You can tell me to **"create requirement separate task from module or feature"** or **"create ticket in system app"** (no button click needed), and I will persist the requirement record directly in the system app with clickable **#REQ-xxx**!`;
+
+      return {
+        message: {
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: replyContent,
+          timestamp: new Date().toISOString(),
+          suggested_spec: spec,
+        },
+        suggested_spec: spec,
+        provider_used: 'Local Heuristic Spec Analyzer (Offline)',
+      };
+    }
 
     const title = lastUserMessage.length > 40
       ? lastUserMessage.slice(0, 37) + '...'
@@ -974,7 +1569,7 @@ Guidelines:
 3. **Acceptance Criteria**:
 ${spec.acceptance_criteria.map((c) => `   - ${c}`).join('\n')}
 ${spec.api_hints ? `4. **Contract / API Hints**: \`${spec.api_hints}\`\n` : ''}
-We can continue refining this architecture, or type **/create** (or click the button in the header) to dispatch this requirement!`;
+We can continue refining this architecture, or say **"create requirement separate task from module or feature"** or **"create ticket in system app"** to dispatch this requirement!`;
 
     return {
       message: {

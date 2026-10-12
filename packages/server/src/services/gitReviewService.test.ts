@@ -143,4 +143,31 @@ describe('GitReviewService & Endpoints', () => {
     expect(res.status).toBe(200);
     expect(res.body.type).toBe('directory');
   });
+
+  it('lists available local branches in summary', () => {
+    const summary = gitReviewService.getReviewSummary('sample-project', 'main');
+    expect(summary.availableBranches).toEqual(expect.arrayContaining(['main', 'develop']));
+  });
+
+  it('reports working tree clean when comparing against HEAD with all changes committed', () => {
+    // When committed on develop, diffing against main shows 2 files, but diffing against HEAD shows 0 files
+    const mainSummary = gitReviewService.getReviewSummary('sample-project', 'main');
+    expect(mainSummary.changedFiles.length).toBe(2);
+
+    const headSummary = gitReviewService.getReviewSummary('sample-project', 'HEAD');
+    expect(headSummary.clean).toBe(true);
+    expect(headSummary.changedFiles).toHaveLength(0);
+  });
+
+  it('detects uncommitted modifications when comparing against HEAD', () => {
+    // Modify a file in working tree without committing
+    fs.appendFileSync(path.join(tempRepo, 'README.md'), 'Uncommitted local edit\n');
+
+    const headSummary = gitReviewService.getReviewSummary('sample-project', 'HEAD');
+    expect(headSummary.clean).toBe(false);
+    expect(headSummary.changedFiles.some((f) => f.path === 'README.md')).toBe(true);
+
+    const diff = gitReviewService.getFileDiff('sample-project', 'README.md', 'HEAD');
+    expect(diff.diffLines.some((l) => l.content.includes('Uncommitted local edit'))).toBe(true);
+  });
 });

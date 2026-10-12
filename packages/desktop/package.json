@@ -5,6 +5,7 @@
   "description": "SP Kickstack Desktop App powered by Tauri v2",
   "scripts": {
     "dev": "tauri dev",
+    "bundle:server": "node ../../scripts/bundle-desktop-server.mjs",
     "build:desktop": "tauri build"
   },
   "devDependencies": {

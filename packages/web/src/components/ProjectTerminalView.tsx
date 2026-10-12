@@ -19,6 +19,7 @@ import {
   restartProjectTerminal,
   clearProjectTerminal,
   fetchActiveTerminals,
+  BASE,
 } from '../lib/api.js';
 
 interface ProjectTerminalViewProps {
@@ -146,7 +147,7 @@ export const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
 
     let eventSource: EventSource | null = null;
     try {
-      eventSource = new EventSource(`/api/projects/${encodeURIComponent(projectName)}/terminal/stream`);
+      eventSource = new EventSource(`${BASE}/projects/${encodeURIComponent(projectName)}/terminal/stream`);
 
       eventSource.onmessage = (e) => {
         try {

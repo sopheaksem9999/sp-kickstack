@@ -134,7 +134,7 @@ export function createApp(deps: AppDependencies): Express {
 
   const aiDraftService =
     deps.aiDraftService ||
-    new AiDraftService(undefined, settingsService);
+    new AiDraftService(undefined, settingsService, deps.db);
 
   const aiChatService =
     deps.aiChatService ||
@@ -1036,7 +1036,7 @@ export function createApp(deps: AppDependencies): Express {
   // Native In-App Git Review & Code Diff Endpoints
   app.get('/api/projects/:name/git-review/summary', (req, res, next) => {
     try {
-      const target = (req.query.target as string) || 'main';
+      const target = (req.query.target as string) || 'HEAD';
       const summary = gitReviewService.getReviewSummary(req.params.name, target);
       res.json(summary);
     } catch (err) {
@@ -1048,7 +1048,7 @@ export function createApp(deps: AppDependencies): Express {
     try {
       const file = req.query.file as string;
       if (!file) return res.status(400).json({ error: 'file query param is required' });
-      const target = (req.query.target as string) || 'main';
+      const target = (req.query.target as string) || 'HEAD';
       const diff = gitReviewService.getFileDiff(req.params.name, file, target);
       res.json(diff);
     } catch (err) {

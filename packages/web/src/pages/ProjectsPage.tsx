@@ -6,6 +6,7 @@ import {
   updateProject,
   deleteProject,
   openProjectFolder,
+  createProject,
 } from '../lib/api.js';
 import { Project, EngineType } from '@sp-kickstack/shared';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
@@ -163,15 +164,7 @@ export function ProjectsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (payload: Partial<Project>) => {
-      const res = await fetch('/api/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error((await res.json()).error || 'Failed to create project');
-      return res.json();
-    },
+    mutationFn: createProject,
     onSuccess: (created) => {
       toast.success(`Project ${created.name} registered`);
       setIsModalOpen(false);
@@ -459,7 +452,7 @@ export function ProjectsPage() {
                       projectName={activeSplitProject.name}
                       repoPath={activeSplitProject.repo_path}
                       baseBranch={activeSplitProject.base_branch || 'develop'}
-                      targetBranch="main"
+                      targetBranch="HEAD"
                       onToggleTerminal={() => setSplitRightTab('terminal')}
                       isTerminalOpen={false}
                     />

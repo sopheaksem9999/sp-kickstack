@@ -230,11 +230,36 @@ export interface SingleCliConfig {
 }
 
 export interface AiCliSettings {
-  defaultProvider: 'auto' | 'claude-cli' | 'agy-cli' | 'codex-cli' | 'ollama' | 'heuristic';
+  defaultProvider: 'claude-cli' | 'agy-cli' | 'codex-cli' | 'ollama' | 'heuristic' | 'auto';
   claude: SingleCliConfig;
   agy: SingleCliConfig;
   codex?: SingleCliConfig;
   ollama: SingleCliConfig & { url: string };
+}
+
+export interface EngineRateLimitInfo {
+  supported: boolean;
+  supportType: 'native' | 'bridge_monitored' | 'unlimited_offline';
+  status: 'healthy' | 'rate_limited' | 'unlimited';
+  pausedUntil?: string | null;
+  message?: string;
+  totalDispatches: number;
+  completedTasks: number;
+  rateLimitEvents: number;
+  activeTasks: number;
+  lastUsedAt?: string | null;
+}
+
+export interface EngineProviderStatus {
+  id: 'claude-cli' | 'agy-cli' | 'codex-cli' | 'ollama' | 'heuristic';
+  name: string;
+  installed: boolean;
+  available: boolean;
+  path?: string | null;
+  version?: string | null;
+  models?: string[];
+  note?: string;
+  rateLimit: EngineRateLimitInfo;
 }
 
 export type AiChatRole = 'user' | 'assistant' | 'system';

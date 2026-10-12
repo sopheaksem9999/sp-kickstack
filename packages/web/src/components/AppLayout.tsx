@@ -117,17 +117,69 @@ export function AppLayout({ children }: { children: ReactNode }) {
           </button>
         </div>
 
+        {/* Workspace Selector & Create (Upper Create Requirement) */}
+        {sidebarOpen && (
+          <div className="px-2.5 pt-2.5 pb-1 space-y-1">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1 flex items-center justify-between">
+              <span>Workspace</span>
+              <button
+                type="button"
+                onClick={() => setIsCreateWsOpen(true)}
+                className="flex items-center gap-0.5 text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 normal-case font-semibold text-[10px] hover:underline cursor-pointer"
+                title="Create New Workspace"
+              >
+                <Plus className="w-3 h-3" />
+                <span>New</span>
+              </button>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="flex-1 min-w-0 flex items-center gap-1.5 bg-slate-100 dark:bg-[#262626] border border-slate-200 dark:border-[#333333] rounded-lg px-2 py-1.5 text-xs hover:border-purple-300 dark:hover:border-purple-700/60 transition-colors">
+                <Building2 className="w-3.5 h-3.5 text-[#7b68ee] shrink-0" />
+                <select
+                  value={activeWorkspaceId}
+                  onChange={(e) => setActiveWorkspaceId(e.target.value)}
+                  className="w-full bg-transparent text-slate-800 dark:text-slate-200 font-semibold focus:outline-none cursor-pointer truncate text-xs"
+                  title="Select Active Workspace"
+                >
+                  <option value="all" className="bg-white dark:bg-[#262626] text-slate-800 dark:text-slate-200">
+                    🌐 All Workspaces
+                  </option>
+                  {workspaces.map((ws) => (
+                    <option key={ws.id} value={ws.id} className="bg-white dark:bg-[#262626] text-slate-800 dark:text-slate-200">
+                      📁 {ws.name}
+                    </option>
+                  ))}
+                  {activeWorkspaceId !== 'all' && !workspaces.some((ws) => ws.id === activeWorkspaceId) && (
+                    <option value={activeWorkspaceId} className="bg-white dark:bg-[#262626] text-slate-800 dark:text-slate-200">
+                      📁 {activeWorkspaceId}
+                    </option>
+                  )}
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCreateWsOpen(true)}
+                className="p-1.5 bg-slate-100 dark:bg-[#262626] hover:bg-purple-50 dark:hover:bg-purple-950/60 text-slate-600 dark:text-slate-400 hover:text-purple-600 dark:hover:text-purple-300 rounded-lg border border-slate-200 dark:border-[#333333] hover:border-purple-300 dark:hover:border-purple-700/60 transition shrink-0 cursor-pointer"
+                title="Create New Workspace"
+                aria-label="Create New Workspace"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Quick Add Action Button (Opens Right Sheet) */}
         {sidebarOpen && (
-        <div className="p-2.5 pb-1">
-          <button
-            type="button"
-            onClick={openSheet}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-[#7b68ee] to-[#6c5ce7] hover:from-[#6c5ce7] hover:to-[#5f3dc4] text-white rounded-lg text-xs font-semibold shadow-md shadow-purple-600/20 transition-all active:scale-[0.98]"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>New Requirement</span>
-          </button>
+          <div className="p-2.5 pt-1.5 pb-1">
+            <button
+              type="button"
+              onClick={openSheet}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-[#7b68ee] to-[#6c5ce7] hover:from-[#6c5ce7] hover:to-[#5f3dc4] text-white rounded-lg text-xs font-semibold shadow-md shadow-purple-600/20 transition-all active:scale-[0.98]"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>New Requirement</span>
+            </button>
           </div>
         )}
 
@@ -141,6 +193,14 @@ export function AppLayout({ children }: { children: ReactNode }) {
               title="Expand sidebar"
             >
               <PanelLeftOpen className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsCreateWsOpen(true)}
+              className="p-2 rounded-md text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-slate-100 dark:hover:bg-[#2a2a2a] transition-colors"
+              title="Create Workspace"
+            >
+              <Building2 className="w-4 h-4 text-[#7b68ee]" />
             </button>
             {/* Icon-only nav when collapsed */}
             {navItems.map((item) => {
@@ -308,50 +368,19 @@ export function AppLayout({ children }: { children: ReactNode }) {
               </span>
             </div>
 
-            <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 mx-1 hidden sm:block" />
-
-            {/* Workspace Dropdown */}
-            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-[#262626] border border-slate-200 dark:border-[#333333] rounded-lg px-2.5 py-1 text-xs">
-              <Building2 className="w-3.5 h-3.5 text-[#7b68ee]" />
-              <select
-                value={activeWorkspaceId}
-                onChange={(e) => setActiveWorkspaceId(e.target.value)}
-                className="bg-transparent text-slate-800 dark:text-slate-200 font-semibold focus:outline-none cursor-pointer pr-1"
-              >
-                <option value="all" className="bg-white dark:bg-[#262626] text-slate-800 dark:text-slate-200">
-                  🌐 All Workspaces
-                </option>
-                {workspaces.map((ws) => (
-                  <option key={ws.id} value={ws.id} className="bg-white dark:bg-[#262626] text-slate-800 dark:text-slate-200">
-                    📁 {ws.name} ({ws.id})
-                  </option>
-                ))}
-                {activeWorkspaceId !== 'all' && !workspaces.some((ws) => ws.id === activeWorkspaceId) && (
-                  <option value={activeWorkspaceId} className="bg-white dark:bg-[#262626] text-slate-800 dark:text-slate-200">
-                    📁 {activeWorkspaceId}
-                  </option>
-                )}
-              </select>
-            </div>
-
-            <button
-              onClick={() => setIsCreateWsOpen(true)}
-              className="flex items-center gap-1 px-2 py-1 bg-slate-100 dark:bg-[#262626] hover:bg-slate-200 dark:hover:bg-[#333333] text-slate-600 dark:text-slate-300 rounded-lg text-xs font-medium border border-slate-200 dark:border-[#333333] transition"
-              title="Add New Workspace"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Workspace</span>
-            </button>
-
             {activeWorkspace && (
-              <button
-                onClick={() => setIsRulesOpen(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 dark:hover:bg-purple-900/50 text-[#7b68ee] dark:text-purple-300 rounded-lg text-xs font-semibold border border-purple-200 dark:border-purple-800/40 transition"
-                title="Workspace Shared Rules & Architecture Context"
-              >
-                <BookOpen className="w-3.5 h-3.5" />
-                <span className="hidden lg:inline">Shared Rules & Context</span>
-              </button>
+              <>
+                <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 mx-1 hidden sm:block" />
+                <button
+                  onClick={() => setIsRulesOpen(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 dark:hover:bg-purple-900/50 text-[#7b68ee] dark:text-purple-300 rounded-lg text-xs font-semibold border border-purple-200 dark:border-purple-800/40 transition"
+                  title="Workspace Shared Rules & Architecture Context"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span className="hidden lg:inline">Shared Rules & Context</span>
+                  <span className="lg:hidden">Rules</span>
+                </button>
+              </>
             )}
           </div>
 

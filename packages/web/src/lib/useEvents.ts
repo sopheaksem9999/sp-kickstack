@@ -1,12 +1,13 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { BASE } from './api.js';
 
 export function useBridgeEvents() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    const es = new EventSource('/api/events');
+    const es = new EventSource(`${BASE}/events`);
 
     es.onmessage = (e) => {
       try {

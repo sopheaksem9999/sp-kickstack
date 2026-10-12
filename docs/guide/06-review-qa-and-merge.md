@@ -66,12 +66,17 @@ them instead`). Resolving is only for your bookkeeping; it does not tell the age
    "Available once the requirement is in review or QA", or
    "A merge is running; wait for it to finish".
 3. The dialog **Request changes?** says how many comments go to how many agents.
-4. Optional: to run this round with another model or effort, click the button under
-   **Model for this round (optional)**. It reads `Keep each task's setting` until you choose.
-   Pick a model (`opus`, `sonnet`, `haiku`, `fable`, or another id typed into **Other model id**,
-   then Enter) and/or an effort (`low`, `medium`, `high`, `xhigh`, `max`). **Default** keeps each
-   task's setting.
-5. Click **Send to agents** (or **Keep reviewing**).
+4. Optional: to run the tasks you send back with another model or effort, click the button under
+   **Pin a model for the tasks sent back (optional)**. The line under it says
+   `The pin stays for later runs of those tasks until you clear it.` The button reads
+   `Keep each task's setting` until you choose. Pick a model (`opus`, `sonnet`, `haiku`, `fable`,
+   or another id typed into **Other model id**, then Enter) and/or an effort (`low`, `medium`,
+   `high`, `xhigh`, `max`). **Keep** leaves each task's setting as it is.
+5. Optional, only shown when a task that goes back has a pin: tick **Clear pins (use the
+   requirement's or workspace's setting)**. The model and effort button is greyed out while it is
+   ticked.
+6. Click **Send to agents**. **Keep reviewing**, **Escape** or a click outside the dialog closes it
+   without sending, and forgets what you chose in it.
 
 ### What happens next
 
@@ -94,9 +99,11 @@ For each task that has open comments (it must be IN REVIEW or COMPLETE):
 4. The task's earlier merge, if any, is forgotten: its new commits must go through the merge
    gate again.
 5. If you chose a model or effort in step 4, it is **pinned** on each task that is sent back, and
-   used for this new run and for every later run of that task (see
-   [Which setting wins](03-requirements-and-fan-out.md#which-setting-wins)). The task card shows a
-   **pinned** marker next to the model line.
+   used for this new run and for every later run of that task, including later rounds that name no
+   model (see [Which setting wins](03-requirements-and-fan-out.md#which-setting-wins)). The task
+   card shows a marker such as `pinned: opus · max` next to the model line. If you ticked
+   **Clear pins** in step 5, the pins of the tasks sent back are removed instead, and they run with
+   the requirement's or the workspace's setting.
 
 The requirement moves back to **In Progress**, and to **In Review** again when the agents finish.
 A toast says `Round N sent: X tasks started a new run`.
@@ -108,8 +115,9 @@ About the model for the round:
 - Model and effort are pinned separately: choosing only an effort leaves the model as it was
   (the task's earlier pin, else the requirement's or the workspace's).
 - A task that could not be sent back keeps its old pin.
-- **Request changes** can replace a pin but cannot remove one. **Clear pin** is in the **Retry**
-  panel, which cards offer for tasks that can be retried (see
+- A pin you set stays for every later round until you replace it or tick **Clear pins**. Tasks that
+  are IN REVIEW or COMPLETE have no **Retry**, so this dialog is where you clear their pins (for
+  a failed task, **Clear pin** is in the **Retry** panel, see
   [08](08-rate-limits-and-retry.md#retry-with-a-different-model-or-effort)).
 - Whether Stoneforge honours the model and effort is **not confirmed**, and a Manual project
   ignores them (see [02](02-projects-and-engines.md#model-and-effort-sent-to-the-engine)).

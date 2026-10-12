@@ -59,7 +59,7 @@ For each of them, the first line of this table that has a value is used:
 
 | Order | Where it is set | How you set it |
 |---|---|---|
-| 1 | The task (a **pin**) | **Retry** with a model ([08](08-rate-limits-and-retry.md#retry-with-a-different-model-or-effort)), or **Request changes** with **Model for this round (optional)** ([06](06-review-qa-and-merge.md#send-work-back-with-request-changes)) |
+| 1 | The task (a **pin**) | **Retry** with a model ([08](08-rate-limits-and-retry.md#retry-with-a-different-model-or-effort)), or **Request changes** with **Pin a model for the tasks sent back (optional)** ([06](06-review-qa-and-merge.md#send-work-back-with-request-changes)) |
 | 2 | The requirement | **Agent:** on the requirement page (see below) |
 | 3 | The workspace | **Default agent model & effort** in **Shared Rules & Context** ([02](02-projects-and-engines.md#workspaces)) |
 | 4 | Nothing | The engine uses its own configuration |
@@ -72,27 +72,34 @@ What **Default** means depends on where you see it:
 
 - In the requirement's **Agent:** control and in the workspace dialog, **Default** means "do not
   choose here": the next line of the table decides.
-- In the **Retry** panel and in **Request changes**, **Default** means "keep this task's setting":
-  its pin if it has one, otherwise the requirement's and the workspace's.
-- **Clear pin** (in the **Retry** panel only) removes the task's pin, so the requirement's and the
-  workspace's settings apply again.
+- In the **Retry** panel and in the **Request changes** dialog the chips read **Keep** instead of
+  **Default**, because they mean "keep this task's setting": its pin if it has one, otherwise the
+  requirement's and the workspace's.
+- **Clear pin (use the requirement's or workspace's setting)** in the **Retry** panel, and
+  **Clear pins (use the requirement's or workspace's setting)** in the **Request changes** dialog,
+  remove the pin, so the requirement's and the workspace's settings apply again. Each is shown
+  only when a task it affects has a pin.
 
 A pin stays on the task. Every later run of that task uses it, including the automatic retries
-after a failed start.
+after a failed start, and every later **Request changes** round, until you clear it or replace it.
+A pin belongs to the one task: a ticket that a pinned goal files does not inherit the goal's pin,
+it uses its requirement's or workspace's setting.
 
 ### Set it on a requirement
 
 1. Open the requirement page (see [Start the fan-out](#start-the-fan-out)).
 2. In the header, next to **Merge:**, click the **Agent:** button. It reads `Engine default` when
    nothing is set anywhere, or `Default: sonnet · high (workspace)` when the workspace has a
-   default, or your own choice such as `opus · high`.
+   default, or your own choice such as `opus · high`. If you choose only one of the two, the button
+   also shows the other one from the workspace, for example `sonnet · high` for an effort `high`
+   and a workspace model `sonnet`; hover over it to see which part comes from the workspace.
 3. Under **Model**, click **Default**, a model (`opus`, `sonnet`, `haiku`, `fable`), or type
    another id into **Other model id** and press Enter. A red hint means the id was not accepted
    and it is not used.
 4. Under **Effort**, click **Default** or one of `low`, `medium`, `high`, `xhigh`, `max`.
 
 There is no Save button: every click is saved at once, and a toast says
-`Agent model saved; it applies to runs started from now on`.
+`Agent model saved; it applies to runs started from now on (tasks with a pin keep their pin)`.
 
 You can set it at any stage, including before **Start Fan-Out**. Set it first if the first run
 should already use it.
@@ -153,7 +160,8 @@ The requirement page shows:
   (`⎇ req/REQ-007/task-12`, with `✓` and the merge commit once merged), the model and effort the
   run was sent with, and buttons: **CLI Logs**, **Open Engine**, **Retry**, **Note**,
   **Mark Done** (each only when it applies). **Retry** has a small arrow next to it for retrying
-  with another model (see [08](08-rate-limits-and-retry.md#retry-with-a-different-model-or-effort)).
+  with another model, except on tasks of Manual projects (see
+  [08](08-rate-limits-and-retry.md#retry-with-a-different-model-or-effort)).
 - **Cross-Repo Dependency Links & Contracts**: who waits for whom (see [04](04-agents-tickets-and-questions.md#dependency-links)).
 
 The page refreshes every few seconds, and toasts announce status changes.
@@ -161,16 +169,18 @@ The page refreshes every few seconds, and toasts announce status changes.
 ### The model line on a task card
 
 Under the `Role:` line, a card shows the model and effort its current run was sent with:
-`opus · high`, just `opus`, or `high effort` when only the effort is set. A small **pinned** marker
-next to it means a person pinned a model or effort on this task with **Retry** or
-**Request changes**.
+`opus · high`, just `opus`, or `high effort` when only the effort is set. Hover over it to read
+`Model and effort sent with this run`. A small marker such as `pinned: opus · max` next to it means
+a person pinned that model or effort on this task with **Retry** or **Request changes**; its tooltip
+is `Pinned for this task by Retry or Request changes`. To remove the pin, see
+[Which setting wins](#which-setting-wins).
 
 - It shows what the **bridge sent** to the engine. It is not proof that the agent used it: whether
   Stoneforge honours the model and effort is not confirmed (see
   [02](02-projects-and-engines.md#model-and-effort-sent-to-the-engine)).
 - The model and effort are blank while a task has not been sent yet, and right after **Retry** or
   **Request changes** until the new run has been sent.
-- Tasks of **Manual** projects show no model: no agent runs for them.
+- Tasks of **Manual** projects show no model, no **pinned** marker and no arrow next to **Retry**: no agent runs for them, so a model or effort would have no effect.
 
 ## Task statuses
 

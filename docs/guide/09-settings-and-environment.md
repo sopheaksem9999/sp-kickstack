@@ -119,7 +119,8 @@ An example for `sp_create_requirement`:
 }
 ```
 
-- `sp_list_projects` lists only that workspace's projects (an unknown workspace gives an empty list).
+- `sp_list_projects` lists only that workspace's projects. An unknown workspace id does not give an
+  empty list; the tool answers `No workspace "nowhere". Known workspaces: default, speedx.`
   It used to list the projects of every workspace; pass `workspace_id` for any workspace other
   than `default`.
 - `sp_create_requirement` creates the requirement in that workspace. Names in `affected_projects`

@@ -120,10 +120,10 @@ optional; the plain **Retry** button keeps the task's current setting.
    already pinned, it says `Pinned now: opus · high.`
 2. Under **Model**, click a model (`opus`, `sonnet`, `haiku`, `fable`), or type another id into
    **Other model id** and press Enter. Under **Effort**, click `low`, `medium`, `high`, `xhigh` or
-   `max`. Leave **Default** where you do not want to change anything: **Default** keeps this
-   task's setting.
-3. Optional, only shown when the task has a pin: tick **Clear pin (use the requirement's setting
-   again)**. The model and effort choices are greyed out while it is ticked.
+   `max`. Leave **Keep** where you do not want to change anything: **Keep** leaves this task's
+   setting as it is.
+3. Optional, only shown when the task has a pin: tick **Clear pin (use the requirement's or
+   workspace's setting)**. The model and effort choices are greyed out while it is ticked.
 4. Click **Retry** in the panel. The usual toast tells you the result (see the table above).
 
 #### What happens next
@@ -136,9 +136,10 @@ optional; the plain **Retry** button keeps the task's current setting.
   requirement or the workspace, and a model you pinned earlier stays.
 - **Clear pin** removes both parts of the pin, so the requirement's and the workspace's settings
   apply again. Without it, you cannot remove a pin, only replace it with another choice.
-- The task card shows a **pinned** marker next to the model line (for example `opus · high`). The
+- The task card shows a marker such as `pinned: opus · high` next to the model line. The
   model line is blank until the new run has been sent, then it shows what the new run was sent
   with.
+- Tasks of Manual projects show no arrow and no marker: they ignore a model and effort.
 - If the old engine task cannot be stopped, nothing changes, and the old pin stays.
 
 A model id that does not start with a letter or digit, or that has characters other than letters,
@@ -199,7 +200,7 @@ It is not sent for rate limits. Open the requirement, read the error on the task
 - **A retried task shows no model line**: it fills in once the new run has been sent. If it stays
   empty, the project is **Manual**, or the retry is parked by a rate limit and has not started
   yet.
-- **The task runs with a model you did not pick**: a part you left on **Default** keeps the task's
+- **The task runs with a model you did not pick**: a part you left on **Keep** keeps the task's
   own setting, so that part still comes from its earlier pin, the requirement or the workspace.
 - **FAILED tasks are not retried automatically**: they used up their 5 attempts, or the
   project's engine is marked Down (see

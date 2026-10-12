@@ -3,6 +3,7 @@ import { VALID_SCRUM_TABS, ScrumTab } from '../pages/RequirementsPage';
 import { VALID_VIEW_TABS, RequirementViewTab } from '../pages/RequirementDetailPage';
 import { VALID_TABS as VALID_SETTINGS_TABS, SettingsTab } from '../pages/SettingsPage';
 import { VALID_ATTACHMENTS_TABS, AttachmentsTab } from '../pages/AttachmentsPage';
+import { VALID_QUEUE_TABS, QueueTab } from '../pages/QueuePage';
 
 describe('Web UI Tab URL Synchronization Governance', () => {
   describe('RequirementsPage Scrum tabs', () => {
@@ -74,6 +75,25 @@ describe('Web UI Tab URL Synchronization Governance', () => {
       expect(resolveTab(null)).toBe('ticket');
       expect(resolveTab('invalid')).toBe('ticket');
       expect(resolveTab('shared')).toBe('shared');
+    });
+  });
+
+  describe('QueuePage tabs', () => {
+    it('accepts all 5 queue tab IDs', () => {
+      expect(VALID_QUEUE_TABS).toEqual(['all', 'queued', 'running', 'failed', 'done']);
+    });
+
+    it('falls back to "all" for missing or invalid tab parameters', () => {
+      const resolveTab = (param: string | null): QueueTab =>
+        param && VALID_QUEUE_TABS.includes(param as QueueTab) ? (param as QueueTab) : 'all';
+
+      expect(resolveTab(null)).toBe('all');
+      expect(resolveTab('')).toBe('all');
+      expect(resolveTab('invalid')).toBe('all');
+      expect(resolveTab('queued')).toBe('queued');
+      expect(resolveTab('running')).toBe('running');
+      expect(resolveTab('failed')).toBe('failed');
+      expect(resolveTab('done')).toBe('done');
     });
   });
 

@@ -50,7 +50,19 @@ describe('MCP workspace scope', () => {
     expect(await h.listedProjects({ workspace_id: 'speedx' })).toEqual(['backend', 'mobile']);
     expect(await h.listedProjects()).toEqual(['web']);
     expect(await h.listedProjects({ workspace_id: 'default' })).toEqual(['web']);
-    expect(await h.listedProjects({ workspace_id: 'nowhere' })).toEqual([]);
+  });
+
+  it('sp_list_projects names the known workspaces when the workspace id does not exist, instead of an empty list', async () => {
+    const res = await h.call('sp_list_projects', { workspace_id: 'nowhere' });
+
+    expect(res.error).toBeUndefined();
+    expect(res.result.content).toEqual([{ type: 'text', text: 'No workspace "nowhere". Known workspaces: default, speedx.' }]);
+  });
+
+  it('sp_list_projects still lists an existing workspace that has no projects as an empty list', async () => {
+    h.db.exec(`INSERT INTO workspaces (id, name, created_at, updated_at) VALUES ('empty', 'Empty', 'x', 'x')`);
+
+    expect(await h.listedProjects({ workspace_id: 'empty' })).toEqual([]);
   });
 
   it('sp_create_requirement creates the requirement in the given workspace and drops other workspaces\' projects', async () => {
@@ -79,5 +91,19 @@ describe('MCP workspace scope', () => {
       const tool = tools.find((t) => t.name === name)!;
       expect(tool.inputSchema.properties.workspace_id).toMatchObject({ type: 'string', default: 'default' });
     }
+  });
+
+  it('describes workspace_id as the id shown next to the workspace name in the app header', async () => {
+    const res = await h.server.handleRpcMessage({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+    const tools = res.result.tools as Array<{ name: string; inputSchema: { properties: Record<string, any> } }>;
+
+    for (const tool of tools.filter((t) => t.inputSchema.properties.workspace_id)) {
+      expect(tool.inputSchema.properties.workspace_id.description).toBe(
+        'Workspace id (shown in brackets next to the workspace name in the app header); default "default"'
+      );
+    }
+    expect(tools.filter((t) => t.inputSchema.properties.workspace_id).map((t) => t.name)).toEqual([
+      'sp_create_requirement', 'sp_list_requirements', 'sp_list_projects',
+    ]);
   });
 });

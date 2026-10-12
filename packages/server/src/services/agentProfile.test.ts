@@ -385,5 +385,45 @@ describe('Pin a model and effort on Retry and Request changes', () => {
       expect(h.review.listComments(req.id).map((c) => c.state)).toEqual(['open', 'open']);
       expect(h.sent(before[0].engine_task_id).status).not.toBe('cancelled');
     });
+
+    it('POST /api/requirements/:id/request-changes refuses a bad effort with 400 and changes nothing', async () => {
+      const { req, ids } = await inReview();
+      const before = ids.map((id) => h.task(id));
+      const app = await h.makeApp();
+
+      const res = await testRequest(app, 'POST', `/api/requirements/${req.id}/request-changes`, { body: { effort: 'huge' } });
+
+      expect(res.status).toBe(400);
+      expect(ids.map((id) => h.task(id))).toEqual(before);
+      expect(h.review.listComments(req.id).map((c) => c.state)).toEqual(['open', 'open']);
+      expect(h.sent(before[0].engine_task_id).status).not.toBe('cancelled');
+      expect(h.sent(before[1].engine_task_id).status).not.toBe('cancelled');
+      expect(h.db.prepare('SELECT status FROM requirements WHERE id = ?').get(req.id)).toEqual({ status: 'in_review' });
+    });
+
+    it('restores the previous pin, model and effort of a task whose old engine task cannot be stopped, and re-runs the others', async () => {
+      const { req, ids } = await inReview();
+      const [stuckId, otherId] = ids;
+      h.db
+        .prepare("UPDATE bridge_tasks SET model_override = 'haiku', effort_override = 'low', model = 'haiku', effort = 'low' WHERE id = ?")
+        .run(stuckId);
+      const stuck = h.task(stuckId);
+      h.intercept((url) => url.endsWith(`/api/tasks/${stuck.engine_task_id}/cancel`), async () => new Response('busy', { status: 409 }));
+
+      const result = await h.review.requestChanges(req.id, { model: 'opus', effort: 'max' });
+
+      expect(result.results.find((r) => r.taskId === stuckId)).toMatchObject({ ok: false, error: expect.stringMatching(/Could not stop the old engine task/) });
+      expect(result.results.find((r) => r.taskId === otherId)).toMatchObject({ ok: true });
+      // The task that could not be stopped keeps its old run, its old pin and its comment.
+      expect(h.task(stuckId)).toMatchObject({
+        status: 'in_review', engine_task_id: stuck.engine_task_id,
+        model_override: 'haiku', effort_override: 'low', model: 'haiku', effort: 'low',
+      });
+      expect(h.review.listComments(req.id).map((c) => [c.task_id, c.state])).toEqual([[stuckId, 'open'], [otherId, 'sent']]);
+      // The other task took the new pin.
+      const other = h.task(otherId);
+      expect(other).toMatchObject({ status: 'queued', model_override: 'opus', effort_override: 'max', model: 'opus', effort: 'max' });
+      expect(h.sent(other.engine_task_id)).toMatchObject({ model: 'opus', effort: 'max' });
+    });
   });
 });

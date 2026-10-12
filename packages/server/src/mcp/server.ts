@@ -11,6 +11,8 @@ export interface McpServerDependencies {
   ticketService?: TicketService;
 }
 
+const WORKSPACE_ID_HELP = 'Workspace id (shown in brackets next to the workspace name in the app header); default "default"';
+
 export class McpServer {
   constructor(private deps: McpServerDependencies) {}
 
@@ -68,7 +70,7 @@ export class McpServer {
                     enum: ['low', 'normal', 'high', 'urgent'],
                     default: 'normal',
                   },
-                  workspace_id: { type: 'string', default: 'default', description: 'Workspace to use' },
+                  workspace_id: { type: 'string', default: 'default', description: WORKSPACE_ID_HELP },
                 },
                 required: ['title', 'goal', 'affected_projects'],
               },
@@ -79,7 +81,7 @@ export class McpServer {
               inputSchema: {
                 type: 'object',
                 properties: {
-                  workspace_id: { type: 'string', default: 'default' },
+                  workspace_id: { type: 'string', default: 'default', description: WORKSPACE_ID_HELP },
                 },
               },
             },
@@ -100,7 +102,7 @@ export class McpServer {
               inputSchema: {
                 type: 'object',
                 properties: {
-                  workspace_id: { type: 'string', default: 'default', description: 'Workspace to use' },
+                  workspace_id: { type: 'string', default: 'default', description: WORKSPACE_ID_HELP },
                 },
               },
             },
@@ -185,7 +187,21 @@ export class McpServer {
         }
 
         if (toolName === 'sp_list_projects') {
-          const projs = this.deps.projectService.listProjects(args.workspace_id || 'default');
+          const workspaceId = args.workspace_id || 'default';
+          const known = this.deps.db
+            .prepare("SELECT id FROM workspaces ORDER BY CASE WHEN id = 'default' THEN 0 ELSE 1 END, name")
+            .all() as Array<{ id: string }>;
+          if (!known.some((w) => w.id === workspaceId)) {
+            // An empty list would read as "this workspace has no projects"; say the id is wrong instead.
+            return {
+              jsonrpc: '2.0',
+              id,
+              result: {
+                content: [{ type: 'text', text: `No workspace "${workspaceId}". Known workspaces: ${known.map((w) => w.id).join(', ')}.` }],
+              },
+            };
+          }
+          const projs = this.deps.projectService.listProjects(workspaceId);
           return {
             jsonrpc: '2.0',
             id,

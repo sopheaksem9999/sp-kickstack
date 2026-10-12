@@ -12,6 +12,7 @@
   "dependencies": {
     "@radix-ui/react-dialog": "^1.2.0",
     "@radix-ui/react-popover": "^1.2.0",
+    "@radix-ui/react-tabs": "~1.1.13",
     "@sp-kickstack/shared": "*",
     "@tanstack/react-query": "^5.59.20",
     "clsx": "^2.1.1",

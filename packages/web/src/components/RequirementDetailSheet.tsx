@@ -17,11 +17,14 @@ import {
   updateRequirementMergePolicy,
   mergeRequirementToMain,
   startMergeToQa,
+  retryTask,
 } from '../lib/api.js';
+import { canRetry, retryOutcome } from '../lib/taskActions.js';
 import { mergeCopy, mergeGateAction } from '../lib/mergeReady.js';
 import { useDemoMode } from '../lib/useDemoMode.js';
 import { StatusBadge } from './StatusBadge.js';
 import { BridgeTask, RequirementStatus, BranchMergePolicy, Priority, UpdateRequirementInput } from '@sp-kickstack/shared';
+import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { toast } from 'sonner';
 import {
   X,
@@ -47,6 +50,7 @@ import {
   Minimize2,
   Copy,
   Lock,
+  RotateCcw,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetClose } from './ui/sheet.js';
 import {
@@ -86,6 +90,7 @@ export function RequirementDetailSheet({
 }: RequirementDetailSheetProps) {
   const queryClient = useQueryClient();
   const demoMode = useDemoMode();
+  const { wsPath } = useWorkspace();
   const mergeText = mergeCopy(demoMode);
   const [isEditingProjects, setIsEditingProjects] = useState(false);
   const [editingProjectsList, setEditingProjectsList] = useState<string[]>([]);
@@ -220,6 +225,16 @@ export function RequirementDetailSheet({
     onError: (err: any) => toast.error(err.message || 'Failed to update task'),
   });
 
+  const retryMutation = useMutation({
+    mutationFn: (taskId: number) => retryTask(taskId),
+    onSuccess: (updated) => {
+      const outcome = retryOutcome(updated);
+      toast[outcome.kind](outcome.message);
+      queryClient.invalidateQueries();
+    },
+    onError: (err: any) => toast.error(err.message || 'Could not retry task'),
+  });
+
   const releaseMutation = useMutation({
     mutationFn: (linkId: number) => releaseLink(linkId),
     onSuccess: () => {
@@ -321,7 +336,7 @@ export function RequirementDetailSheet({
           <div className="flex items-center gap-2">
             {req?.session_id && (
               <Link
-                to={`/ai-chat?session=${req.session_id}`}
+                to={wsPath(`/chat?session=${req.session_id}`)}
                 className="p-1.5 rounded-lg text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 transition-colors inline-flex items-center gap-1.5 text-xs font-semibold"
                 title="View original AI chat discussion"
               >
@@ -332,7 +347,7 @@ export function RequirementDetailSheet({
 
             {requirementId && (
               <Link
-                to={`/requirements/${requirementId}`}
+                to={wsPath(`/requirements/${requirementId}`)}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-[#7b68ee] hover:bg-purple-50 dark:hover:bg-[#282828] transition-colors inline-flex items-center gap-1 text-xs font-semibold"
                 title="Open full page"
               >
@@ -973,6 +988,18 @@ export function RequirementDetailSheet({
                                 </a>
                               ) : (
                                 <div />
+                              )}
+
+                              {canRetry(task, req?.status) && (
+                                <button
+                                  onClick={() => retryMutation.mutate(task.id)}
+                                  disabled={retryMutation.isPending}
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded bg-amber-100 dark:bg-amber-950/40 hover:bg-amber-200 dark:hover:bg-amber-900/50 text-[10px] font-bold text-amber-700 dark:text-amber-300 transition-colors"
+                                  title="Send this task to its engine again on the same branch (the old engine task is cancelled)"
+                                >
+                                  <RotateCcw className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                                  <span>Retry</span>
+                                </button>
                               )}
 
                               {task.status !== 'done' && (

@@ -52,20 +52,43 @@ export function CodeBlock({ language, code }: CodeBlockProps) {
   );
 }
 
-export function renderInlineMarkdown(text: string): React.ReactNode[] {
+export function renderInlineMarkdown(
+  text: string,
+  onSelectRequirement?: (reqId: string) => void
+): React.ReactNode[] {
   // Regex matches:
   // 1. Markdown links: [title](url)
   // 2. Bold text: **bold**
   // 3. Inline code: `code`
   // 4. Italic text: *italic* or _italic_
-  // 5. Ticket references: #REQ-xxx, #CG-xxx, #123
-  const tokenRegex = /(\[.*?\]\(.*?\)|\*\*.*?\*\*|`.*?`|\*.*?\*|#(?:REQ|CG|req|cg)-[A-Za-z0-9_-]+|#[A-Za-z0-9_-]{2,})/g;
+  // 5. Ticket references: #REQ-xxx, REQ-xxx, #CG-xxx, #123
+  const tokenRegex = /(\[.*?\]\(.*?\)|\*\*.*?\*\*|`.*?`|\*.*?\*|#?(?:REQ|req)-\d+|#(?:CG|cg)-[A-Za-z0-9_-]+|#[A-Za-z0-9_-]{2,})/g;
   const parts = text.split(tokenRegex);
 
   return parts.map((part, i) => {
     if (!part) return null;
 
-    // Ticket Reference: #REQ-xxx or #CG-xxx
+    // Requirement Key Reference: #REQ-xxx or REQ-xxx (Clickable to open form)
+    const reqMatch = part.match(/^#?(REQ-\d+)$/i);
+    if (reqMatch) {
+      const reqId = reqMatch[1].toUpperCase();
+      return (
+        <button
+          key={i}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelectRequirement?.(reqId);
+          }}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 rounded-md bg-purple-100 hover:bg-purple-200 dark:bg-purple-950/80 dark:hover:bg-purple-900/80 border border-purple-300 dark:border-purple-800 text-purple-800 dark:text-purple-300 font-mono text-[11px] font-bold shadow-2xs cursor-pointer transition-all hover:scale-105 active:scale-95"
+          title={`Click to open ${reqId} form`}
+        >
+          <span>#{reqId}</span>
+        </button>
+      );
+    }
+
+    // Other Ticket/Hashtag Reference: #CG-xxx or other hashtags
     if (part.startsWith('#') && part.length >= 2 && !part.includes(' ')) {
       return (
         <span
@@ -82,6 +105,24 @@ export function renderInlineMarkdown(text: string): React.ReactNode[] {
     if (linkMatch) {
       const linkText = linkMatch[1];
       const linkUrl = linkMatch[2];
+      const reqFromLink = linkUrl.match(/\/requirements\/(REQ-\d+)/i) || linkText.match(/#?(REQ-\d+)/i);
+      if (reqFromLink && onSelectRequirement) {
+        const reqId = reqFromLink[1].toUpperCase();
+        return (
+          <button
+            key={i}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectRequirement(reqId);
+            }}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 rounded-md bg-purple-100 hover:bg-purple-200 dark:bg-purple-950/80 dark:hover:bg-purple-900/80 border border-purple-300 dark:border-purple-800 text-purple-800 dark:text-purple-300 font-mono text-[11px] font-bold shadow-2xs cursor-pointer transition-all hover:scale-105 active:scale-95"
+            title={`Click to open form for #${reqId}`}
+          >
+            <span>{linkText}</span>
+          </button>
+        );
+      }
       return (
         <a
           key={i}
@@ -98,21 +139,59 @@ export function renderInlineMarkdown(text: string): React.ReactNode[] {
 
     // Bold: **text**
     if (part.startsWith('**') && part.endsWith('**') && part.length >= 4) {
+      const innerText = part.slice(2, -2);
+      const innerReqMatch = innerText.match(/^#?(REQ-\d+)$/i);
+      if (innerReqMatch && onSelectRequirement) {
+        const reqId = innerReqMatch[1].toUpperCase();
+        return (
+          <button
+            key={i}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectRequirement(reqId);
+            }}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 rounded-md bg-purple-100 hover:bg-purple-200 dark:bg-purple-950/80 dark:hover:bg-purple-900/80 border border-purple-300 dark:border-purple-800 text-purple-800 dark:text-purple-300 font-mono text-[11px] font-bold shadow-2xs cursor-pointer transition-all hover:scale-105 active:scale-95"
+            title={`Click to open form for #${reqId}`}
+          >
+            <span>#{reqId}</span>
+          </button>
+        );
+      }
       return (
         <strong key={i} className="font-semibold text-slate-900 dark:text-white">
-          {part.slice(2, -2)}
+          {innerText}
         </strong>
       );
     }
 
     // Inline Code: `code`
     if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
+      const innerCode = part.slice(1, -1);
+      const innerReqMatch = innerCode.match(/^#?(REQ-\d+)$/i);
+      if (innerReqMatch && onSelectRequirement) {
+        const reqId = innerReqMatch[1].toUpperCase();
+        return (
+          <button
+            key={i}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectRequirement(reqId);
+            }}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 rounded-md bg-purple-100 hover:bg-purple-200 dark:bg-purple-950/80 dark:hover:bg-purple-900/80 border border-purple-300 dark:border-purple-800 text-purple-800 dark:text-purple-300 font-mono text-[11px] font-bold shadow-2xs cursor-pointer transition-all hover:scale-105 active:scale-95"
+            title={`Click to open form for #${reqId}`}
+          >
+            <span>#{reqId}</span>
+          </button>
+        );
+      }
       return (
         <code
           key={i}
           className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-[#252736] border border-slate-200/60 dark:border-white/10 text-purple-600 dark:text-purple-300 font-mono text-[11px]"
         >
-          {part.slice(1, -1)}
+          {innerCode}
         </code>
       );
     }
@@ -132,9 +211,10 @@ export function renderInlineMarkdown(text: string): React.ReactNode[] {
 
 interface MarkdownMessageProps {
   content: string;
+  onSelectRequirement?: (reqId: string) => void;
 }
 
-export function MarkdownMessage({ content }: MarkdownMessageProps) {
+export function MarkdownMessage({ content, onSelectRequirement }: MarkdownMessageProps) {
   // Strip requirement spec json block so it never renders raw inside the speech bubble
   // Strip echoed prompt preamble (e.g. "I reviewed your requirement for: **...**")
   const clean = content
@@ -205,7 +285,7 @@ export function MarkdownMessage({ content }: MarkdownMessageProps) {
                 <tr>
                   {headerCells.map((h, hIdx) => (
                     <th key={hIdx} className="p-2.5 px-3">
-                      {renderInlineMarkdown(h)}
+                      {renderInlineMarkdown(h, onSelectRequirement)}
                     </th>
                   ))}
                 </tr>
@@ -218,7 +298,7 @@ export function MarkdownMessage({ content }: MarkdownMessageProps) {
                   >
                     {row.map((cell, cIdx) => (
                       <td key={cIdx} className="p-2.5 px-3">
-                        {renderInlineMarkdown(cell)}
+                        {renderInlineMarkdown(cell, onSelectRequirement)}
                       </td>
                     ))}
                   </tr>
@@ -244,7 +324,7 @@ export function MarkdownMessage({ content }: MarkdownMessageProps) {
     if (trimmed.startsWith('# ')) {
       blocks.push(
         <h1 key={`h1-${i}`} className="text-base font-extrabold text-slate-900 dark:text-white pt-2 pb-1 border-b border-slate-200 dark:border-[#2d2f3d]">
-          {renderInlineMarkdown(trimmed.replace(/^#\s+/, ''))}
+          {renderInlineMarkdown(trimmed.replace(/^#\s+/, ''), onSelectRequirement)}
         </h1>
       );
       i++;
@@ -253,7 +333,7 @@ export function MarkdownMessage({ content }: MarkdownMessageProps) {
     if (trimmed.startsWith('## ')) {
       blocks.push(
         <h2 key={`h2-${i}`} className="text-sm font-bold text-slate-900 dark:text-white pt-2 pb-0.5">
-          {renderInlineMarkdown(trimmed.replace(/^##\s+/, ''))}
+          {renderInlineMarkdown(trimmed.replace(/^##\s+/, ''), onSelectRequirement)}
         </h2>
       );
       i++;
@@ -262,7 +342,7 @@ export function MarkdownMessage({ content }: MarkdownMessageProps) {
     if (trimmed.startsWith('### ')) {
       blocks.push(
         <h3 key={`h3-${i}`} className="text-xs font-bold text-slate-900 dark:text-white pt-1.5 pb-0.5">
-          {renderInlineMarkdown(trimmed.replace(/^###\s+/, ''))}
+          {renderInlineMarkdown(trimmed.replace(/^###\s+/, ''), onSelectRequirement)}
         </h3>
       );
       i++;
@@ -271,7 +351,7 @@ export function MarkdownMessage({ content }: MarkdownMessageProps) {
     if (trimmed.startsWith('#### ')) {
       blocks.push(
         <h4 key={`h4-${i}`} className="text-xs font-semibold text-slate-800 dark:text-slate-200 pt-1">
-          {renderInlineMarkdown(trimmed.replace(/^####\s+/, ''))}
+          {renderInlineMarkdown(trimmed.replace(/^####\s+/, ''), onSelectRequirement)}
         </h4>
       );
       i++;
@@ -282,7 +362,7 @@ export function MarkdownMessage({ content }: MarkdownMessageProps) {
     if (trimmed.startsWith('> ')) {
       blocks.push(
         <blockquote key={`quote-${i}`} className="my-1.5 pl-3 py-1 border-l-2 border-purple-500 bg-purple-50/50 dark:bg-purple-950/20 text-slate-700 dark:text-slate-300 italic rounded-r-md text-xs">
-          {renderInlineMarkdown(trimmed.replace(/^>\s+/, ''))}
+          {renderInlineMarkdown(trimmed.replace(/^>\s+/, ''), onSelectRequirement)}
         </blockquote>
       );
       i++;
@@ -301,7 +381,7 @@ export function MarkdownMessage({ content }: MarkdownMessageProps) {
           {items.map((item, idx) => (
             <div key={idx} className="flex items-start gap-2">
               <span className="text-purple-500 font-bold leading-5 select-none">•</span>
-              <div className="flex-1 leading-relaxed">{renderInlineMarkdown(item)}</div>
+              <div className="flex-1 leading-relaxed">{renderInlineMarkdown(item, onSelectRequirement)}</div>
             </div>
           ))}
         </div>
@@ -326,7 +406,7 @@ export function MarkdownMessage({ content }: MarkdownMessageProps) {
               <span className="text-purple-600 dark:text-purple-400 font-bold font-mono text-[10px] leading-5 select-none">
                 {item.num}.
               </span>
-              <div className="flex-1 leading-relaxed">{renderInlineMarkdown(item.text)}</div>
+              <div className="flex-1 leading-relaxed">{renderInlineMarkdown(item.text, onSelectRequirement)}</div>
             </div>
           ))}
         </div>
@@ -344,7 +424,7 @@ export function MarkdownMessage({ content }: MarkdownMessageProps) {
     // 9. Standard Paragraph
     blocks.push(
       <p key={`p-${i}`} className="leading-relaxed">
-        {renderInlineMarkdown(rawLine)}
+        {renderInlineMarkdown(rawLine, onSelectRequirement)}
       </p>
     );
     i++;

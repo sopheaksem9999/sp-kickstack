@@ -1,13 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import type { HealthResponse } from '@sp-kickstack/shared';
+import { fetchHealth } from './api.js';
 
 /** Shared /api/health query (also drives the offline badge in AppLayout). */
 export const healthQueryOptions = {
   queryKey: ['health'],
   queryFn: async (): Promise<HealthResponse> => {
-    const res = await fetch('/api/health');
-    if (!res.ok) throw new Error('Unhealthy');
-    return res.json();
+    return fetchHealth();
   },
   refetchInterval: 5000,
   retry: 1,

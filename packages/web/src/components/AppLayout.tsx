@@ -1,10 +1,9 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Layers,
   FolderGit2,
   Settings,
-  Building2,
   BookOpen,
   Plus,
   Sun,
@@ -26,15 +25,31 @@ import { CreateWorkspaceModal, WorkspaceRulesModal } from './WorkspaceModals.js'
 import { CreateRequirementSheet } from './CreateRequirementSheet.js';
 import { OpenQuestionsButton } from './OpenQuestionsButton.js';
 import { NotificationBell } from './NotificationBell.js';
+import { EngineQuickViewPopover } from './EngineQuickViewPopover.js';
+import { WorkspaceSelect } from './WorkspaceSelect.js';
+import { CommandPaletteModal } from './CommandPaletteModal.js';
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
-  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, activeWorkspace } = useWorkspace();
+  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, activeWorkspace, wsPath } = useWorkspace();
   const { openSheet } = useCreateRequirement();
   const [isCreateWsOpen, setIsCreateWsOpen] = useState(false);
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+
+  // Global Cmd+K / Ctrl+K listener for Quick Search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const { isError: isOffline } = useQuery(healthQueryOptions);
 
@@ -47,15 +62,24 @@ export function AppLayout({ children }: { children: ReactNode }) {
     { label: 'Settings', path: '/settings', icon: Settings },
   ];
 
+  const currentSubpath = location.pathname.replace(/^\/w\/[^/]+/, '') || '/requirements';
+
+  const isNavActive = (subpath: string) => {
+    if (subpath === '/requirements') {
+      return currentSubpath.startsWith('/requirements');
+    }
+    return currentSubpath === subpath || currentSubpath.startsWith(subpath + '/');
+  };
+
   const getBreadcrumbLabel = () => {
-    if (location.pathname === '/requirements/new') return 'New Requirement';
-    if (location.pathname.startsWith('/requirements/')) return 'Requirement Detail';
-    if (location.pathname === '/requirements') return 'Requirements';
-    if (location.pathname === '/chat') return 'AI Architect Chat';
-    if (location.pathname === '/attachments') return 'Attachments & Assets';
-    if (location.pathname === '/projects') return 'Repositories';
-    if (location.pathname === '/metrics') return 'Telemetry & Sprints';
-    if (location.pathname === '/settings') return 'Settings';
+    if (currentSubpath === '/requirements/new') return 'New Requirement';
+    if (currentSubpath.startsWith('/requirements/')) return 'Requirement Detail';
+    if (currentSubpath === '/requirements') return 'Requirements';
+    if (currentSubpath === '/chat') return 'AI Architect Chat';
+    if (currentSubpath === '/attachments') return 'Attachments & Assets';
+    if (currentSubpath === '/projects') return 'Repositories';
+    if (currentSubpath === '/metrics') return 'Telemetry & Sprints';
+    if (currentSubpath === '/settings') return 'Settings';
     return 'Home';
   };
 
@@ -74,6 +98,12 @@ export function AppLayout({ children }: { children: ReactNode }) {
       />
 
       <CreateRequirementSheet />
+
+      <CommandPaletteModal
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        onCreateWorkspace={() => setIsCreateWsOpen(true)}
+      />
 
       {/* Sidebar */}
       <aside
@@ -118,17 +148,52 @@ export function AppLayout({ children }: { children: ReactNode }) {
           </button>
         </div>
 
+        {/* Workspace Selector & Create (Upper Create Requirement) */}
+        {sidebarOpen && (
+          <div className="px-2.5 pt-2.5 pb-1 space-y-1">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1 flex items-center justify-between">
+              <span>Workspace</span>
+              <button
+                type="button"
+                onClick={() => setIsCreateWsOpen(true)}
+                className="flex items-center gap-0.5 text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 normal-case font-semibold text-[10px] hover:underline cursor-pointer"
+                title="Create New Workspace"
+              >
+                <Plus className="w-3 h-3" />
+                <span>New</span>
+              </button>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <WorkspaceSelect
+                value={activeWorkspaceId}
+                onValueChange={setActiveWorkspaceId}
+                workspaces={workspaces}
+                onCreateNew={() => setIsCreateWsOpen(true)}
+              />
+              <button
+                type="button"
+                onClick={() => setIsCreateWsOpen(true)}
+                className="p-1.5 bg-slate-100 dark:bg-[#262626] hover:bg-purple-50 dark:hover:bg-purple-950/60 text-slate-600 dark:text-slate-400 hover:text-purple-600 dark:hover:text-purple-300 rounded-lg border border-slate-200 dark:border-[#333333] hover:border-purple-300 dark:hover:border-purple-700/60 transition shrink-0 cursor-pointer"
+                title="Create New Workspace"
+                aria-label="Create New Workspace"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Quick Add Action Button (Opens Right Sheet) */}
         {sidebarOpen && (
-        <div className="p-2.5 pb-1">
-          <button
-            type="button"
-            onClick={openSheet}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-[#7b68ee] to-[#6c5ce7] hover:from-[#6c5ce7] hover:to-[#5f3dc4] text-white rounded-lg text-xs font-semibold shadow-md shadow-purple-600/20 transition-all active:scale-[0.98]"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>New Requirement</span>
-          </button>
+          <div className="p-2.5 pt-1.5 pb-1">
+            <button
+              type="button"
+              onClick={openSheet}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-[#7b68ee] to-[#6c5ce7] hover:from-[#6c5ce7] hover:to-[#5f3dc4] text-white rounded-lg text-xs font-semibold shadow-md shadow-purple-600/20 transition-all active:scale-[0.98]"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>New Requirement</span>
+            </button>
           </div>
         )}
 
@@ -143,18 +208,29 @@ export function AppLayout({ children }: { children: ReactNode }) {
             >
               <PanelLeftOpen className="w-3.5 h-3.5" />
             </button>
+            <WorkspaceSelect
+              value={activeWorkspaceId}
+              onValueChange={setActiveWorkspaceId}
+              workspaces={workspaces}
+              onCreateNew={() => setIsCreateWsOpen(true)}
+              compact
+            />
+            <button
+              type="button"
+              onClick={() => setIsCommandPaletteOpen(true)}
+              className="p-2 rounded-md text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-slate-100 dark:hover:bg-[#2a2a2a] transition-colors"
+              title="Quick Search (⌘K)"
+            >
+              <Search className="w-4 h-4" />
+            </button>
             {/* Icon-only nav when collapsed */}
             {navItems.map((item) => {
               const Icon = item.icon;
-              const active =
-                location.pathname === item.path ||
-                (item.path !== '/' &&
-                  location.pathname.startsWith(item.path) &&
-                  item.path !== '/requirements/new');
+              const active = isNavActive(item.path);
               return (
                 <Link
                   key={item.path}
-                  to={item.path}
+                  to={wsPath(item.path)}
                   title={item.label}
                   className={`p-2 rounded-lg transition-all ${
                     active
@@ -172,17 +248,22 @@ export function AppLayout({ children }: { children: ReactNode }) {
         {/* Expanded: Search + Spaces label */}
         {sidebarOpen && (
           <>
-            {/* Search Mockup */}
+            {/* Search Input / Command Palette Trigger */}
             <div className="px-2.5 pt-1.5 pb-1">
-              <div className="flex items-center justify-between px-2 py-1.5 rounded-md bg-slate-100 dark:bg-[#262626] border border-slate-200 dark:border-[#333333] text-xs text-slate-400 dark:text-slate-500">
-                <div className="flex items-center gap-1.5">
-                  <Search className="w-3.5 h-3.5" />
-                  <span>Search / Jump to...</span>
+              <button
+                type="button"
+                onClick={() => setIsCommandPaletteOpen(true)}
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200/80 dark:bg-[#262626] dark:hover:bg-[#2e2e2e] border border-slate-200 hover:border-purple-300 dark:border-[#333333] dark:hover:border-purple-700/60 text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-all cursor-pointer group shadow-2xs"
+                title="Search / Jump to... (⌘K)"
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Search className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#7b68ee] transition-colors shrink-0" />
+                  <span className="truncate text-left font-medium">Search / Jump to...</span>
                 </div>
-                <kbd className="text-[10px] font-mono px-1 py-0.5 rounded bg-slate-200 dark:bg-[#333333] text-slate-500 dark:text-slate-400">
+                <kbd className="text-[10px] font-mono px-1 py-0.5 rounded bg-white dark:bg-[#1f1f1f] border border-slate-200 dark:border-[#383838] text-slate-500 dark:text-slate-400 shrink-0 group-hover:border-purple-300 dark:group-hover:border-purple-700/60 shadow-2xs">
                   ⌘K
                 </kbd>
-              </div>
+              </button>
             </div>
 
             {/* Spaces & Navigation */}
@@ -195,15 +276,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
             <nav className="p-2 space-y-0.5 flex-1 overflow-y-auto">
               {navItems.map((item) => {
                 const Icon = item.icon;
-                const active =
-                  location.pathname === item.path ||
-                  (item.path !== '/' &&
-                    location.pathname.startsWith(item.path) &&
-                    item.path !== '/requirements/new');
+                const active = isNavActive(item.path);
                 return (
                   <Link
                     key={item.path}
-                    to={item.path}
+                    to={wsPath(item.path)}
                     className={`flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                       active
                         ? 'bg-purple-100 dark:bg-purple-950/50 text-[#7b68ee] dark:text-purple-300 font-bold border border-purple-200 dark:border-purple-800/40 shadow-sm'
@@ -309,56 +386,27 @@ export function AppLayout({ children }: { children: ReactNode }) {
               </span>
             </div>
 
-            <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 mx-1 hidden sm:block" />
-
-            {/* Workspace Dropdown */}
-            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-[#262626] border border-slate-200 dark:border-[#333333] rounded-lg px-2.5 py-1 text-xs">
-              <Building2 className="w-3.5 h-3.5 text-[#7b68ee]" />
-              <select
-                value={activeWorkspaceId}
-                onChange={(e) => setActiveWorkspaceId(e.target.value)}
-                className="bg-transparent text-slate-800 dark:text-slate-200 font-semibold focus:outline-none cursor-pointer pr-1"
-              >
-                <option value="all" className="bg-white dark:bg-[#262626] text-slate-800 dark:text-slate-200">
-                  🌐 All Workspaces
-                </option>
-                {workspaces.map((ws) => (
-                  <option key={ws.id} value={ws.id} className="bg-white dark:bg-[#262626] text-slate-800 dark:text-slate-200">
-                    📁 {ws.name} ({ws.id})
-                  </option>
-                ))}
-                {activeWorkspaceId !== 'all' && !workspaces.some((ws) => ws.id === activeWorkspaceId) && (
-                  <option value={activeWorkspaceId} className="bg-white dark:bg-[#262626] text-slate-800 dark:text-slate-200">
-                    📁 {activeWorkspaceId}
-                  </option>
-                )}
-              </select>
-            </div>
-
-            <button
-              onClick={() => setIsCreateWsOpen(true)}
-              className="flex items-center gap-1 px-2 py-1 bg-slate-100 dark:bg-[#262626] hover:bg-slate-200 dark:hover:bg-[#333333] text-slate-600 dark:text-slate-300 rounded-lg text-xs font-medium border border-slate-200 dark:border-[#333333] transition"
-              title="Add New Workspace"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Workspace</span>
-            </button>
-
             {activeWorkspace && (
-              <button
-                onClick={() => setIsRulesOpen(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 dark:hover:bg-purple-900/50 text-[#7b68ee] dark:text-purple-300 rounded-lg text-xs font-semibold border border-purple-200 dark:border-purple-800/40 transition"
-                title="Workspace Shared Rules & Architecture Context"
-              >
-                <BookOpen className="w-3.5 h-3.5" />
-                <span className="hidden lg:inline">Shared Rules & Context</span>
-              </button>
+              <>
+                <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 mx-1 hidden sm:block" />
+                <button
+                  onClick={() => setIsRulesOpen(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 dark:hover:bg-purple-900/50 text-[#7b68ee] dark:text-purple-300 rounded-lg text-xs font-semibold border border-purple-200 dark:border-purple-800/40 transition"
+                  title="Workspace Shared Rules & Architecture Context"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span className="hidden lg:inline">Shared Rules & Context</span>
+                  <span className="lg:hidden">Rules</span>
+                </button>
+              </>
             )}
           </div>
 
           {/* Right Header Utilities */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <OpenQuestionsButton />
+            {/* Quick Engine & Rate Limit Status Indicator */}
+            <EngineQuickViewPopover />
 
             {/* Dark / Light Toggle Icon button */}
             <button
@@ -385,9 +433,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
         {/* Main Content View Container */}
         <main
           className={`flex-1 min-h-0 ${
-            location.pathname.startsWith('/settings')
+            currentSubpath.startsWith('/settings')
               ? 'p-4 md:p-6 overflow-hidden flex flex-col'
-              : location.pathname.startsWith('/chat') || location.pathname.startsWith('/projects')
+              : currentSubpath.startsWith('/chat') || currentSubpath.startsWith('/projects')
               ? 'p-0 overflow-hidden flex flex-col'
               : 'p-4 overflow-y-auto'
           }`}

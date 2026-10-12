@@ -328,11 +328,15 @@ export const SingleCliConfigSchema = z.object({
 
 export const AiCliSettingsSchema = z.object({
   defaultProvider: z
-    .enum(['auto', 'claude-cli', 'agy-cli', 'codex-cli', 'ollama', 'heuristic'])
-    .default('auto'),
+    .enum(['claude-cli', 'agy-cli', 'codex-cli', 'ollama', 'heuristic', 'auto'])
+    .default('claude-cli'),
+  enabledEngines: z
+    .array(z.enum(['claude-cli', 'agy-cli', 'codex-cli', 'ollama', 'heuristic']))
+    .optional()
+    .default(['claude-cli', 'agy-cli', 'codex-cli', 'ollama', 'heuristic']),
   claude: SingleCliConfigSchema.default({
     enabled: true,
-    model: 'claude-3-7-sonnet',
+    model: 'sonnet',
     effort: 'medium',
   }),
   agy: SingleCliConfigSchema.default({
@@ -353,6 +357,11 @@ export const AiCliSettingsSchema = z.object({
     effort: 'medium',
     url: 'http://127.0.0.1:11434',
   }),
+  heuristic: z
+    .object({
+      enabled: z.boolean().default(true),
+    })
+    .default({ enabled: true }),
 });
 
 export type UpdateAiCliSettingsInput = z.input<typeof AiCliSettingsSchema>;
@@ -438,6 +447,14 @@ export type CreateAiChatSessionInput = z.infer<typeof CreateAiChatSessionInputSc
 export type UpdateAiChatSessionInput = z.infer<typeof UpdateAiChatSessionInputSchema>;
 export type SendAiChatMessageInput = z.infer<typeof SendAiChatMessageInputSchema>;
 
+export const DetectedIdeSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  command: z.string().optional(),
+  appPath: z.string().optional(),
+  isDefault: z.boolean().optional(),
+});
+
 export const IdeSettingsSchema = z.object({
   enabled: z.boolean().default(true),
   binaryPath: z.string().optional(),
@@ -445,6 +462,7 @@ export const IdeSettingsSchema = z.object({
   host: z.string().default('127.0.0.1'),
   externalUrl: z.string().optional(),
   autoStart: z.boolean().default(false),
+  preferredIde: z.string().optional(),
 });
 
 export const IdeServerStatusSchema = z.object({

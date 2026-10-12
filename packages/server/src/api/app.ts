@@ -157,7 +157,7 @@ export function createApp(deps: AppDependencies): Express {
 
   const aiDraftService =
     deps.aiDraftService ||
-    new AiDraftService(undefined, settingsService);
+    new AiDraftService(undefined, settingsService, deps.db);
 
   const aiChatService =
     deps.aiChatService ||
@@ -302,6 +302,16 @@ export function createApp(deps: AppDependencies): Express {
           : ['xdg-open', [proj.repo_path]];
       execFile(cmd, args, () => {});
       res.json({ ok: true, path: proj.repo_path });
+    } catch (err: any) {
+      next(err);
+    }
+  });
+
+  app.post('/api/projects/:name/open-ide', async (req, res, next) => {
+    try {
+      const { ideId } = req.body || {};
+      const result = await ideService.openProjectInIde(req.params.name, ideId);
+      res.json(result);
     } catch (err: any) {
       next(err);
     }
@@ -859,6 +869,9 @@ export function createApp(deps: AppDependencies): Express {
   // AI Requirement Drafting & Assistant Integration
   app.get('/api/ai/providers', async (_req, res, next) => {
     try {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       const providers = await aiDraftService.getProviders();
       res.json(providers);
     } catch (err) {
@@ -1013,6 +1026,15 @@ export function createApp(deps: AppDependencies): Express {
     }
   });
 
+  app.get('/api/ide/detected', (_req, res, next) => {
+    try {
+      const detected = ideService.detectInstalledIdes();
+      res.json(detected);
+    } catch (err) {
+      next(err);
+    }
+  });
+
   app.get('/api/ide/settings', (_req, res) => {
     res.json(ideService.getSettings());
   });
@@ -1064,7 +1086,7 @@ export function createApp(deps: AppDependencies): Express {
   // Native In-App Git Review & Code Diff Endpoints
   app.get('/api/projects/:name/git-review/summary', (req, res, next) => {
     try {
-      const target = (req.query.target as string) || 'main';
+      const target = (req.query.target as string) || 'HEAD';
       const summary = gitReviewService.getReviewSummary(req.params.name, target);
       res.json(summary);
     } catch (err) {
@@ -1076,7 +1098,7 @@ export function createApp(deps: AppDependencies): Express {
     try {
       const file = req.query.file as string;
       if (!file) return res.status(400).json({ error: 'file query param is required' });
-      const target = (req.query.target as string) || 'main';
+      const target = (req.query.target as string) || 'HEAD';
       const diff = gitReviewService.getFileDiff(req.params.name, file, target);
       res.json(diff);
     } catch (err) {

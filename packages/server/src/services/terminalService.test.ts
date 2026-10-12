@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { TerminalService } from './terminalService.js';
+import { TerminalService, resolveLocalPcEnvironment, detectDeviceShell } from './terminalService.js';
 import { ProjectService } from './projectService.js';
 import { initDatabase, AppDatabase } from '../db/index.js';
 
@@ -80,4 +80,25 @@ describe('TerminalService', () => {
     const session = terminalService.getSession('test-backend');
     expect(session.buffer).toContain('^C');
   });
+
+  it('detects host device shell and enriches environment with local PC binaries', () => {
+    const session = terminalService.getSession('test-backend');
+    expect(session.shell).toBeDefined();
+    if (os.platform() === 'darwin') {
+      expect(session.shell).toMatch(/zsh$/);
+    }
+  });
+
+  it('respects project .nvmrc and prioritizes matched node version in PATH', () => {
+    fs.writeFileSync(path.join(tmpDir, '.nvmrc'), '22.19.0\n');
+    const shell = detectDeviceShell();
+    const env = resolveLocalPcEnvironment(shell, tmpDir);
+    expect(env.PATH).toBeDefined();
+
+    const nvmInstalledDir = path.join(os.homedir(), '.nvm/versions/node/v22.19.0/bin');
+    if (fs.existsSync(nvmInstalledDir)) {
+      expect(env.PATH?.split(path.delimiter)[0]).toBe(nvmInstalledDir);
+    }
+  });
 });
+

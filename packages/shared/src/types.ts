@@ -252,12 +252,49 @@ export interface SingleCliConfig {
   ultracode?: boolean;
 }
 
+export type EngineId = 'claude-cli' | 'agy-cli' | 'codex-cli' | 'ollama' | 'heuristic';
+
 export interface AiCliSettings {
-  defaultProvider: 'auto' | 'claude-cli' | 'agy-cli' | 'codex-cli' | 'ollama' | 'heuristic';
+  defaultProvider: EngineId | 'auto';
+  enabledEngines?: EngineId[];
   claude: SingleCliConfig;
   agy: SingleCliConfig;
   codex?: SingleCliConfig;
   ollama: SingleCliConfig & { url: string };
+  heuristic?: { enabled: boolean };
+}
+
+export interface EngineRateLimitInfo {
+  supported: boolean;
+  supportType: 'native' | 'bridge_monitored' | 'unlimited_offline';
+  status: 'healthy' | 'rate_limited' | 'unlimited';
+  pausedUntil?: string | null;
+  message?: string;
+  totalDispatches: number;
+  completedTasks: number;
+  rateLimitEvents: number;
+  activeTasks: number;
+  lastUsedAt?: string | null;
+  // Progress & Quota limits (matching session & weekly sample):
+  weeklyLimitRemainingPercent?: number; // 0 - 100
+  weeklyResetsIn?: string; // e.g. "5d 16h"
+  sessionLimitRemainingPercent?: number; // 0 - 100
+  sessionResetsIn?: string; // e.g. "4h 26m"
+  windowLabel?: string; // e.g. "Five Hour Limit Remaining"
+  lastRefreshedAt?: string; // e.g. "23:30:15"
+}
+
+export interface EngineProviderStatus {
+  id: EngineId;
+  name: string;
+  installed: boolean;
+  available: boolean;
+  enabled?: boolean;
+  path?: string | null;
+  version?: string | null;
+  models?: string[];
+  note?: string;
+  rateLimit: EngineRateLimitInfo;
 }
 
 export type AiChatRole = 'user' | 'assistant' | 'system';
@@ -318,6 +355,14 @@ export interface AiChatSession {
   messages?: AiChatMessage[];
 }
 
+export interface DetectedIde {
+  id: string;
+  name: string;
+  command?: string;
+  appPath?: string;
+  isDefault?: boolean;
+}
+
 export interface IdeSettings {
   enabled: boolean;
   binaryPath?: string;
@@ -325,6 +370,7 @@ export interface IdeSettings {
   host: string;
   externalUrl?: string;
   autoStart?: boolean;
+  preferredIde?: string;
 }
 
 export interface IdeServerStatus {
@@ -349,6 +395,7 @@ export interface ProjectTerminalStatus {
   repoPath: string;
   running: boolean;
   pid?: number;
+  shell?: string;
   buffer: string;
   startedAt?: string;
   lastCommand?: string;

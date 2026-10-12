@@ -21,6 +21,7 @@
     "dev:server": "npm run --workspace=@sp-kickstack/server dev",
     "dev:web": "npm run --workspace=@sp-kickstack/web dev",
     "desktop:dev": "npm run --workspace=@sp-kickstack/desktop dev",
+    "desktop:bundle-server": "node scripts/bundle-desktop-server.mjs",
     "desktop:build": "npm run --workspace=@sp-kickstack/desktop build:desktop"
   },
   "devDependencies": {

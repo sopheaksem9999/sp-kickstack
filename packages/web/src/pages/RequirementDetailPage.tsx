@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchRequirement,
@@ -30,6 +30,7 @@ import { RequirementAgentControl } from '../components/RequirementAgentControl.j
 import { RetryWithProfile } from '../components/RetryWithProfile.js';
 import { describeProfile, hasPin, profileApplies } from '../lib/agentProfile.js';
 import { BridgeTask, RequirementStatus, BranchMergePolicy } from '@sp-kickstack/shared';
+import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { toast } from 'sonner';
 import {
   ArrowLeft,
@@ -75,10 +76,14 @@ const stateOptions: { value: RequirementStatus; label: string }[] = [
   { value: 'done', label: 'Done' },
 ];
 
+export type RequirementViewTab = 'board' | 'dag';
+export const VALID_VIEW_TABS: RequirementViewTab[] = ['board', 'dag'];
+
 export function RequirementDetailPage() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
   const demoMode = useDemoMode();
+  const { wsPath } = useWorkspace();
   const mergeText = mergeCopy(demoMode);
 
   // Embedded VS Code Review Modal state
@@ -172,12 +177,38 @@ export function RequirementDetailPage() {
     onError: (err: any) => toast.error(err.message || 'Could not start the merge'),
   });
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawTab = searchParams.get('tab') as RequirementViewTab | null;
+  const initialTab: RequirementViewTab = rawTab && VALID_VIEW_TABS.includes(rawTab) ? rawTab : 'board';
+
   const [isEditingProjects, setIsEditingProjects] = useState(false);
   const [editingProjectsList, setEditingProjectsList] = useState<string[]>([]);
   const [specViewMode, setSpecViewMode] = useState<'rich' | 'raw'>('rich');
   const [isSpecExpanded, setIsSpecExpanded] = useState(false);
-  const [viewTab, setViewTab] = useState<'board' | 'dag'>('board');
+  const [viewTab, setViewTab] = useState<RequirementViewTab>(initialTab);
   const [logTask, setLogTask] = useState<BridgeTask | null>(null);
+
+  // Sync viewTab with URL search params (supports back/forward browser history & direct links)
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab') as RequirementViewTab | null;
+    const resolvedTab = tabFromUrl && VALID_VIEW_TABS.includes(tabFromUrl) ? tabFromUrl : 'board';
+    if (resolvedTab !== viewTab) {
+      setViewTab(resolvedTab);
+    }
+  }, [searchParams, viewTab]);
+
+  const handleTabChange = (newTab: RequirementViewTab) => {
+    setViewTab(newTab);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('tab', newTab);
+        return next;
+      },
+      { replace: false }
+    );
+  };
+
 
   const { data: allProjects = [] } = useQuery({
     queryKey: ['projects', req?.workspace_id || 'default'],
@@ -266,7 +297,7 @@ export function RequirementDetailPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
         <div className="flex items-start gap-3">
           <Link
-            to="/requirements"
+            to={wsPath('/requirements')}
             className="p-2 mt-1 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#20212c] transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -585,7 +616,7 @@ export function RequirementDetailPage() {
             <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-[#1f202b] border border-slate-200 dark:border-[#2b2c3a]">
               <button
                 type="button"
-                onClick={() => setViewTab('board')}
+                onClick={() => handleTabChange('board')}
                 className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${
                   viewTab === 'board'
                     ? 'bg-white dark:bg-[#282937] text-slate-900 dark:text-white shadow-2xs'
@@ -596,7 +627,7 @@ export function RequirementDetailPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setViewTab('dag')}
+                onClick={() => handleTabChange('dag')}
                 className={`px-3 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
                   viewTab === 'dag'
                     ? 'bg-white dark:bg-[#282937] text-[#7b68ee] dark:text-purple-300 shadow-2xs'

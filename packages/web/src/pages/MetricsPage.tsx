@@ -10,6 +10,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
+import { fetchSprints, fetchSprintBurndown, fetchTelemetry } from '../lib/api.js';
 
 interface SprintBurndownData {
   sprint_id: string;
@@ -53,11 +54,7 @@ export function MetricsPage() {
   // Sprints list
   const { data: sprints = [] } = useQuery<Sprint[]>({
     queryKey: ['sprints', activeWorkspaceId],
-    queryFn: async () => {
-      const res = await fetch(`/api/sprints?workspace=${encodeURIComponent(activeWorkspaceId)}`);
-      if (!res.ok) throw new Error('Failed to fetch sprints');
-      return res.json();
-    },
+    queryFn: () => fetchSprints(activeWorkspaceId),
   });
 
   const activeSprint = sprints.find((s) => s.status === 'active') || sprints[0];
@@ -71,9 +68,7 @@ export function MetricsPage() {
     queryKey: ['sprint-burndown', currentSprintId],
     queryFn: async () => {
       if (!currentSprintId) return null as any;
-      const res = await fetch(`/api/sprints/${currentSprintId}/burndown`);
-      if (!res.ok) throw new Error('Failed to fetch burndown');
-      return res.json();
+      return fetchSprintBurndown(currentSprintId);
     },
     enabled: Boolean(currentSprintId),
   });
@@ -84,11 +79,7 @@ export function MetricsPage() {
     refetch: refetchTelemetry,
   } = useQuery<AgentTelemetryData>({
     queryKey: ['telemetry', activeWorkspaceId],
-    queryFn: async () => {
-      const res = await fetch(`/api/telemetry?workspace=${encodeURIComponent(activeWorkspaceId)}`);
-      if (!res.ok) throw new Error('Failed to fetch telemetry');
-      return res.json();
-    },
+    queryFn: () => fetchTelemetry(activeWorkspaceId),
   });
 
   const formatLatency = (ms: number) => {

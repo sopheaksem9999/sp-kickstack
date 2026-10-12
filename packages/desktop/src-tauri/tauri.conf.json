@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run --prefix ../.. dev",
     "devUrl": "http://localhost:4101",
-    "beforeBuildCommand": "npm run --workspace=@sp-kickstack/web build",
+    "beforeBuildCommand": "node ../../scripts/bundle-desktop-server.mjs && npm run --workspace=@sp-kickstack/web build",
     "frontendDist": "../../web/dist"
   },
   "app": {
@@ -28,6 +28,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": [
+      "resources/**/*"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -41,6 +44,10 @@
       "icons/Square142x142Logo.png",
       "icons/Square150x150Logo.png",
       "icons/Square310x310Logo.png"
-    ]
+    ],
+    "macOS": {
+      "frameworks": [],
+      "minimumSystemVersion": "10.15"
+    }
   }
 }

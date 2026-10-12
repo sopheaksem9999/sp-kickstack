@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   fetchAssets,
   createSharedAsset,
@@ -25,11 +25,42 @@ import {
   Upload,
 } from 'lucide-react';
 import { CreateSharedAssetInput } from '@sp-kickstack/shared';
+import { WorkspaceSelect } from '../components/WorkspaceSelect.js';
+
+export type AttachmentsTab = 'ticket' | 'shared';
+export const VALID_ATTACHMENTS_TABS: AttachmentsTab[] = ['ticket', 'shared'];
 
 export function AttachmentsPage() {
-  const { activeWorkspaceId, workspaces, activeWorkspace } = useWorkspace();
+  const { activeWorkspaceId, workspaces, activeWorkspace, wsPath } = useWorkspace();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'ticket' | 'shared'>('ticket');
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawTab = searchParams.get('tab') as AttachmentsTab | null;
+  const initialTab: AttachmentsTab = rawTab && VALID_ATTACHMENTS_TABS.includes(rawTab) ? rawTab : 'ticket';
+
+  const [activeTab, setActiveTab] = useState<AttachmentsTab>(initialTab);
+
+  // Sync activeTab with URL search params (supports back/forward browser history & direct links)
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab') as AttachmentsTab | null;
+    const resolvedTab = tabFromUrl && VALID_ATTACHMENTS_TABS.includes(tabFromUrl) ? tabFromUrl : 'ticket';
+    if (resolvedTab !== activeTab) {
+      setActiveTab(resolvedTab);
+    }
+  }, [searchParams, activeTab]);
+
+  const handleTabChange = (newTab: AttachmentsTab) => {
+    setActiveTab(newTab);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('tab', newTab);
+        return next;
+      },
+      { replace: false }
+    );
+  };
+
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'image' | 'sheet' | 'code' | 'doc'>('all');
 
@@ -38,7 +69,7 @@ export function AttachmentsPage() {
   const [uploadName, setUploadName] = useState('');
   const [uploadNotes, setUploadNotes] = useState('');
   const [uploadWorkspaceId, setUploadWorkspaceId] = useState(
-    activeWorkspaceId !== 'all' ? activeWorkspaceId : 'default'
+    activeWorkspaceId || 'default'
   );
   const [fileData, setFileData] = useState<{
     name: string;
@@ -202,7 +233,7 @@ export function AttachmentsPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => {
-              setUploadWorkspaceId(activeWorkspaceId !== 'all' ? activeWorkspaceId : 'default');
+              setUploadWorkspaceId(activeWorkspaceId || 'default');
               setIsUploadOpen(true);
             }}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-[#7b68ee] to-[#ec4899] hover:from-[#6c5ce7] hover:to-[#db2777] text-white rounded-lg text-xs font-bold shadow-md shadow-purple-500/20 active:scale-95 transition-all"
@@ -257,7 +288,7 @@ export function AttachmentsPage() {
         {/* Tab Buttons */}
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setActiveTab('ticket')}
+            onClick={() => handleTabChange('ticket')}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
               activeTab === 'ticket'
                 ? 'bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40 shadow-sm'
@@ -272,7 +303,7 @@ export function AttachmentsPage() {
           </button>
 
           <button
-            onClick={() => setActiveTab('shared')}
+            onClick={() => handleTabChange('shared')}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
               activeTab === 'shared'
                 ? 'bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40 shadow-sm'
@@ -366,7 +397,7 @@ export function AttachmentsPage() {
                       </td>
                       <td className="py-3 px-4">
                         <Link
-                          to={`/requirements/${file.req_id}`}
+                          to={wsPath(`/requirements/${file.req_id}`)}
                           className="inline-flex items-center gap-1.5 text-purple-600 dark:text-purple-400 font-bold hover:underline"
                         >
                           <span className="font-mono bg-purple-50 dark:bg-purple-950/50 px-1.5 py-0.5 rounded border border-purple-200 dark:border-purple-900/40">
@@ -522,17 +553,12 @@ export function AttachmentsPage() {
               {/* Workspace Picker */}
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-600 dark:text-slate-400">Workspace</label>
-                <select
+                <WorkspaceSelect
                   value={uploadWorkspaceId}
-                  onChange={(e) => setUploadWorkspaceId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-[#2a2b36] bg-slate-50 dark:bg-[#1a1b22] text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#7b68ee]"
-                >
-                  {workspaces.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={setUploadWorkspaceId}
+                  workspaces={workspaces}
+                  className="bg-slate-50 dark:bg-[#1a1b22] border-slate-200 dark:border-[#2a2b36]"
+                />
               </div>
 
               {/* Asset Name */}

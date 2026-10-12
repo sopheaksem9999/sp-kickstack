@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchProjects,
@@ -6,6 +7,7 @@ import {
   updateProject,
   deleteProject,
   openProjectFolder,
+  createProject,
 } from '../lib/api.js';
 import { Project, EngineType } from '@sp-kickstack/shared';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
@@ -20,7 +22,6 @@ import {
   Trash2,
   Copy,
   Check,
-  ExternalLink,
   Code2,
   Terminal,
   Search,
@@ -30,14 +31,16 @@ import {
   Laptop,
   Server,
   Smartphone,
+  ExternalLink,
 } from 'lucide-react';
-import { ProjectGitReviewModal } from '../components/ProjectGitReviewModal.js';
-import { ProjectTerminalModal } from '../components/ProjectTerminalModal.js';
+import { WorkspaceSelect } from '../components/WorkspaceSelect.js';
 import { ProjectGitReviewView } from '../components/ProjectGitReviewView.js';
 import { ProjectTerminalView } from '../components/ProjectTerminalView.js';
+import { OpenInIdeButton } from '../components/OpenInIdeButton.js';
 
 export function ProjectsPage() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { activeWorkspaceId, workspaces } = useWorkspace();
 
   const { data: projects = [], isLoading } = useQuery({
@@ -48,7 +51,7 @@ export function ProjectsPage() {
   // Create Project modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [workspaceId, setWorkspaceId] = useState(
-    activeWorkspaceId !== 'all' ? activeWorkspaceId : 'default'
+    activeWorkspaceId || 'default'
   );
   const [name, setName] = useState('');
   const [kind, setKind] = useState<'backend' | 'frontend' | 'mobile' | 'other'>('backend');
@@ -62,11 +65,7 @@ export function ProjectsPage() {
   // Open Details modal state
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
-  // Embedded Git Review modal state
-  const [ideReviewProject, setIdeReviewProject] = useState<Project | null>(null);
 
-  // Project Shell Terminal state
-  const [terminalProject, setTerminalProject] = useState<Project | null>(null);
 
   // Edit Project modal state
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -85,10 +84,13 @@ export function ProjectsPage() {
   // Copy feedback state
   const [copiedPath, setCopiedPath] = useState(false);
 
-  // Split View (In-Container Chat-like layout) state
-  const [viewMode, setViewMode] = useState<'grid' | 'split'>('grid');
-  const [activeSplitProjectName, setActiveSplitProjectName] = useState<string>('');
-  const [splitRightTab, setSplitRightTab] = useState<'review' | 'terminal'>('review');
+  // Tab & Project URL synchronization (e.g. ?project=backend&tab=terminal)
+  const urlProject = searchParams.get('project');
+  const urlTab = searchParams.get('tab') as 'review' | 'terminal' | null;
+
+  const viewMode: 'grid' | 'split' = urlProject || urlTab ? 'split' : 'grid';
+  const splitRightTab: 'review' | 'terminal' = urlTab === 'terminal' ? 'terminal' : 'review';
+  const activeSplitProjectName = urlProject || (projects[0]?.name ?? '');
   const [splitSearch, setSplitSearch] = useState('');
 
   const activeSplitProject = useMemo(() => {
@@ -124,7 +126,7 @@ export function ProjectsPage() {
   };
 
   useEffect(() => {
-    if (activeWorkspaceId !== 'all') {
+    if (activeWorkspaceId) {
       setWorkspaceId(activeWorkspaceId);
     }
   }, [activeWorkspaceId]);
@@ -163,15 +165,7 @@ export function ProjectsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (payload: Partial<Project>) => {
-      const res = await fetch('/api/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error((await res.json()).error || 'Failed to create project');
-      return res.json();
-    },
+    mutationFn: createProject,
     onSuccess: (created) => {
       toast.success(`Project ${created.name} registered`);
       setIsModalOpen(false);
@@ -273,7 +267,7 @@ export function ProjectsPage() {
         /* ======================================================= */
         <div className="flex-1 flex min-h-0 overflow-hidden bg-slate-50 dark:bg-[#0c0d12]">
           {/* Column 1: Projects List Sidebar (Like AI Chat Sessions) */}
-          <aside className="w-72 sm:w-80 shrink-0 bg-[#0c0d12] border-r border-slate-800/90 flex flex-col">
+          <aside className="w-72 sm:w-80 shrink-0 bg-[#0c0d12] border-r border-slate-800/90 flex flex-col min-h-0 h-full">
             {/* Header & Filter */}
             <div className="p-3 bg-[#11131a] border-b border-slate-800/80 space-y-2 shrink-0">
               <div className="flex items-center justify-between">
@@ -287,7 +281,7 @@ export function ProjectsPage() {
                   </span>
                   <button
                     type="button"
-                    onClick={() => setViewMode('grid')}
+                    onClick={() => setSearchParams({})}
                     className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
                     title="Switch to Cards Grid View"
                   >
@@ -309,7 +303,7 @@ export function ProjectsPage() {
             </div>
 
             {/* Project List */}
-            <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+            <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1.5">
               {filteredSplitProjects.length === 0 ? (
                 <div className="p-8 text-center text-xs text-slate-500 space-y-2">
                   <FolderGit2 className="w-6 h-6 mx-auto text-slate-600" />
@@ -321,7 +315,7 @@ export function ProjectsPage() {
                   return (
                     <div
                       key={p.name}
-                      onClick={() => setActiveSplitProjectName(p.name)}
+                      onClick={() => setSearchParams({ project: p.name, tab: splitRightTab })}
                       className={`group relative flex items-start justify-between p-2.5 rounded-xl cursor-pointer transition-all border ${
                         isActive
                           ? 'bg-purple-600/20 border-purple-500/50 text-white shadow-sm ring-1 ring-purple-500/30'
@@ -351,11 +345,10 @@ export function ProjectsPage() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setActiveSplitProjectName(p.name);
-                          setSplitRightTab('terminal');
+                          setSearchParams({ project: p.name, tab: 'terminal' });
                         }}
                         className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-300 hover:bg-emerald-950/60 transition shrink-0 opacity-80 group-hover:opacity-100"
-                        title={`Open terminal for ${p.name}`}
+                        title={`Open terminal tab for ${p.name}`}
                       >
                         <Terminal className="w-3.5 h-3.5" />
                       </button>
@@ -379,7 +372,7 @@ export function ProjectsPage() {
           </aside>
 
           {/* Right Main Container */}
-          <main className="flex-1 flex flex-col min-w-0 bg-[#090a0f] overflow-hidden">
+          <main className="flex-1 flex flex-col min-w-0 min-h-0 h-full bg-[#090a0f] overflow-hidden">
             {activeSplitProject ? (
               <>
                 {/* Context Header Bar */}
@@ -403,33 +396,41 @@ export function ProjectsPage() {
 
                   {/* Right Container View Tabs & Actions */}
                   <div className="flex items-center gap-2 shrink-0">
-                    {/* Tab Selector: Git Review vs Terminal */}
+                    {/* Tab Selector: Git Review vs Terminal with Active URL sync */}
                     <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-bold text-slate-400">
                       <button
                         type="button"
-                        onClick={() => setSplitRightTab('review')}
-                        className={`flex items-center gap-1 px-3 py-1 rounded-md transition-all ${
+                        onClick={() => setSearchParams({ project: activeSplitProject.name, tab: 'review' })}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-all ${
                           splitRightTab === 'review'
                             ? 'bg-purple-600 text-white shadow-xs'
                             : 'hover:text-white'
                         }`}
+                        title="Git Review Tab"
                       >
                         <Code2 className="w-3.5 h-3.5" />
                         <span>Git Review</span>
                       </button>
                       <button
                         type="button"
-                        onClick={() => setSplitRightTab('terminal')}
-                        className={`flex items-center gap-1 px-3 py-1 rounded-md transition-all ${
+                        onClick={() => setSearchParams({ project: activeSplitProject.name, tab: 'terminal' })}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-all ${
                           splitRightTab === 'terminal'
                             ? 'bg-emerald-600 text-white shadow-xs'
                             : 'hover:text-white'
                         }`}
+                        title="Terminal Tab"
                       >
                         <Terminal className="w-3.5 h-3.5" />
                         <span>Terminal</span>
                       </button>
                     </div>
+
+                    <OpenInIdeButton
+                      projectName={activeSplitProject.name}
+                      repoPath={activeSplitProject.repo_path}
+                      variant="split"
+                    />
 
                     <button
                       type="button"
@@ -442,9 +443,9 @@ export function ProjectsPage() {
 
                     <button
                       type="button"
-                      onClick={() => setViewMode('grid')}
+                      onClick={() => setSearchParams({})}
                       className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
-                      title="Switch to Cards Grid"
+                      title="Back to Cards Grid"
                     >
                       <LayoutGrid className="w-3.5 h-3.5" />
                       <span className="hidden sm:inline">Cards View</span>
@@ -453,23 +454,24 @@ export function ProjectsPage() {
                 </header>
 
                 {/* Main Container Body */}
-                <div className="flex-1 min-h-0 overflow-hidden">
+                <div className="flex-1 min-h-0 overflow-hidden flex flex-col h-full">
                   {splitRightTab === 'review' ? (
                     <ProjectGitReviewView
                       projectName={activeSplitProject.name}
                       repoPath={activeSplitProject.repo_path}
                       baseBranch={activeSplitProject.base_branch || 'develop'}
-                      targetBranch="main"
-                      onToggleTerminal={() => setSplitRightTab('terminal')}
+                      targetBranch="HEAD"
+                      onToggleTerminal={() => setSearchParams({ project: activeSplitProject.name, tab: 'terminal' })}
                       isTerminalOpen={false}
+                      className="h-full flex-1"
                     />
                   ) : (
                     <ProjectTerminalView
                       projectName={activeSplitProject.name}
                       project={activeSplitProject}
                       repoPath={activeSplitProject.repo_path}
-                      showHeader={false}
-                      className="h-full border-none rounded-none"
+                      showHeader={true}
+                      className="h-full flex-1 min-h-0 border-none rounded-none"
                     />
                   )}
                 </div>
@@ -508,7 +510,7 @@ export function ProjectsPage() {
                 <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-[#202128] border border-slate-200 dark:border-[#2d2f3d] text-xs font-semibold">
                   <button
                     type="button"
-                    onClick={() => setViewMode('grid')}
+                    onClick={() => setSearchParams({})}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
                       viewMode === 'grid'
                         ? 'bg-white dark:bg-[#2a2b36] text-purple-600 dark:text-purple-300 shadow-xs font-bold'
@@ -521,15 +523,15 @@ export function ProjectsPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (!activeSplitProjectName && projects[0]) {
-                        setActiveSplitProjectName(projects[0].name);
+                      const projName = activeSplitProjectName || projects[0]?.name;
+                      if (projName) {
+                        setSearchParams({ project: projName, tab: 'review' });
                       }
-                      setViewMode('split');
                     }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all"
                   >
                     <Columns className="w-3.5 h-3.5" />
-                    <span>Git Review (Split)</span>
+                    <span>Container View</span>
                   </button>
                 </div>
 
@@ -668,12 +670,10 @@ export function ProjectsPage() {
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => {
-                            setActiveSplitProjectName(proj.name);
-                            setSplitRightTab('review');
-                            setViewMode('split');
+                            setSearchParams({ project: proj.name, tab: 'review' });
                           }}
                           className="flex items-center gap-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
-                          title="Review project code and git diffs in container"
+                          title="Open Git Review tab"
                         >
                           <Code2 className="w-3.5 h-3.5" />
                           <span>Git Review</span>
@@ -681,27 +681,28 @@ export function ProjectsPage() {
                         <span className="text-slate-300 dark:text-slate-600">|</span>
                         <button
                           onClick={() => {
-                            setActiveSplitProjectName(proj.name);
-                            setSplitRightTab('terminal');
-                            setViewMode('split');
+                            setSearchParams({ project: proj.name, tab: 'terminal' });
                           }}
                           className="flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
-                          title="Open persistent project shell terminal in container"
+                          title="Open Terminal tab"
                         >
                           <Terminal className="w-3.5 h-3.5" />
                           <span>Terminal</span>
                         </button>
                       </div>
 
-                      <button
-                        onClick={() => testMutation.mutate(proj.name)}
-                        disabled={testMutation.isPending}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-[#2a2a2a] hover:bg-slate-200 dark:hover:bg-[#333333] transition-colors disabled:opacity-50"
-                        title="Test Connection"
-                      >
-                        <RefreshCw className={`w-3 h-3 ${testMutation.isPending ? 'animate-spin' : ''}`} />
-                        <span>Test</span>
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <OpenInIdeButton projectName={proj.name} repoPath={proj.repo_path} variant="card" />
+                        <button
+                          onClick={() => testMutation.mutate(proj.name)}
+                          disabled={testMutation.isPending}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-[#2a2a2a] hover:bg-slate-200 dark:hover:bg-[#333333] transition-colors disabled:opacity-50"
+                          title="Test Connection"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${testMutation.isPending ? 'animate-spin' : ''}`} />
+                          <span>Test</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -850,7 +851,7 @@ export function ProjectsPage() {
                   onClick={() => {
                     const proj = selectedProject;
                     setSelectedProject(null);
-                    setIdeReviewProject(proj);
+                    setSearchParams({ project: proj.name, tab: 'review' });
                   }}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 shadow-sm transition"
                   title="Open in-app git & code reviewer"
@@ -863,7 +864,7 @@ export function ProjectsPage() {
                   onClick={() => {
                     const proj = selectedProject;
                     setSelectedProject(null);
-                    setTerminalProject(proj);
+                    setSearchParams({ project: proj.name, tab: 'terminal' });
                   }}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm transition"
                   title="Open interactive project shell terminal"
@@ -871,6 +872,11 @@ export function ProjectsPage() {
                   <Terminal className="w-3.5 h-3.5" />
                   <span>Terminal</span>
                 </button>
+                <OpenInIdeButton
+                  projectName={selectedProject.name}
+                  repoPath={selectedProject.repo_path}
+                  variant="modal"
+                />
                 <button
                   type="button"
                   onClick={() => testMutation.mutate(selectedProject.name)}
@@ -1106,18 +1112,12 @@ export function ProjectsPage() {
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
                   Workspace
                 </label>
-                <select
+                <WorkspaceSelect
                   value={workspaceId}
-                  onChange={(e) => setWorkspaceId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee]"
-                >
-                  <option value="default">📁 default</option>
-                  {workspaces.map((ws) => (
-                    <option key={ws.id} value={ws.id}>
-                      📁 {ws.name} ({ws.id})
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={setWorkspaceId}
+                  workspaces={workspaces}
+                  className="bg-slate-50 dark:bg-[#141414] border-slate-300 dark:border-[#333333]"
+                />
               </div>
 
               <div>
@@ -1256,31 +1256,6 @@ export function ProjectsPage() {
         </div>
       )}
 
-      {/* ======================================================== */}
-      {/* 5. In-App Git Review Modal (Split view with project list)*/}
-      {/* ======================================================== */}
-      <ProjectGitReviewModal
-        isOpen={Boolean(ideReviewProject)}
-        onClose={() => setIdeReviewProject(null)}
-        projectName={ideReviewProject?.name}
-        projects={projects}
-        baseBranch={ideReviewProject?.base_branch || 'develop'}
-        targetBranch="main"
-        onOpenTerminal={(pName) => {
-          const p = projects.find((x) => x.name === pName);
-          if (p) setTerminalProject(p);
-        }}
-      />
-
-      {/* ======================================================== */}
-      {/* 6. Persistent Project Shell Terminal Modal              */}
-      {/* ======================================================== */}
-      <ProjectTerminalModal
-        isOpen={Boolean(terminalProject)}
-        onClose={() => setTerminalProject(null)}
-        initialProjectName={terminalProject?.name}
-        projects={projects}
-      />
     </div>
   );
 }

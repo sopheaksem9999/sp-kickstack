@@ -26,11 +26,27 @@ import {
   SendAiChatMessageInput,
   IdeSettings,
   IdeServerStatus,
+  DetectedIde,
   StartIdeInput,
   ProjectTerminalStatus,
+  HealthResponse,
+  EngineProviderStatus,
+  EngineRateLimitInfo,
 } from '@sp-kickstack/shared';
 
-export const BASE = '/api';
+export type { EngineProviderStatus, EngineRateLimitInfo };
+
+const isTauri =
+  typeof window !== 'undefined' &&
+  Boolean(
+    (window as any).__TAURI_INTERNALS__ ||
+    (window as any).__TAURI__ ||
+    window.location?.protocol === 'tauri:' ||
+    window.location?.hostname === 'tauri.localhost'
+  );
+
+export const API_BASE = isTauri ? 'http://127.0.0.1:4100' : '';
+export const BASE = `${API_BASE}/api`;
 
 /** fetch + JSON, throwing the server's `error` message (or the HTTP status) on failure. */
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -514,6 +530,28 @@ export async function fetchProjectIdeUrl(projectName: string): Promise<{ project
   return res.json();
 }
 
+export async function fetchDetectedIdes(): Promise<DetectedIde[]> {
+  const res = await fetch(`${BASE}/ide/detected`);
+  if (!res.ok) throw new Error('Failed to fetch detected IDEs');
+  return res.json();
+}
+
+export async function openProjectInIde(
+  projectName: string,
+  ideId?: string
+): Promise<{ ok: boolean; ide: DetectedIde; path: string }> {
+  const res = await fetch(`${BASE}/projects/${encodeURIComponent(projectName)}/open-ide`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ideId }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to open project in IDE');
+  }
+  return res.json();
+}
+
 // ========================================================
 // Native In-App Git Review & Code Diff APIs
 // ========================================================
@@ -541,6 +579,7 @@ export interface GitReviewSummary {
   changedFiles: ChangedFile[];
   recentCommits: GitCommitInfo[];
   clean: boolean;
+  availableBranches?: string[];
   error?: string;
 }
 
@@ -569,7 +608,7 @@ export interface FileTreeNode {
   children?: FileTreeNode[];
 }
 
-export async function fetchGitReviewSummary(projectName: string, targetBranch = 'main'): Promise<GitReviewSummary> {
+export async function fetchGitReviewSummary(projectName: string, targetBranch = 'HEAD'): Promise<GitReviewSummary> {
   const res = await fetch(`${BASE}/projects/${encodeURIComponent(projectName)}/git-review/summary?target=${encodeURIComponent(targetBranch)}`);
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -578,7 +617,7 @@ export async function fetchGitReviewSummary(projectName: string, targetBranch = 
   return res.json();
 }
 
-export async function fetchFileDiff(projectName: string, filePath: string, targetBranch = 'main'): Promise<FileDiffResult> {
+export async function fetchFileDiff(projectName: string, filePath: string, targetBranch = 'HEAD'): Promise<FileDiffResult> {
   const res = await fetch(`${BASE}/projects/${encodeURIComponent(projectName)}/git-review/diff?file=${encodeURIComponent(filePath)}&target=${encodeURIComponent(targetBranch)}`);
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -662,4 +701,56 @@ export async function fetchActiveTerminals(): Promise<string[]> {
   return res.json();
 }
 
+export async function createProject(payload: Partial<Project>): Promise<Project> {
+  const res = await fetch(`${BASE}/projects`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error((await res.json()).error || 'Failed to create project');
+  return res.json();
+}
 
+export async function fetchSprintBurndown(sprintId: string): Promise<any> {
+  const res = await fetch(`${BASE}/sprints/${encodeURIComponent(sprintId)}/burndown`);
+  if (!res.ok) throw new Error('Failed to fetch burndown');
+  return res.json();
+}
+
+export async function fetchTelemetry(workspaceId?: string): Promise<any> {
+  const qs = workspaceId ? `?workspace=${encodeURIComponent(workspaceId)}` : '';
+  const res = await fetch(`${BASE}/telemetry${qs}`);
+  if (!res.ok) throw new Error('Failed to fetch telemetry');
+  return res.json();
+}
+
+export async function fetchAiProviders(): Promise<EngineProviderStatus[]> {
+  const res = await fetch(`${BASE}/ai/providers?_t=${Date.now()}`, {
+    cache: 'no-store',
+    headers: {
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      Pragma: 'no-cache',
+    },
+  });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function draftRequirementAi(payload: { prompt: string; workspace_id?: string; provider?: string }): Promise<any> {
+  const res = await fetch(`${BASE}/ai/draft-requirement`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to draft requirement with AI');
+  }
+  return res.json();
+}
+
+export async function fetchHealth(): Promise<HealthResponse> {
+  const res = await fetch(`${BASE}/health`);
+  if (!res.ok) throw new Error('Unhealthy');
+  return res.json();
+}

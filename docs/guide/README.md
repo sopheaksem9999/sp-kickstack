@@ -98,3 +98,10 @@ explained in [Requirements and fan-out](03-requirements-and-fan-out.md#task-stat
 The sidebar also has **AI Architect Chat** (see [03](03-requirements-and-fan-out.md)),
 **Attachments Hub** (shared files whose names and notes are added to every agent prompt in the
 workspace) and **Telemetry & Sprints** (sprint and timing charts).
+
+## More guides
+
+- [Complete Settings & Configuration Guide](settings-guide.md): every Settings module in detail, with parameter tables.
+- [Local AI CLI Engine & Rate Limit Management Guide](ai-engine-guide.md): the local AI CLI engines (Claude Code, Google AGY, OpenAI Codex, Ollama, built-in heuristic), how they are detected, rate-limit handling and the header engine quick view.
+
+Technical background: [DevFlow Bridge specification](../devflow-bridge-spec.md) and [spike results](../spike-results.md).

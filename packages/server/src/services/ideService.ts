@@ -1,11 +1,114 @@
-import { ChildProcess, spawn, execFileSync } from 'child_process';
+import { ChildProcess, spawn, execFile, execFileSync } from 'child_process';
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { IdeServerStatus, IdeSettings, IdeSettingsSchema } from '@sp-kickstack/shared';
+import { DetectedIde, IdeServerStatus, IdeSettings, IdeSettingsSchema } from '@sp-kickstack/shared';
 import { SettingsService } from './settingsService.js';
 import { ProjectService } from './projectService.js';
+
+export interface KnownIdeDef {
+  id: string;
+  name: string;
+  macApps: string[];
+  winPaths?: string[];
+  linuxBins?: string[];
+  commands: string[];
+}
+
+export const KNOWN_IDES: KnownIdeDef[] = [
+  {
+    id: 'antigravity',
+    name: 'Antigravity IDE',
+    macApps: ['Antigravity IDE.app', 'Antigravity.app'],
+    commands: ['antigravity', 'agy'],
+  },
+  {
+    id: 'vscode',
+    name: 'VS Code',
+    macApps: ['Visual Studio Code.app', 'Visual Studio Code - Insiders.app'],
+    winPaths: [
+      path.join(process.env.LOCALAPPDATA || '', 'Programs/Microsoft VS Code/Code.exe'),
+      'C:\\Program Files\\Microsoft VS Code\\Code.exe',
+    ],
+    linuxBins: ['/usr/bin/code', '/snap/bin/code'],
+    commands: ['code', 'code-insiders'],
+  },
+  {
+    id: 'cursor',
+    name: 'Cursor',
+    macApps: ['Cursor.app'],
+    winPaths: [
+      path.join(process.env.LOCALAPPDATA || '', 'Programs/Cursor/Cursor.exe'),
+    ],
+    linuxBins: ['/usr/bin/cursor', '/snap/bin/cursor'],
+    commands: ['cursor'],
+  },
+  {
+    id: 'windsurf',
+    name: 'Windsurf',
+    macApps: ['Windsurf.app'],
+    winPaths: [
+      path.join(process.env.LOCALAPPDATA || '', 'Programs/Windsurf/Windsurf.exe'),
+    ],
+    linuxBins: ['/usr/bin/windsurf'],
+    commands: ['windsurf'],
+  },
+  {
+    id: 'trae',
+    name: 'Trae',
+    macApps: ['Trae.app'],
+    commands: ['trae'],
+  },
+  {
+    id: 'zed',
+    name: 'Zed',
+    macApps: ['Zed.app', 'Zed Preview.app'],
+    linuxBins: ['/usr/bin/zed'],
+    commands: ['zed'],
+  },
+  {
+    id: 'android-studio',
+    name: 'Android Studio',
+    macApps: ['Android Studio.app'],
+    commands: ['studio'],
+  },
+  {
+    id: 'xcode',
+    name: 'Xcode',
+    macApps: ['Xcode.app'],
+    commands: ['xcode'],
+  },
+  {
+    id: 'intellij',
+    name: 'IntelliJ IDEA',
+    macApps: [
+      'IntelliJ IDEA.app',
+      'IntelliJ IDEA Ultimate.app',
+      'IntelliJ IDEA Community Edition.app',
+      'IntelliJ IDEA CE.app',
+    ],
+    commands: ['idea'],
+  },
+  {
+    id: 'webstorm',
+    name: 'WebStorm',
+    macApps: ['WebStorm.app'],
+    commands: ['webstorm'],
+  },
+  {
+    id: 'pycharm',
+    name: 'PyCharm',
+    macApps: ['PyCharm.app', 'PyCharm CE.app', 'PyCharm Community Edition.app'],
+    commands: ['pycharm'],
+  },
+  {
+    id: 'sublime',
+    name: 'Sublime Text',
+    macApps: ['Sublime Text.app', 'Sublime Text 3.app', 'Sublime Text 4.app'],
+    commands: ['subl'],
+  },
+];
 
 export class IdeService {
   private activeProcess: ChildProcess | null = null;
@@ -266,5 +369,194 @@ export class IdeService {
     }
     this.activeFolder = undefined;
     return this.getStatus();
+  }
+
+  /**
+   * Detect installed IDEs on the host PC
+   */
+  public detectInstalledIdes(): DetectedIde[] {
+    const detected: DetectedIde[] = [];
+    const settings = this.getSettings();
+    const appDirs = process.platform === 'darwin'
+      ? ['/Applications', '/System/Applications', path.join(os.homedir(), 'Applications')]
+      : [];
+
+    const checkCommand = (cmd: string): string | null => {
+      try {
+        const whichTool = process.platform === 'win32' ? 'where' : 'which';
+        const res = execFileSync(whichTool, [cmd], {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'ignore'],
+        }).trim().split('\n')[0];
+        if (res && fs.existsSync(res)) return res;
+      } catch {}
+      return null;
+    };
+
+    for (const cand of KNOWN_IDES) {
+      let foundAppPath: string | undefined;
+      let foundCommand: string | undefined;
+
+      // 1. Check macOS application bundles
+      if (process.platform === 'darwin') {
+        for (const dir of appDirs) {
+          for (const app of cand.macApps) {
+            const full = path.join(dir, app);
+            try {
+              if (fs.existsSync(full)) {
+                foundAppPath = full;
+                break;
+              }
+            } catch {}
+          }
+          if (foundAppPath) break;
+        }
+      }
+
+      // 2. Check Windows fixed paths
+      if (process.platform === 'win32' && cand.winPaths) {
+        for (const p of cand.winPaths) {
+          if (p && fs.existsSync(p)) {
+            foundAppPath = p;
+            break;
+          }
+        }
+      }
+
+      // 3. Check Linux fixed binaries
+      if (process.platform === 'linux' && cand.linuxBins) {
+        for (const bin of cand.linuxBins) {
+          if (fs.existsSync(bin)) {
+            foundCommand = bin;
+            break;
+          }
+        }
+      }
+
+      // 4. Check CLI commands
+      for (const cmd of cand.commands) {
+        const cmdPath = checkCommand(cmd);
+        if (cmdPath) {
+          foundCommand = cmdPath;
+          break;
+        }
+      }
+
+      if (foundAppPath || foundCommand) {
+        detected.push({
+          id: cand.id,
+          name: cand.name,
+          appPath: foundAppPath,
+          command: foundCommand || cand.commands[0],
+        });
+      }
+    }
+
+    // Set isDefault flag
+    const preferredId = settings.preferredIde;
+    let hasDefault = false;
+
+    for (const ide of detected) {
+      if (preferredId && ide.id === preferredId) {
+        ide.isDefault = true;
+        hasDefault = true;
+      }
+    }
+
+    if (!hasDefault && detected.length > 0) {
+      detected[0].isDefault = true;
+    }
+
+    return detected;
+  }
+
+  /**
+   * Launch a project folder in an installed IDE on the host PC
+   */
+  public async openProjectInIde(
+    projectNameOrPath: string,
+    ideId?: string
+  ): Promise<{ ok: boolean; ide: DetectedIde; path: string }> {
+    let targetPath = projectNameOrPath;
+    const proj = this.projectService.getProject(projectNameOrPath);
+    if (proj && proj.repo_path) {
+      targetPath = proj.repo_path;
+    }
+
+    if (!fs.existsSync(targetPath) || !fs.statSync(targetPath).isDirectory()) {
+      throw new Error(`Directory path does not exist: ${targetPath}`);
+    }
+
+    const detected = this.detectInstalledIdes();
+    const settings = this.getSettings();
+
+    let targetIde: DetectedIde | undefined;
+    if (ideId) {
+      targetIde = detected.find((d) => d.id === ideId);
+      if (!targetIde) {
+        const known = KNOWN_IDES.find((k) => k.id === ideId);
+        if (known) {
+          targetIde = {
+            id: known.id,
+            name: known.name,
+            command: known.commands[0],
+          };
+        }
+      }
+    } else if (settings.preferredIde) {
+      targetIde = detected.find((d) => d.id === settings.preferredIde);
+    }
+
+    if (!targetIde && detected.length > 0) {
+      targetIde = detected[0];
+    }
+
+    if (!targetIde) {
+      targetIde = {
+        id: 'vscode',
+        name: 'VS Code',
+        command: 'code',
+      };
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      if (process.platform === 'darwin') {
+        if (targetIde?.appPath) {
+          execFile('open', ['-a', targetIde.appPath, targetPath], (err) => {
+            if (err) return reject(err);
+            resolve();
+          });
+        } else {
+          execFile(targetIde?.command || 'code', [targetPath], (err) => {
+            if (err) {
+              execFile('open', ['-a', targetIde?.name || 'Visual Studio Code', targetPath], (openErr) => {
+                if (openErr) return reject(openErr);
+                resolve();
+              });
+            } else {
+              resolve();
+            }
+          });
+        }
+      } else if (process.platform === 'win32') {
+        const cmd = targetIde?.appPath || targetIde?.command || 'code';
+        execFile(cmd, [targetPath], { shell: true }, (err) => {
+          if (err) return reject(err);
+          resolve();
+        });
+      } else {
+        const cmd = targetIde?.command || 'code';
+        execFile(cmd, [targetPath], (err) => {
+          if (err) return reject(err);
+          resolve();
+        });
+      }
+    });
+
+    return {
+      ok: true,
+      ide: targetIde,
+      path: targetPath,
+    };
   }
 }

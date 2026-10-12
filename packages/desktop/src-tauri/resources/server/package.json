@@ -1,0 +1,5 @@
+{
+  "name": "sp-kickstack-desktop-server",
+  "type": "module",
+  "main": "index.mjs"
+}

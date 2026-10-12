@@ -112,17 +112,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path17) {
-      const ctrl = callVisitor(key, node, visitor, path17);
+    function visit_(key, node, visitor, path18) {
+      const ctrl = callVisitor(key, node, visitor, path18);
       if (identity3.isNode(ctrl) || identity3.isPair(ctrl)) {
-        replaceNode(key, path17, ctrl);
-        return visit_(key, ctrl, visitor, path17);
+        replaceNode(key, path18, ctrl);
+        return visit_(key, ctrl, visitor, path18);
       }
       if (typeof ctrl !== "symbol") {
         if (identity3.isCollection(node)) {
-          path17 = Object.freeze(path17.concat(node));
+          path18 = Object.freeze(path18.concat(node));
           for (let i2 = 0; i2 < node.items.length; ++i2) {
-            const ci = visit_(i2, node.items[i2], visitor, path17);
+            const ci = visit_(i2, node.items[i2], visitor, path18);
             if (typeof ci === "number")
               i2 = ci - 1;
             else if (ci === BREAK)
@@ -133,13 +133,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity3.isPair(node)) {
-          path17 = Object.freeze(path17.concat(node));
-          const ck = visit_("key", node.key, visitor, path17);
+          path18 = Object.freeze(path18.concat(node));
+          const ck = visit_("key", node.key, visitor, path18);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path17);
+          const cv = visit_("value", node.value, visitor, path18);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -160,17 +160,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path17) {
-      const ctrl = await callVisitor(key, node, visitor, path17);
+    async function visitAsync_(key, node, visitor, path18) {
+      const ctrl = await callVisitor(key, node, visitor, path18);
       if (identity3.isNode(ctrl) || identity3.isPair(ctrl)) {
-        replaceNode(key, path17, ctrl);
-        return visitAsync_(key, ctrl, visitor, path17);
+        replaceNode(key, path18, ctrl);
+        return visitAsync_(key, ctrl, visitor, path18);
       }
       if (typeof ctrl !== "symbol") {
         if (identity3.isCollection(node)) {
-          path17 = Object.freeze(path17.concat(node));
+          path18 = Object.freeze(path18.concat(node));
           for (let i2 = 0; i2 < node.items.length; ++i2) {
-            const ci = await visitAsync_(i2, node.items[i2], visitor, path17);
+            const ci = await visitAsync_(i2, node.items[i2], visitor, path18);
             if (typeof ci === "number")
               i2 = ci - 1;
             else if (ci === BREAK)
@@ -181,13 +181,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity3.isPair(node)) {
-          path17 = Object.freeze(path17.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path17);
+          path18 = Object.freeze(path18.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path18);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path17);
+          const cv = await visitAsync_("value", node.value, visitor, path18);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -214,23 +214,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path17) {
+    function callVisitor(key, node, visitor, path18) {
       if (typeof visitor === "function")
-        return visitor(key, node, path17);
+        return visitor(key, node, path18);
       if (identity3.isMap(node))
-        return visitor.Map?.(key, node, path17);
+        return visitor.Map?.(key, node, path18);
       if (identity3.isSeq(node))
-        return visitor.Seq?.(key, node, path17);
+        return visitor.Seq?.(key, node, path18);
       if (identity3.isPair(node))
-        return visitor.Pair?.(key, node, path17);
+        return visitor.Pair?.(key, node, path18);
       if (identity3.isScalar(node))
-        return visitor.Scalar?.(key, node, path17);
+        return visitor.Scalar?.(key, node, path18);
       if (identity3.isAlias(node))
-        return visitor.Alias?.(key, node, path17);
+        return visitor.Alias?.(key, node, path18);
       return void 0;
     }
-    function replaceNode(key, path17, node) {
-      const parent = path17[path17.length - 1];
+    function replaceNode(key, path18, node) {
+      const parent = path18[path18.length - 1];
       if (identity3.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity3.isPair(parent)) {
@@ -842,10 +842,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity3 = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path17, value) {
+    function collectionFromPath(schema, path18, value) {
       let v = value;
-      for (let i2 = path17.length - 1; i2 >= 0; --i2) {
-        const k = path17[i2];
+      for (let i2 = path18.length - 1; i2 >= 0; --i2) {
+        const k = path18[i2];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a2 = [];
           a2[k] = v;
@@ -864,7 +864,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path17) => path17 == null || typeof path17 === "object" && !!path17[Symbol.iterator]().next().done;
+    var isEmptyPath = (path18) => path18 == null || typeof path18 === "object" && !!path18[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -894,11 +894,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path17, value) {
-        if (isEmptyPath(path17))
+      addIn(path18, value) {
+        if (isEmptyPath(path18))
           this.add(value);
         else {
-          const [key, ...rest] = path17;
+          const [key, ...rest] = path18;
           const node = this.get(key, true);
           if (identity3.isCollection(node))
             node.addIn(rest, value);
@@ -912,8 +912,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path17) {
-        const [key, ...rest] = path17;
+      deleteIn(path18) {
+        const [key, ...rest] = path18;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -927,8 +927,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path17, keepScalar) {
-        const [key, ...rest] = path17;
+      getIn(path18, keepScalar) {
+        const [key, ...rest] = path18;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity3.isScalar(node) ? node.value : node;
@@ -946,8 +946,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path17) {
-        const [key, ...rest] = path17;
+      hasIn(path18) {
+        const [key, ...rest] = path18;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -957,8 +957,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path17, value) {
-        const [key, ...rest] = path17;
+      setIn(path18, value) {
+        const [key, ...rest] = path18;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -3473,9 +3473,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path17, value) {
+      addIn(path18, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path17, value);
+          this.contents.addIn(path18, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3550,14 +3550,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path17) {
-        if (Collection.isEmptyPath(path17)) {
+      deleteIn(path18) {
+        if (Collection.isEmptyPath(path18)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path17) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path18) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3572,10 +3572,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path17, keepScalar) {
-        if (Collection.isEmptyPath(path17))
+      getIn(path18, keepScalar) {
+        if (Collection.isEmptyPath(path18))
           return !keepScalar && identity3.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity3.isCollection(this.contents) ? this.contents.getIn(path17, keepScalar) : void 0;
+        return identity3.isCollection(this.contents) ? this.contents.getIn(path18, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3586,10 +3586,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path17) {
-        if (Collection.isEmptyPath(path17))
+      hasIn(path18) {
+        if (Collection.isEmptyPath(path18))
           return this.contents !== void 0;
-        return identity3.isCollection(this.contents) ? this.contents.hasIn(path17) : false;
+        return identity3.isCollection(this.contents) ? this.contents.hasIn(path18) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3606,13 +3606,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path17, value) {
-        if (Collection.isEmptyPath(path17)) {
+      setIn(path18, value) {
+        if (Collection.isEmptyPath(path18)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path17), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path18), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path17, value);
+          this.contents.setIn(path18, value);
         }
       }
       /**
@@ -5568,9 +5568,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path17) => {
+    visit.itemAtPath = (cst, path18) => {
       let item = cst;
-      for (const [field, index] of path17) {
+      for (const [field, index] of path18) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5579,23 +5579,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path17) => {
-      const parent = visit.itemAtPath(cst, path17.slice(0, -1));
-      const field = path17[path17.length - 1][0];
+    visit.parentCollection = (cst, path18) => {
+      const parent = visit.itemAtPath(cst, path18.slice(0, -1));
+      const field = path18[path18.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path17, item, visitor) {
-      let ctrl = visitor(item, path17);
+    function _visit(path18, item, visitor) {
+      let ctrl = visitor(item, path18);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i2 = 0; i2 < token.items.length; ++i2) {
-            const ci = _visit(Object.freeze(path17.concat([[field, i2]])), token.items[i2], visitor);
+            const ci = _visit(Object.freeze(path18.concat([[field, i2]])), token.items[i2], visitor);
             if (typeof ci === "number")
               i2 = ci - 1;
             else if (ci === BREAK)
@@ -5606,10 +5606,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path17);
+            ctrl = ctrl(item, path18);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path17) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path18) : ctrl;
     }
     exports.visit = visit;
   }
@@ -21399,11 +21399,11 @@ var require_mime_types = __commonJS({
       }
       return exts[0];
     }
-    function lookup(path17) {
-      if (!path17 || typeof path17 !== "string") {
+    function lookup(path18) {
+      if (!path18 || typeof path18 !== "string") {
         return false;
       }
-      var extension2 = extname("x." + path17).toLowerCase().substr(1);
+      var extension2 = extname("x." + path18).toLowerCase().substr(1);
       if (!extension2) {
         return false;
       }
@@ -25858,7 +25858,7 @@ var require_path_to_regexp = __commonJS({
   "node_modules/path-to-regexp/index.js"(exports, module) {
     module.exports = pathToRegexp;
     var MATCHING_GROUP_REGEXP = /\\.|\((?:\?<(.*?)>)?(?!\?)/g;
-    function pathToRegexp(path17, keys, options) {
+    function pathToRegexp(path18, keys, options) {
       options = options || {};
       keys = keys || [];
       var strict = options.strict;
@@ -25872,8 +25872,8 @@ var require_path_to_regexp = __commonJS({
       var pos = 0;
       var backtrack = "";
       var m;
-      if (path17 instanceof RegExp) {
-        while (m = MATCHING_GROUP_REGEXP.exec(path17.source)) {
+      if (path18 instanceof RegExp) {
+        while (m = MATCHING_GROUP_REGEXP.exec(path18.source)) {
           if (m[0][0] === "\\") continue;
           keys.push({
             name: m[1] || name++,
@@ -25881,18 +25881,18 @@ var require_path_to_regexp = __commonJS({
             offset: m.index
           });
         }
-        return path17;
+        return path18;
       }
-      if (Array.isArray(path17)) {
-        path17 = path17.map(function(value) {
+      if (Array.isArray(path18)) {
+        path18 = path18.map(function(value) {
           return pathToRegexp(value, keys, options).source;
         });
-        return new RegExp(path17.join("|"), flags);
+        return new RegExp(path18.join("|"), flags);
       }
-      if (typeof path17 !== "string") {
+      if (typeof path18 !== "string") {
         throw new TypeError("path must be a string, array of strings, or regular expression");
       }
-      path17 = path17.replace(
+      path18 = path18.replace(
         /\\.|(\/)?(\.)?:(\w+)(\(.*?\))?(\*)?(\?)?|[.*]|\/\(/g,
         function(match, slash, format2, key, capture, star, optional, offset) {
           if (match[0] === "\\") {
@@ -25909,7 +25909,7 @@ var require_path_to_regexp = __commonJS({
           if (slash || format2) {
             backtrack = "";
           } else {
-            backtrack += path17.slice(pos, offset);
+            backtrack += path18.slice(pos, offset);
           }
           pos = offset + match.length;
           if (match === "*") {
@@ -25939,7 +25939,7 @@ var require_path_to_regexp = __commonJS({
           return result;
         }
       );
-      while (m = MATCHING_GROUP_REGEXP.exec(path17)) {
+      while (m = MATCHING_GROUP_REGEXP.exec(path18)) {
         if (m[0][0] === "\\") continue;
         if (keysOffset + i2 === keys.length || keys[keysOffset + i2].offset > m.index) {
           keys.splice(keysOffset + i2, 0, {
@@ -25951,13 +25951,13 @@ var require_path_to_regexp = __commonJS({
         }
         i2++;
       }
-      path17 += strict ? "" : path17[path17.length - 1] === "/" ? "?" : "/?";
+      path18 += strict ? "" : path18[path18.length - 1] === "/" ? "?" : "/?";
       if (end) {
-        path17 += "$";
-      } else if (path17[path17.length - 1] !== "/") {
-        path17 += lookahead ? "(?=/|$)" : "(?:/|$)";
+        path18 += "$";
+      } else if (path18[path18.length - 1] !== "/") {
+        path18 += lookahead ? "(?=/|$)" : "(?:/|$)";
       }
-      return new RegExp("^" + path17, flags);
+      return new RegExp("^" + path18, flags);
     }
   }
 });
@@ -25970,19 +25970,19 @@ var require_layer = __commonJS({
     var debug = require_src3()("express:router:layer");
     var hasOwnProperty = Object.prototype.hasOwnProperty;
     module.exports = Layer;
-    function Layer(path17, options, fn) {
+    function Layer(path18, options, fn) {
       if (!(this instanceof Layer)) {
-        return new Layer(path17, options, fn);
+        return new Layer(path18, options, fn);
       }
-      debug("new %o", path17);
+      debug("new %o", path18);
       var opts = options || {};
       this.handle = fn;
       this.name = fn.name || "<anonymous>";
       this.params = void 0;
       this.path = void 0;
-      this.regexp = pathRegexp(path17, this.keys = [], opts);
-      this.regexp.fast_star = path17 === "*";
-      this.regexp.fast_slash = path17 === "/" && opts.end === false;
+      this.regexp = pathRegexp(path18, this.keys = [], opts);
+      this.regexp.fast_star = path18 === "*";
+      this.regexp.fast_slash = path18 === "/" && opts.end === false;
     }
     Layer.prototype.handle_error = function handle_error(error, req, res, next) {
       var fn = this.handle;
@@ -26006,20 +26006,20 @@ var require_layer = __commonJS({
         next(err);
       }
     };
-    Layer.prototype.match = function match(path17) {
+    Layer.prototype.match = function match(path18) {
       var match2;
-      if (path17 != null) {
+      if (path18 != null) {
         if (this.regexp.fast_slash) {
           this.params = {};
           this.path = "";
           return true;
         }
         if (this.regexp.fast_star) {
-          this.params = { "0": decode_param(path17) };
-          this.path = path17;
+          this.params = { "0": decode_param(path18) };
+          this.path = path18;
           return true;
         }
-        match2 = this.regexp.exec(path17);
+        match2 = this.regexp.exec(path18);
       }
       if (!match2) {
         this.params = void 0;
@@ -26112,10 +26112,10 @@ var require_route = __commonJS({
     var slice = Array.prototype.slice;
     var toString2 = Object.prototype.toString;
     module.exports = Route;
-    function Route(path17) {
-      this.path = path17;
+    function Route(path18) {
+      this.path = path18;
       this.stack = [];
-      debug("new %o", path17);
+      debug("new %o", path18);
       this.methods = {};
     }
     Route.prototype._handles_method = function _handles_method(method) {
@@ -26327,8 +26327,8 @@ var require_router = __commonJS({
         if (++sync > 100) {
           return setImmediate(next, err);
         }
-        var path17 = getPathname(req);
-        if (path17 == null) {
+        var path18 = getPathname(req);
+        if (path18 == null) {
           return done(layerError);
         }
         var layer;
@@ -26336,7 +26336,7 @@ var require_router = __commonJS({
         var route;
         while (match !== true && idx < stack.length) {
           layer = stack[idx++];
-          match = matchLayer(layer, path17);
+          match = matchLayer(layer, path18);
           route = layer.route;
           if (typeof match !== "boolean") {
             layerError = layerError || match;
@@ -26374,18 +26374,18 @@ var require_router = __commonJS({
           } else if (route) {
             layer.handle_request(req, res, next);
           } else {
-            trim_prefix(layer, layerError, layerPath, path17);
+            trim_prefix(layer, layerError, layerPath, path18);
           }
           sync = 0;
         });
       }
-      function trim_prefix(layer, layerError, layerPath, path17) {
+      function trim_prefix(layer, layerError, layerPath, path18) {
         if (layerPath.length !== 0) {
-          if (layerPath !== path17.slice(0, layerPath.length)) {
+          if (layerPath !== path18.slice(0, layerPath.length)) {
             next(layerError);
             return;
           }
-          var c3 = path17[layerPath.length];
+          var c3 = path18[layerPath.length];
           if (c3 && c3 !== "/" && c3 !== ".") return next(layerError);
           debug("trim prefix (%s) from url %s", layerPath, req.url);
           removed = layerPath;
@@ -26463,7 +26463,7 @@ var require_router = __commonJS({
     };
     proto.use = function use(fn) {
       var offset = 0;
-      var path17 = "/";
+      var path18 = "/";
       if (typeof fn !== "function") {
         var arg = fn;
         while (Array.isArray(arg) && arg.length !== 0) {
@@ -26471,7 +26471,7 @@ var require_router = __commonJS({
         }
         if (typeof arg !== "function") {
           offset = 1;
-          path17 = fn;
+          path18 = fn;
         }
       }
       var callbacks = flatten(slice.call(arguments, offset));
@@ -26483,8 +26483,8 @@ var require_router = __commonJS({
         if (typeof fn !== "function") {
           throw new TypeError("Router.use() requires a middleware function but got a " + gettype(fn));
         }
-        debug("use %o %s", path17, fn.name || "<anonymous>");
-        var layer = new Layer(path17, {
+        debug("use %o %s", path18, fn.name || "<anonymous>");
+        var layer = new Layer(path18, {
           sensitive: this.caseSensitive,
           strict: false,
           end: false
@@ -26494,9 +26494,9 @@ var require_router = __commonJS({
       }
       return this;
     };
-    proto.route = function route(path17) {
-      var route2 = new Route(path17);
-      var layer = new Layer(path17, {
+    proto.route = function route(path18) {
+      var route2 = new Route(path18);
+      var layer = new Layer(path18, {
         sensitive: this.caseSensitive,
         strict: this.strict,
         end: true
@@ -26506,8 +26506,8 @@ var require_router = __commonJS({
       return route2;
     };
     methods.concat("all").forEach(function(method) {
-      proto[method] = function(path17) {
-        var route = this.route(path17);
+      proto[method] = function(path18) {
+        var route = this.route(path18);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
       };
@@ -26543,9 +26543,9 @@ var require_router = __commonJS({
       }
       return toString2.call(obj).replace(objectRegExp, "$1");
     }
-    function matchLayer(layer, path17) {
+    function matchLayer(layer, path18) {
       try {
-        return layer.match(path17);
+        return layer.match(path18);
       } catch (err) {
         return err;
       }
@@ -26663,13 +26663,13 @@ var require_view = __commonJS({
   "node_modules/express/lib/view.js"(exports, module) {
     "use strict";
     var debug = require_src3()("express:view");
-    var path17 = __require("path");
+    var path18 = __require("path");
     var fs13 = __require("fs");
-    var dirname = path17.dirname;
-    var basename = path17.basename;
-    var extname = path17.extname;
-    var join = path17.join;
-    var resolve = path17.resolve;
+    var dirname = path18.dirname;
+    var basename = path18.basename;
+    var extname = path18.extname;
+    var join = path18.join;
+    var resolve = path18.resolve;
     module.exports = View;
     function View(name, options) {
       var opts = options || {};
@@ -26698,17 +26698,17 @@ var require_view = __commonJS({
       this.path = this.lookup(fileName);
     }
     View.prototype.lookup = function lookup(name) {
-      var path18;
+      var path19;
       var roots = [].concat(this.root);
       debug('lookup "%s"', name);
-      for (var i2 = 0; i2 < roots.length && !path18; i2++) {
+      for (var i2 = 0; i2 < roots.length && !path19; i2++) {
         var root = roots[i2];
         var loc = resolve(root, name);
         var dir = dirname(loc);
         var file = basename(loc);
-        path18 = this.resolve(dir, file);
+        path19 = this.resolve(dir, file);
       }
-      return path18;
+      return path19;
     };
     View.prototype.render = function render(options, callback) {
       debug('render "%s"', this.path);
@@ -26716,21 +26716,21 @@ var require_view = __commonJS({
     };
     View.prototype.resolve = function resolve2(dir, file) {
       var ext = this.ext;
-      var path18 = join(dir, file);
-      var stat = tryStat(path18);
+      var path19 = join(dir, file);
+      var stat = tryStat(path19);
       if (stat && stat.isFile()) {
-        return path18;
+        return path19;
       }
-      path18 = join(dir, basename(file, ext), "index" + ext);
-      stat = tryStat(path18);
+      path19 = join(dir, basename(file, ext), "index" + ext);
+      stat = tryStat(path19);
       if (stat && stat.isFile()) {
-        return path18;
+        return path19;
       }
     };
-    function tryStat(path18) {
-      debug('stat "%s"', path18);
+    function tryStat(path19) {
+      debug('stat "%s"', path19);
       try {
-        return fs13.statSync(path18);
+        return fs13.statSync(path19);
       } catch (e) {
         return void 0;
       }
@@ -27388,14 +27388,14 @@ var require_etag = __commonJS({
   "node_modules/etag/index.js"(exports, module) {
     "use strict";
     module.exports = etag;
-    var crypto5 = __require("crypto");
+    var crypto6 = __require("crypto");
     var Stats = __require("fs").Stats;
     var toString2 = Object.prototype.toString;
     function entitytag(entity) {
       if (entity.length === 0) {
         return '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
       }
-      var hash = crypto5.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
+      var hash = crypto6.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
       var len = typeof entity === "string" ? Buffer.byteLength(entity, "utf8") : entity.length;
       return '"' + len.toString(16) + "-" + hash + '"';
     }
@@ -27508,7 +27508,7 @@ var require_types = __commonJS({
 // node_modules/mime/mime.js
 var require_mime = __commonJS({
   "node_modules/mime/mime.js"(exports, module) {
-    var path17 = __require("path");
+    var path18 = __require("path");
     var fs13 = __require("fs");
     function Mime() {
       this.types = /* @__PURE__ */ Object.create(null);
@@ -27538,8 +27538,8 @@ var require_mime = __commonJS({
       this.define(map);
       this._loading = null;
     };
-    Mime.prototype.lookup = function(path18, fallback) {
-      var ext = path18.replace(/^.*[\.\/\\]/, "").toLowerCase();
+    Mime.prototype.lookup = function(path19, fallback) {
+      var ext = path19.replace(/^.*[\.\/\\]/, "").toLowerCase();
       return this.types[ext] || fallback || this.default_type;
     };
     Mime.prototype.extension = function(mimeType) {
@@ -27773,28 +27773,28 @@ var require_send = __commonJS({
     var ms = require_ms5();
     var onFinished = require_on_finished();
     var parseRange = require_range_parser();
-    var path17 = __require("path");
+    var path18 = __require("path");
     var statuses = require_statuses();
     var Stream = __require("stream");
     var util2 = __require("util");
-    var extname = path17.extname;
-    var join = path17.join;
-    var normalize = path17.normalize;
-    var resolve = path17.resolve;
-    var sep = path17.sep;
+    var extname = path18.extname;
+    var join = path18.join;
+    var normalize = path18.normalize;
+    var resolve = path18.resolve;
+    var sep = path18.sep;
     var BYTES_RANGE_REGEXP = /^ *bytes=/;
     var MAX_MAXAGE = 60 * 60 * 24 * 365 * 1e3;
     var UP_PATH_REGEXP = /(?:^|[\\/])\.\.(?:[\\/]|$)/;
     module.exports = send;
     module.exports.mime = mime;
-    function send(req, path18, options) {
-      return new SendStream(req, path18, options);
+    function send(req, path19, options) {
+      return new SendStream(req, path19, options);
     }
-    function SendStream(req, path18, options) {
+    function SendStream(req, path19, options) {
       Stream.call(this);
       var opts = options || {};
       this.options = opts;
-      this.path = path18;
+      this.path = path19;
       this.req = req;
       this._acceptRanges = opts.acceptRanges !== void 0 ? Boolean(opts.acceptRanges) : true;
       this._cacheControl = opts.cacheControl !== void 0 ? Boolean(opts.cacheControl) : true;
@@ -27840,8 +27840,8 @@ var require_send = __commonJS({
       this._index = index2;
       return this;
     }, "send.index: pass index as option");
-    SendStream.prototype.root = function root(path18) {
-      this._root = resolve(String(path18));
+    SendStream.prototype.root = function root(path19) {
+      this._root = resolve(String(path19));
       debug("root %s", this._root);
       return this;
     };
@@ -27954,10 +27954,10 @@ var require_send = __commonJS({
       var lastModified = this.res.getHeader("Last-Modified");
       return parseHttpDate(lastModified) <= parseHttpDate(ifRange);
     };
-    SendStream.prototype.redirect = function redirect(path18) {
+    SendStream.prototype.redirect = function redirect(path19) {
       var res = this.res;
       if (hasListeners(this, "directory")) {
-        this.emit("directory", res, path18);
+        this.emit("directory", res, path19);
         return;
       }
       if (this.hasTrailingSlash()) {
@@ -27977,42 +27977,42 @@ var require_send = __commonJS({
     SendStream.prototype.pipe = function pipe(res) {
       var root = this._root;
       this.res = res;
-      var path18 = decode(this.path);
-      if (path18 === -1) {
+      var path19 = decode(this.path);
+      if (path19 === -1) {
         this.error(400);
         return res;
       }
-      if (~path18.indexOf("\0")) {
+      if (~path19.indexOf("\0")) {
         this.error(400);
         return res;
       }
       var parts;
       if (root !== null) {
-        if (path18) {
-          path18 = normalize("." + sep + path18);
+        if (path19) {
+          path19 = normalize("." + sep + path19);
         }
-        if (UP_PATH_REGEXP.test(path18)) {
-          debug('malicious path "%s"', path18);
+        if (UP_PATH_REGEXP.test(path19)) {
+          debug('malicious path "%s"', path19);
           this.error(403);
           return res;
         }
-        parts = path18.split(sep);
-        path18 = normalize(join(root, path18));
+        parts = path19.split(sep);
+        path19 = normalize(join(root, path19));
       } else {
-        if (UP_PATH_REGEXP.test(path18)) {
-          debug('malicious path "%s"', path18);
+        if (UP_PATH_REGEXP.test(path19)) {
+          debug('malicious path "%s"', path19);
           this.error(403);
           return res;
         }
-        parts = normalize(path18).split(sep);
-        path18 = resolve(path18);
+        parts = normalize(path19).split(sep);
+        path19 = resolve(path19);
       }
       if (containsDotFile(parts)) {
         var access = this._dotfiles;
         if (access === void 0) {
           access = parts[parts.length - 1][0] === "." ? this._hidden ? "allow" : "ignore" : "allow";
         }
-        debug('%s dotfile "%s"', access, path18);
+        debug('%s dotfile "%s"', access, path19);
         switch (access) {
           case "allow":
             break;
@@ -28026,13 +28026,13 @@ var require_send = __commonJS({
         }
       }
       if (this._index.length && this.hasTrailingSlash()) {
-        this.sendIndex(path18);
+        this.sendIndex(path19);
         return res;
       }
-      this.sendFile(path18);
+      this.sendFile(path19);
       return res;
     };
-    SendStream.prototype.send = function send2(path18, stat) {
+    SendStream.prototype.send = function send2(path19, stat) {
       var len = stat.size;
       var options = this.options;
       var opts = {};
@@ -28044,9 +28044,9 @@ var require_send = __commonJS({
         this.headersAlreadySent();
         return;
       }
-      debug('pipe "%s"', path18);
-      this.setHeader(path18, stat);
-      this.type(path18);
+      debug('pipe "%s"', path19);
+      this.setHeader(path19, stat);
+      this.type(path19);
       if (this.isConditionalGET()) {
         if (this.isPreconditionFailure()) {
           this.error(412);
@@ -28095,26 +28095,26 @@ var require_send = __commonJS({
         res.end();
         return;
       }
-      this.stream(path18, opts);
+      this.stream(path19, opts);
     };
-    SendStream.prototype.sendFile = function sendFile(path18) {
+    SendStream.prototype.sendFile = function sendFile(path19) {
       var i2 = 0;
       var self = this;
-      debug('stat "%s"', path18);
-      fs13.stat(path18, function onstat(err, stat) {
-        if (err && err.code === "ENOENT" && !extname(path18) && path18[path18.length - 1] !== sep) {
+      debug('stat "%s"', path19);
+      fs13.stat(path19, function onstat(err, stat) {
+        if (err && err.code === "ENOENT" && !extname(path19) && path19[path19.length - 1] !== sep) {
           return next(err);
         }
         if (err) return self.onStatError(err);
-        if (stat.isDirectory()) return self.redirect(path18);
-        self.emit("file", path18, stat);
-        self.send(path18, stat);
+        if (stat.isDirectory()) return self.redirect(path19);
+        self.emit("file", path19, stat);
+        self.send(path19, stat);
       });
       function next(err) {
         if (self._extensions.length <= i2) {
           return err ? self.onStatError(err) : self.error(404);
         }
-        var p = path18 + "." + self._extensions[i2++];
+        var p = path19 + "." + self._extensions[i2++];
         debug('stat "%s"', p);
         fs13.stat(p, function(err2, stat) {
           if (err2) return next(err2);
@@ -28124,7 +28124,7 @@ var require_send = __commonJS({
         });
       }
     };
-    SendStream.prototype.sendIndex = function sendIndex(path18) {
+    SendStream.prototype.sendIndex = function sendIndex(path19) {
       var i2 = -1;
       var self = this;
       function next(err) {
@@ -28132,7 +28132,7 @@ var require_send = __commonJS({
           if (err) return self.onStatError(err);
           return self.error(404);
         }
-        var p = join(path18, self._index[i2]);
+        var p = join(path19, self._index[i2]);
         debug('stat "%s"', p);
         fs13.stat(p, function(err2, stat) {
           if (err2) return next(err2);
@@ -28143,10 +28143,10 @@ var require_send = __commonJS({
       }
       next();
     };
-    SendStream.prototype.stream = function stream(path18, options) {
+    SendStream.prototype.stream = function stream(path19, options) {
       var self = this;
       var res = this.res;
-      var stream2 = fs13.createReadStream(path18, options);
+      var stream2 = fs13.createReadStream(path19, options);
       this.emit("stream", stream2);
       stream2.pipe(res);
       function cleanup() {
@@ -28161,10 +28161,10 @@ var require_send = __commonJS({
         self.emit("end");
       });
     };
-    SendStream.prototype.type = function type(path18) {
+    SendStream.prototype.type = function type(path19) {
       var res = this.res;
       if (res.getHeader("Content-Type")) return;
-      var type2 = mime.lookup(path18);
+      var type2 = mime.lookup(path19);
       if (!type2) {
         debug("no content-type");
         return;
@@ -28173,9 +28173,9 @@ var require_send = __commonJS({
       debug("content-type %s", type2);
       res.setHeader("Content-Type", type2 + (charset ? "; charset=" + charset : ""));
     };
-    SendStream.prototype.setHeader = function setHeader(path18, stat) {
+    SendStream.prototype.setHeader = function setHeader(path19, stat) {
       var res = this.res;
-      this.emit("headers", res, path18, stat);
+      this.emit("headers", res, path19, stat);
       if (this._acceptRanges && !res.getHeader("Accept-Ranges")) {
         debug("accept ranges");
         res.setHeader("Accept-Ranges", "bytes");
@@ -28234,9 +28234,9 @@ var require_send = __commonJS({
       }
       return err instanceof Error ? createError(status, err, { expose: false }) : createError(status, err);
     }
-    function decode(path18) {
+    function decode(path19) {
       try {
-        return decodeURIComponent(path18);
+        return decodeURIComponent(path19);
       } catch (err) {
         return -1;
       }
@@ -29161,10 +29161,10 @@ var require_utils2 = __commonJS({
     var querystring = __require("querystring");
     exports.etag = createETagGenerator({ weak: false });
     exports.wetag = createETagGenerator({ weak: true });
-    exports.isAbsolute = function(path17) {
-      if ("/" === path17[0]) return true;
-      if (":" === path17[1] && ("\\" === path17[2] || "/" === path17[2])) return true;
-      if ("\\\\" === path17.substring(0, 2)) return true;
+    exports.isAbsolute = function(path18) {
+      if ("/" === path18[0]) return true;
+      if (":" === path18[1] && ("\\" === path18[2] || "/" === path18[2])) return true;
+      if ("\\\\" === path18.substring(0, 2)) return true;
     };
     exports.flatten = deprecate.function(
       flatten,
@@ -29376,7 +29376,7 @@ var require_application = __commonJS({
     };
     app2.use = function use(fn) {
       var offset = 0;
-      var path17 = "/";
+      var path18 = "/";
       if (typeof fn !== "function") {
         var arg = fn;
         while (Array.isArray(arg) && arg.length !== 0) {
@@ -29384,7 +29384,7 @@ var require_application = __commonJS({
         }
         if (typeof arg !== "function") {
           offset = 1;
-          path17 = fn;
+          path18 = fn;
         }
       }
       var fns = flatten(slice.call(arguments, offset));
@@ -29395,12 +29395,12 @@ var require_application = __commonJS({
       var router = this._router;
       fns.forEach(function(fn2) {
         if (!fn2 || !fn2.handle || !fn2.set) {
-          return router.use(path17, fn2);
+          return router.use(path18, fn2);
         }
-        debug(".use app under %s", path17);
-        fn2.mountpath = path17;
+        debug(".use app under %s", path18);
+        fn2.mountpath = path18;
         fn2.parent = this;
-        router.use(path17, function mounted_app(req, res, next) {
+        router.use(path18, function mounted_app(req, res, next) {
           var orig = req.app;
           fn2.handle(req, res, function(err) {
             setPrototypeOf(req, orig.request);
@@ -29412,9 +29412,9 @@ var require_application = __commonJS({
       }, this);
       return this;
     };
-    app2.route = function route(path17) {
+    app2.route = function route(path18) {
       this.lazyrouter();
-      return this._router.route(path17);
+      return this._router.route(path18);
     };
     app2.engine = function engine(ext, fn) {
       if (typeof fn !== "function") {
@@ -29465,7 +29465,7 @@ var require_application = __commonJS({
       }
       return this;
     };
-    app2.path = function path17() {
+    app2.path = function path18() {
       return this.parent ? this.parent.path() + this.mountpath : "";
     };
     app2.enabled = function enabled(setting) {
@@ -29481,19 +29481,19 @@ var require_application = __commonJS({
       return this.set(setting, false);
     };
     methods.forEach(function(method) {
-      app2[method] = function(path17) {
+      app2[method] = function(path18) {
         if (method === "get" && arguments.length === 1) {
-          return this.set(path17);
+          return this.set(path18);
         }
         this.lazyrouter();
-        var route = this._router.route(path17);
+        var route = this._router.route(path18);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
       };
     });
-    app2.all = function all(path17) {
+    app2.all = function all(path18) {
       this.lazyrouter();
-      var route = this._router.route(path17);
+      var route = this._router.route(path18);
       var args = slice.call(arguments, 1);
       for (var i2 = 0; i2 < methods.length; i2++) {
         route[methods[i2]].apply(route, args);
@@ -30252,7 +30252,7 @@ var require_request = __commonJS({
       var subdomains2 = !isIP(hostname2) ? hostname2.split(".").reverse() : [hostname2];
       return subdomains2.slice(offset);
     });
-    defineGetter(req, "path", function path17() {
+    defineGetter(req, "path", function path18() {
       return parse(this).pathname;
     });
     defineGetter(req, "hostname", function hostname2() {
@@ -30304,11 +30304,11 @@ var require_request = __commonJS({
 // node_modules/cookie-signature/index.js
 var require_cookie_signature = __commonJS({
   "node_modules/cookie-signature/index.js"(exports) {
-    var crypto5 = __require("crypto");
+    var crypto6 = __require("crypto");
     exports.sign = function(val, secret) {
       if ("string" != typeof val) throw new TypeError("Cookie value must be provided as a string.");
       if ("string" != typeof secret) throw new TypeError("Secret string must be provided.");
-      return val + "." + crypto5.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
+      return val + "." + crypto6.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
     };
     exports.unsign = function(val, secret) {
       if ("string" != typeof val) throw new TypeError("Signed cookie string must be provided.");
@@ -30317,7 +30317,7 @@ var require_cookie_signature = __commonJS({
       return sha1(mac) == sha1(val) ? str : false;
     };
     function sha1(str) {
-      return crypto5.createHash("sha1").update(str).digest("hex");
+      return crypto6.createHash("sha1").update(str).digest("hex");
     }
   }
 });
@@ -30574,7 +30574,7 @@ var require_response = __commonJS({
     var http2 = __require("http");
     var isAbsolute = require_utils2().isAbsolute;
     var onFinished = require_on_finished();
-    var path17 = __require("path");
+    var path18 = __require("path");
     var statuses = require_statuses();
     var merge = require_utils_merge();
     var sign = require_cookie_signature().sign;
@@ -30583,9 +30583,9 @@ var require_response = __commonJS({
     var setCharset = require_utils2().setCharset;
     var cookie = require_cookie();
     var send = require_send();
-    var extname = path17.extname;
+    var extname = path18.extname;
     var mime = send.mime;
-    var resolve = path17.resolve;
+    var resolve = path18.resolve;
     var vary = require_vary();
     var res = Object.create(http2.ServerResponse.prototype);
     module.exports = res;
@@ -30761,26 +30761,26 @@ var require_response = __commonJS({
       this.type("txt");
       return this.send(body);
     };
-    res.sendFile = function sendFile(path18, options, callback) {
+    res.sendFile = function sendFile(path19, options, callback) {
       var done = callback;
       var req = this.req;
       var res2 = this;
       var next = req.next;
       var opts = options || {};
-      if (!path18) {
+      if (!path19) {
         throw new TypeError("path argument is required to res.sendFile");
       }
-      if (typeof path18 !== "string") {
+      if (typeof path19 !== "string") {
         throw new TypeError("path must be a string to res.sendFile");
       }
       if (typeof options === "function") {
         done = options;
         opts = {};
       }
-      if (!opts.root && !isAbsolute(path18)) {
+      if (!opts.root && !isAbsolute(path19)) {
         throw new TypeError("path must be absolute or specify root to res.sendFile");
       }
-      var pathname = encodeURI(path18);
+      var pathname = encodeURI(path19);
       var file = send(req, pathname, opts);
       sendfile(res2, file, opts, function(err) {
         if (done) return done(err);
@@ -30790,7 +30790,7 @@ var require_response = __commonJS({
         }
       });
     };
-    res.sendfile = function(path18, options, callback) {
+    res.sendfile = function(path19, options, callback) {
       var done = callback;
       var req = this.req;
       var res2 = this;
@@ -30800,7 +30800,7 @@ var require_response = __commonJS({
         done = options;
         opts = {};
       }
-      var file = send(req, path18, opts);
+      var file = send(req, path19, opts);
       sendfile(res2, file, opts, function(err) {
         if (done) return done(err);
         if (err && err.code === "EISDIR") return next();
@@ -30813,7 +30813,7 @@ var require_response = __commonJS({
       res.sendfile,
       "res.sendfile: Use res.sendFile instead"
     );
-    res.download = function download(path18, filename, options, callback) {
+    res.download = function download(path19, filename, options, callback) {
       var done = callback;
       var name = filename;
       var opts = options || null;
@@ -30830,7 +30830,7 @@ var require_response = __commonJS({
         opts = filename;
       }
       var headers = {
-        "Content-Disposition": contentDisposition(name || path18)
+        "Content-Disposition": contentDisposition(name || path19)
       };
       if (opts && opts.headers) {
         var keys = Object.keys(opts.headers);
@@ -30843,7 +30843,7 @@ var require_response = __commonJS({
       }
       opts = Object.create(opts);
       opts.headers = headers;
-      var fullPath = !opts.root ? resolve(path18) : path18;
+      var fullPath = !opts.root ? resolve(path19) : path19;
       return this.sendFile(fullPath, opts, done);
     };
     res.contentType = res.type = function contentType(type) {
@@ -31143,11 +31143,11 @@ var require_serve_static = __commonJS({
         }
         var forwardError = !fallthrough;
         var originalUrl = parseUrl.original(req);
-        var path17 = parseUrl(req).pathname;
-        if (path17 === "/" && originalUrl.pathname.substr(-1) !== "/") {
-          path17 = "";
+        var path18 = parseUrl(req).pathname;
+        if (path18 === "/" && originalUrl.pathname.substr(-1) !== "/") {
+          path18 = "";
         }
-        var stream = send(req, path17, opts);
+        var stream = send(req, path18, opts);
         stream.on("directory", onDirectory);
         if (setHeaders) {
           stream.on("headers", setHeaders);
@@ -31659,7 +31659,7 @@ var require_windows = __commonJS({
     module.exports = isexe;
     isexe.sync = sync;
     var fs13 = __require("fs");
-    function checkPathExt(path17, options) {
+    function checkPathExt(path18, options) {
       var pathext = options.pathExt !== void 0 ? options.pathExt : process.env.PATHEXT;
       if (!pathext) {
         return true;
@@ -31670,25 +31670,25 @@ var require_windows = __commonJS({
       }
       for (var i2 = 0; i2 < pathext.length; i2++) {
         var p = pathext[i2].toLowerCase();
-        if (p && path17.substr(-p.length).toLowerCase() === p) {
+        if (p && path18.substr(-p.length).toLowerCase() === p) {
           return true;
         }
       }
       return false;
     }
-    function checkStat(stat, path17, options) {
+    function checkStat(stat, path18, options) {
       if (!stat.isSymbolicLink() && !stat.isFile()) {
         return false;
       }
-      return checkPathExt(path17, options);
+      return checkPathExt(path18, options);
     }
-    function isexe(path17, options, cb) {
-      fs13.stat(path17, function(er, stat) {
-        cb(er, er ? false : checkStat(stat, path17, options));
+    function isexe(path18, options, cb) {
+      fs13.stat(path18, function(er, stat) {
+        cb(er, er ? false : checkStat(stat, path18, options));
       });
     }
-    function sync(path17, options) {
-      return checkStat(fs13.statSync(path17), path17, options);
+    function sync(path18, options) {
+      return checkStat(fs13.statSync(path18), path18, options);
     }
   }
 });
@@ -31699,13 +31699,13 @@ var require_mode = __commonJS({
     module.exports = isexe;
     isexe.sync = sync;
     var fs13 = __require("fs");
-    function isexe(path17, options, cb) {
-      fs13.stat(path17, function(er, stat) {
+    function isexe(path18, options, cb) {
+      fs13.stat(path18, function(er, stat) {
         cb(er, er ? false : checkStat(stat, options));
       });
     }
-    function sync(path17, options) {
-      return checkStat(fs13.statSync(path17), options);
+    function sync(path18, options) {
+      return checkStat(fs13.statSync(path18), options);
     }
     function checkStat(stat, options) {
       return stat.isFile() && checkMode(stat, options);
@@ -31738,7 +31738,7 @@ var require_isexe = __commonJS({
     }
     module.exports = isexe;
     isexe.sync = sync;
-    function isexe(path17, options, cb) {
+    function isexe(path18, options, cb) {
       if (typeof options === "function") {
         cb = options;
         options = {};
@@ -31748,7 +31748,7 @@ var require_isexe = __commonJS({
           throw new TypeError("callback not provided");
         }
         return new Promise(function(resolve, reject) {
-          isexe(path17, options || {}, function(er, is) {
+          isexe(path18, options || {}, function(er, is) {
             if (er) {
               reject(er);
             } else {
@@ -31757,7 +31757,7 @@ var require_isexe = __commonJS({
           });
         });
       }
-      core(path17, options || {}, function(er, is) {
+      core(path18, options || {}, function(er, is) {
         if (er) {
           if (er.code === "EACCES" || options && options.ignoreErrors) {
             er = null;
@@ -31767,9 +31767,9 @@ var require_isexe = __commonJS({
         cb(er, is);
       });
     }
-    function sync(path17, options) {
+    function sync(path18, options) {
       try {
-        return core.sync(path17, options || {});
+        return core.sync(path18, options || {});
       } catch (er) {
         if (options && options.ignoreErrors || er.code === "EACCES") {
           return false;
@@ -31785,7 +31785,7 @@ var require_isexe = __commonJS({
 var require_which = __commonJS({
   "node_modules/which/which.js"(exports, module) {
     var isWindows = process.platform === "win32" || process.env.OSTYPE === "cygwin" || process.env.OSTYPE === "msys";
-    var path17 = __require("path");
+    var path18 = __require("path");
     var COLON = isWindows ? ";" : ":";
     var isexe = require_isexe();
     var getNotFoundError = (cmd) => Object.assign(new Error(`not found: ${cmd}`), { code: "ENOENT" });
@@ -31823,7 +31823,7 @@ var require_which = __commonJS({
           return opt.all && found.length ? resolve(found) : reject(getNotFoundError(cmd));
         const ppRaw = pathEnv[i2];
         const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-        const pCmd = path17.join(pathPart, cmd);
+        const pCmd = path18.join(pathPart, cmd);
         const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
         resolve(subStep(p, i2, 0));
       });
@@ -31850,7 +31850,7 @@ var require_which = __commonJS({
       for (let i2 = 0; i2 < pathEnv.length; i2++) {
         const ppRaw = pathEnv[i2];
         const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-        const pCmd = path17.join(pathPart, cmd);
+        const pCmd = path18.join(pathPart, cmd);
         const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
         for (let j = 0; j < pathExt.length; j++) {
           const cur = p + pathExt[j];
@@ -31898,7 +31898,7 @@ var require_path_key = __commonJS({
 var require_resolveCommand = __commonJS({
   "node_modules/cross-spawn/lib/util/resolveCommand.js"(exports, module) {
     "use strict";
-    var path17 = __require("path");
+    var path18 = __require("path");
     var which = require_which();
     var getPathKey = require_path_key();
     function resolveCommandAttempt(parsed, withoutPathExt) {
@@ -31916,7 +31916,7 @@ var require_resolveCommand = __commonJS({
       try {
         resolved = which.sync(parsed.command, {
           path: env[getPathKey({ env })],
-          pathExt: withoutPathExt ? path17.delimiter : void 0
+          pathExt: withoutPathExt ? path18.delimiter : void 0
         });
       } catch (e) {
       } finally {
@@ -31925,7 +31925,7 @@ var require_resolveCommand = __commonJS({
         }
       }
       if (resolved) {
-        resolved = path17.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
+        resolved = path18.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
       }
       return resolved;
     }
@@ -31979,8 +31979,8 @@ var require_shebang_command = __commonJS({
       if (!match) {
         return null;
       }
-      const [path17, argument] = match[0].replace(/#! ?/, "").split(" ");
-      const binary = path17.split("/").pop();
+      const [path18, argument] = match[0].replace(/#! ?/, "").split(" ");
+      const binary = path18.split("/").pop();
       if (binary === "env") {
         return argument;
       }
@@ -32015,7 +32015,7 @@ var require_readShebang = __commonJS({
 var require_parse2 = __commonJS({
   "node_modules/cross-spawn/lib/parse.js"(exports, module) {
     "use strict";
-    var path17 = __require("path");
+    var path18 = __require("path");
     var resolveCommand = require_resolveCommand();
     var escape2 = require_escape();
     var readShebang = require_readShebang();
@@ -32040,7 +32040,7 @@ var require_parse2 = __commonJS({
       const needsShell = !isExecutableRegExp.test(commandFile);
       if (parsed.options.forceShell || needsShell) {
         const needsDoubleEscapeMetaChars = isCmdShimRegExp.test(commandFile);
-        parsed.command = path17.normalize(parsed.command);
+        parsed.command = path18.normalize(parsed.command);
         parsed.command = escape2.command(parsed.command);
         parsed.args = parsed.args.map((arg) => escape2.argument(arg, needsDoubleEscapeMetaChars));
         const shellCommand = [parsed.command].concat(parsed.args).join(" ");
@@ -32151,7 +32151,7 @@ var require_cross_spawn = __commonJS({
 });
 
 // packages/server/src/index.ts
-import path16 from "node:path";
+import path17 from "node:path";
 import fs12 from "node:fs";
 
 // packages/server/src/db/index.ts
@@ -32440,6 +32440,50 @@ var MIGRATIONS = [
     name: "rate-limit pause time for tasks",
     up: (db2) => {
       addColumn(db2, "bridge_tasks", "paused_until", "TEXT");
+    }
+  },
+  {
+    version: 5,
+    name: "agent questions: options and answers",
+    up: (db2) => {
+      addColumn(db2, "bridge_tasks", "options", "TEXT");
+      addColumn(db2, "bridge_tasks", "answer_md", "TEXT");
+      addColumn(db2, "bridge_tasks", "answered_at", "TEXT");
+    }
+  },
+  {
+    version: 6,
+    name: "review comments",
+    up: (db2) => {
+      db2.exec(`
+        CREATE TABLE IF NOT EXISTS review_comments (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          req_id     TEXT NOT NULL REFERENCES requirements(id) ON DELETE CASCADE,
+          task_id    INTEGER NOT NULL REFERENCES bridge_tasks(id) ON DELETE CASCADE,
+          file_path  TEXT,
+          line       INTEGER,
+          body_md    TEXT NOT NULL,
+          state      TEXT NOT NULL DEFAULT 'open',
+          round      INTEGER,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          sent_at    TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_review_comments_req ON review_comments(req_id);
+      `);
+    }
+  },
+  {
+    version: 7,
+    name: "agent model and effort per workspace, requirement and task",
+    up: (db2) => {
+      for (const table of ["workspaces", "requirements"]) {
+        addColumn(db2, table, "agent_model", "TEXT");
+        addColumn(db2, table, "agent_effort", "TEXT");
+      }
+      for (const column of ["model", "effort", "model_override", "effort_override"]) {
+        addColumn(db2, "bridge_tasks", column, "TEXT");
+      }
     }
   }
 ];
@@ -32971,8 +33015,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path17, errorMaps, issueData } = params;
-  const fullPath = [...path17, ...issueData.path || []];
+  const { data, path: path18, errorMaps, issueData } = params;
+  const fullPath = [...path18, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -33088,11 +33132,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path17, key) {
+  constructor(parent, value, path18, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path17;
+    this._path = path18;
     this._key = key;
   }
   get path() {
@@ -36560,7 +36604,7 @@ var RequirementStatusSchema = external_exports.enum([
 var PrioritySchema = external_exports.enum(["low", "normal", "high", "urgent"]);
 var EngineTypeSchema = external_exports.enum(["stoneforge", "clinekanban", "manual"]);
 var DoneMeansSchema = external_exports.enum(["merged", "pr_opened"]);
-var TaskRoleSchema = external_exports.enum(["goal", "ticket", "waiting"]);
+var TaskRoleSchema = external_exports.enum(["goal", "ticket", "waiting", "question"]);
 var LinkStateSchema = external_exports.enum([
   "waiting",
   "ready",
@@ -36616,11 +36660,19 @@ var CreateWorkspaceInputSchema = external_exports.object({
   rules: external_exports.string().optional().default(""),
   context: external_exports.string().optional().default("")
 });
+var ReasoningEffortSchema = external_exports.enum(["low", "medium", "high", "xhigh", "max"]);
+var AgentModelSchema = external_exports.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,79}$/, "Model ids use letters, digits and . _ : / - (up to 80 characters), e.g. opus");
+var AgentProfileInputSchema = external_exports.object({
+  model: AgentModelSchema.nullable().optional(),
+  effort: ReasoningEffortSchema.nullable().optional()
+});
 var UpdateWorkspaceInputSchema = external_exports.object({
   name: external_exports.string().min(1).optional(),
   description: external_exports.string().optional(),
   rules: external_exports.string().optional(),
-  context: external_exports.string().optional()
+  context: external_exports.string().optional(),
+  agent_model: AgentModelSchema.nullable().optional(),
+  agent_effort: ReasoningEffortSchema.nullable().optional()
 });
 var ProjectSchema = external_exports.object({
   name: external_exports.string().min(1),
@@ -36734,7 +36786,37 @@ var TicketResponseSchema = external_exports.object({
   blocking: external_exports.boolean(),
   status: external_exports.string()
 });
-var ReasoningEffortSchema = external_exports.enum(["low", "medium", "high", "xhigh", "max"]);
+var AskQuestionInputSchema = external_exports.object({
+  question: external_exports.string().trim().min(3).max(500),
+  options: external_exports.array(external_exports.string().trim().min(1).max(120)).max(6).default([]),
+  body: external_exports.string().max(20480).default("")
+}).refine((v) => new Set(v.options.map((o2) => o2.toLowerCase())).size === v.options.length, {
+  message: "Options must be different from each other",
+  path: ["options"]
+});
+var AnswerQuestionInputSchema = external_exports.object({
+  option: external_exports.string().trim().min(1).max(120).optional(),
+  answer: external_exports.string().trim().max(4e3).default("")
+}).refine((v) => Boolean(v.option) || v.answer.length > 0, {
+  message: "Pick an option or write an answer",
+  path: ["answer"]
+});
+var CreateReviewCommentInputSchema = external_exports.object({
+  task_id: external_exports.number().int().positive(),
+  body: external_exports.string().trim().min(1).max(4e3),
+  file_path: external_exports.string().trim().min(1).max(300).optional(),
+  line: external_exports.number().int().positive().optional()
+});
+var UpdateReviewCommentInputSchema = external_exports.object({
+  body: external_exports.string().trim().min(1).max(4e3).optional(),
+  state: external_exports.enum(["open", "resolved"]).optional()
+}).refine((v) => v.body !== void 0 || v.state !== void 0, { message: "Nothing to update" });
+var RequestChangesInputSchema = AgentProfileInputSchema.extend({
+  task_ids: external_exports.array(external_exports.number().int().positive()).max(50).optional()
+});
+var SendTaskNoteInputSchema = external_exports.object({
+  body: external_exports.string().trim().min(1).max(4e3)
+});
 var SingleCliConfigSchema = external_exports.object({
   enabled: external_exports.boolean().default(true),
   model: external_exports.string().default(""),
@@ -36868,6 +36950,50 @@ var StartIdeInputSchema = external_exports.object({
   folder_path: external_exports.string().optional(),
   port: external_exports.number().int().positive().optional()
 });
+var NOTIFY_EVENT_TYPES = [
+  "question_asked",
+  "task_needs_human",
+  "requirement_in_review",
+  "merge_succeeded",
+  "merge_failed",
+  "task_failed",
+  "task_blocked",
+  "engine_down",
+  "engine_rate_limited",
+  "changes_requested",
+  "question_answered"
+];
+var DEFAULT_NOTIFY_EVENTS = {
+  question_asked: true,
+  task_needs_human: true,
+  requirement_in_review: true,
+  merge_succeeded: true,
+  merge_failed: true,
+  task_failed: true,
+  task_blocked: true,
+  engine_down: true,
+  engine_rate_limited: true,
+  changes_requested: false,
+  question_answered: false
+};
+var NotificationChannelSchema = external_exports.object({
+  id: external_exports.string().trim().min(1).max(40),
+  type: external_exports.enum(["slack", "telegram", "webhook"]),
+  name: external_exports.string().trim().max(60).default(""),
+  url: external_exports.string().trim().url().refine((u2) => /^https?:\/\//i.test(u2), { message: "URL must start with http:// or https://" }),
+  enabled: external_exports.boolean().default(true)
+});
+var UpdateNotificationSettingsInputSchema = external_exports.object({
+  channels: external_exports.array(NotificationChannelSchema).max(10).optional(),
+  events: external_exports.record(external_exports.string(), external_exports.boolean()).optional(),
+  app_url: external_exports.union([external_exports.literal(""), external_exports.string().trim().url()]).optional()
+}).refine((v) => !v.channels || new Set(v.channels.map((c3) => c3.id)).size === v.channels.length, {
+  message: "Channel ids must be unique",
+  path: ["channels"]
+}).refine((v) => Object.keys(v.events ?? {}).every((k) => NOTIFY_EVENT_TYPES.includes(k)), {
+  message: "Unknown notification event",
+  path: ["events"]
+});
 
 // packages/server/src/services/workspaceService.ts
 var WorkspaceService = class {
@@ -36885,6 +37011,8 @@ var WorkspaceService = class {
       description: r.description || "",
       rules: r.rules || "",
       context: r.context || "",
+      agent_model: r.agent_model ?? null,
+      agent_effort: r.agent_effort ?? null,
       created_at: r.created_at,
       updated_at: r.updated_at
     }));
@@ -36898,6 +37026,8 @@ var WorkspaceService = class {
       description: row.description || "",
       rules: row.rules || "",
       context: row.context || "",
+      agent_model: row.agent_model ?? null,
+      agent_effort: row.agent_effort ?? null,
       created_at: row.created_at,
       updated_at: row.updated_at
     };
@@ -36947,6 +37077,20 @@ var WorkspaceService = class {
       context: validated.context ?? null,
       updated_at: now
     });
+    if (validated.agent_model !== void 0 || validated.agent_effort !== void 0) {
+      this.db.prepare(`
+          UPDATE workspaces SET
+            agent_model = CASE WHEN @setModel = 1 THEN @model ELSE agent_model END,
+            agent_effort = CASE WHEN @setEffort = 1 THEN @effort ELSE agent_effort END
+          WHERE id = @id
+        `).run({
+        id,
+        setModel: validated.agent_model !== void 0 ? 1 : 0,
+        model: validated.agent_model ?? null,
+        setEffort: validated.agent_effort !== void 0 ? 1 : 0,
+        effort: validated.agent_effort ?? null
+      });
+    }
     return this.getWorkspace(id);
   }
   deleteWorkspace(id) {
@@ -37231,7 +37375,9 @@ ${input.attachments.map(
       affected_projects: projRows.map((p) => p.project),
       attachments: this.parseAttachments(row.attachments),
       merge_policy: row.merge_policy || null,
-      sprint_id: row.sprint_id || null
+      sprint_id: row.sprint_id || null,
+      agent_model: row.agent_model ?? null,
+      agent_effort: row.agent_effort ?? null
     };
   }
   listRequirements(workspaceId, sessionId) {
@@ -37352,10 +37498,27 @@ ${input.attachments.map(
     this.db.prepare("UPDATE requirements SET merge_policy = ?, updated_at = datetime('now') WHERE id = ?").run(mergePolicy || null, id);
     return this.getRequirement(id);
   }
+  /** Agent model / effort for this requirement's runs: undefined keeps a value, null clears it. */
+  updateAgentProfile(id, input) {
+    const parsed = AgentProfileInputSchema.parse(input ?? {});
+    const req = this.getRequirement(id);
+    if (!req) throw new HttpError(404, `Requirement ${id} not found`);
+    const model = parsed.model === void 0 ? req.agent_model ?? null : parsed.model;
+    const effort = parsed.effort === void 0 ? req.agent_effort ?? null : parsed.effort;
+    this.db.prepare("UPDATE requirements SET agent_model = ?, agent_effort = ?, updated_at = datetime('now') WHERE id = ?").run(model, effort, id);
+    return this.getRequirement(id);
+  }
   updateStatus(id, status) {
     this.db.prepare(`
       UPDATE requirements SET status = ?, updated_at = datetime('now') WHERE id = ?
     `).run(status, id);
+    if (status === "done") {
+      this.db.prepare("UPDATE bridge_tasks SET status = 'cancelled', updated_at = ? WHERE req_id = ? AND role = 'question' AND status = 'needs_human'").run((/* @__PURE__ */ new Date()).toISOString(), id);
+      this.db.prepare(`
+          UPDATE links SET state = 'cancelled'
+          WHERE state = 'waiting' AND depends_on_id IN (SELECT id FROM bridge_tasks WHERE req_id = ? AND role = 'question')
+        `).run(id);
+    }
   }
   /**
    * Operator-driven status change (Kanban drag, status select). A requirement with no
@@ -37593,8 +37756,9 @@ var SprintService = class {
 
 // packages/server/src/lib/promptSafety.ts
 var TAG = /<\s*(\/?)\s*untrusted_input/gi;
+var BRIDGE_MARK = /<!--\s*bridge:/gi;
 function neutralizeTags(text) {
-  return text.replace(TAG, "&lt;$1untrusted_input");
+  return text.replace(TAG, "&lt;$1untrusted_input").replace(BRIDGE_MARK, "&lt;!-- bridge:");
 }
 function wrapUntrusted(name, text) {
   return `<untrusted_input name="${name}">
@@ -37604,6 +37768,9 @@ ${neutralizeTags(text)}
 function oneLine(title, maxLength = 250) {
   const flat = neutralizeTags(title).replace(/\s+/g, " ").trim();
   return flat.length > maxLength ? `${flat.slice(0, maxLength - 1)}\u2026` : flat;
+}
+function neutralize(text) {
+  return neutralizeTags(text);
 }
 
 // packages/server/src/services/orphans.ts
@@ -37712,6 +37879,37 @@ var SettingsService = class {
       ON CONFLICT(key) DO UPDATE SET value = excluded.value
     `).run(JSON.stringify(updated));
     return updated;
+  }
+  getNotificationSettings() {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'notification_settings'").get();
+    let stored = {};
+    if (row) {
+      try {
+        const parsed = JSON.parse(row.value);
+        stored = parsed && typeof parsed === "object" ? parsed : {};
+      } catch {
+        stored = {};
+      }
+    }
+    return {
+      channels: Array.isArray(stored.channels) ? stored.channels : [],
+      events: { ...DEFAULT_NOTIFY_EVENTS, ...stored.events ?? {} },
+      app_url: typeof stored.app_url === "string" ? stored.app_url : ""
+    };
+  }
+  updateNotificationSettings(updates) {
+    const parsed = UpdateNotificationSettingsInputSchema.parse(updates ?? {});
+    const current = this.getNotificationSettings();
+    const next = {
+      channels: parsed.channels ?? current.channels,
+      events: { ...current.events, ...parsed.events ?? {} },
+      app_url: parsed.app_url ?? current.app_url
+    };
+    this.db.prepare(`
+        INSERT INTO settings (key, value) VALUES ('notification_settings', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run(JSON.stringify(next));
+    return this.getNotificationSettings();
   }
 };
 
@@ -37900,10 +38098,10 @@ function branchInstructions(branch, base, policy) {
 - If you are told about a merge conflict, rebase your branch onto \`${base}\` and resolve it there.`;
 }
 var BranchService = class {
-  constructor(db2, projectService2, settingsService) {
+  constructor(db2, projectService2, settingsService2) {
     this.db = db2;
     this.projectService = projectService2;
-    this.settings = settingsService ?? new SettingsService(db2);
+    this.settings = settingsService2 ?? new SettingsService(db2);
   }
   settings;
   baseBranchFor(project) {
@@ -37986,8 +38184,88 @@ function pauseForRateLimit(db2, taskId, err) {
 // packages/server/src/services/taskRetry.ts
 var RETRYABLE = ["failed", "needs_human", "rate_limited"];
 var STOPPED = ["done", "failed", "cancelled"];
-var RETRY_NOTE = /\n\n## Retry\nA previous attempt stopped [^\n]*\n$/;
-async function prepareRetry(db2, taskId, role, adapterFor) {
+var NOTE_ORDER = ["review", "retry"];
+var MARKER = /\n\n<!-- bridge:(review|retry) -->\n/;
+var MARKER_SPLIT = /\n\n<!-- bridge:(review|retry) -->\n/g;
+var LEGACY_RETRY_NOTE = /\n\n## Retry\nA previous attempt stopped [^\n]*\n$/;
+function setBridgeNote(body, kind, note) {
+  const start = body.search(MARKER);
+  const base = (start === -1 ? body : body.slice(0, start)).replace(LEGACY_RETRY_NOTE, "");
+  const notes = /* @__PURE__ */ new Map();
+  if (start !== -1) {
+    const parts = body.slice(start).split(MARKER_SPLIT);
+    for (let i2 = 1; i2 < parts.length; i2 += 2) notes.set(parts[i2], parts[i2 + 1]);
+  }
+  notes.set(kind, note);
+  if (kind === "review") notes.delete("retry");
+  return base + NOTE_ORDER.filter((k) => notes.has(k)).map((k) => `
+
+<!-- bridge:${k} -->
+${notes.get(k)}`).join("");
+}
+async function rerunTask(db2, task, adapterFor, opts) {
+  if (!opts.from.includes(task.status)) throw conflict(`Task #${task.id} is ${task.status}`);
+  const body = setBridgeNote(task.body_md || "", opts.noteKind, opts.note);
+  const clear = opts.clearMerge ? 1 : 0;
+  const pick = (next, current) => next === void 0 ? current ?? null : next;
+  const modelOverride = pick(opts.profile?.model, task.model_override);
+  const effortOverride = pick(opts.profile?.effort, task.effort_override);
+  const claimed = db2.prepare(`
+      UPDATE bridge_tasks
+      SET status = 'pending', engine_task_id = NULL, engine_status_raw = NULL, engine_url = NULL, last_error = NULL,
+          paused_until = NULL, attempts = 1, body_md = ?, updated_at = ?, model = NULL, effort = NULL,
+          model_override = ?, effort_override = ?,
+          merged_at = CASE WHEN ? = 1 THEN NULL ELSE merged_at END,
+          merge_sha = CASE WHEN ? = 1 THEN NULL ELSE merge_sha END
+      WHERE id = ? AND status = ? AND engine_task_id IS ?
+    `).run(body, (/* @__PURE__ */ new Date()).toISOString(), modelOverride, effortOverride, clear, clear, task.id, task.status, task.engine_task_id ?? null);
+  if (claimed.changes !== 1) {
+    throw conflict(`Task #${task.id} changed meanwhile (another retry or review?); refresh and try again`);
+  }
+  if (!task.engine_task_id) return;
+  let adapter;
+  let refusal;
+  try {
+    adapter = adapterFor(task.project);
+    refusal = await stopEngineTask(adapter, task.engine_task_id, opts.stopped ?? STOPPED);
+  } catch (err) {
+    refusal = err?.message || String(err);
+  }
+  if (!refusal) return;
+  const restored = db2.prepare(`
+      UPDATE bridge_tasks
+      SET status = ?, engine_task_id = ?, engine_status_raw = ?, engine_url = ?, last_error = ?,
+          paused_until = ?, attempts = ?, body_md = ?, merged_at = ?, merge_sha = ?, updated_at = ?,
+          model = ?, effort = ?, model_override = ?, effort_override = ?
+      WHERE id = ? AND status = 'pending' AND engine_task_id IS NULL
+    `).run(
+    task.status,
+    task.engine_task_id,
+    task.engine_status_raw ?? null,
+    task.engine_url ?? null,
+    task.last_error ?? null,
+    task.paused_until ?? null,
+    task.attempts,
+    task.body_md ?? null,
+    task.merged_at ?? null,
+    task.merge_sha ?? null,
+    (/* @__PURE__ */ new Date()).toISOString(),
+    task.model ?? null,
+    task.effort ?? null,
+    task.model_override ?? null,
+    task.effort_override ?? null,
+    task.id
+  );
+  if (restored.changes === 0) {
+    if (adapter) await cancelOrphan(db2, adapter, task.id, task.engine_task_id);
+    else {
+      db2.prepare("UPDATE bridge_tasks SET engine_task_id = ?, status = 'queued', last_error = ? WHERE id = ? AND status = 'cancelled' AND engine_task_id IS NULL").run(task.engine_task_id, `Cancel failed: ${refusal}`, task.id);
+    }
+  }
+  throw new HttpError(503, `Could not stop the old engine task ${task.engine_task_id} (${refusal}); try again later`);
+}
+async function prepareRetry(db2, taskId, role, adapterFor, profile) {
+  const parsedProfile = AgentProfileInputSchema.parse(profile ?? {});
   const task = db2.prepare("SELECT * FROM bridge_tasks WHERE id = ?").get(taskId);
   if (!task || task.role !== role) throw new HttpError(404, `${role === "goal" ? "Goal" : "Ticket"} #${taskId} not found`);
   if (!RETRYABLE.includes(task.status)) {
@@ -37997,61 +38275,32 @@ async function prepareRetry(db2, taskId, role, adapterFor) {
   if (!req || req.status === "cancelled" || req.status === "done") {
     throw conflict(`Requirement ${task.req_id} is ${req?.status ?? "missing"}; its tasks cannot be retried`);
   }
-  const waiting = db2.prepare("SELECT COUNT(*) AS c FROM links WHERE task_id = ? AND state = 'waiting'").get(taskId);
-  if (waiting.c > 0) {
+  const waiting = db2.prepare(`
+      SELECT l.depends_on_id AS id, d.role FROM links l JOIN bridge_tasks d ON d.id = l.depends_on_id
+      WHERE l.task_id = ? AND l.state = 'waiting' ORDER BY d.role = 'question' DESC, l.id
+    `).all(taskId);
+  if (waiting[0]?.role === "question") {
+    throw conflict(
+      `Task #${taskId} is waiting for an answer to question #${waiting[0].id}; answer it (Let the agent decide is enough), then retry`
+    );
+  }
+  if (waiting.length > 0) {
     throw conflict(`Task #${taskId} is still waiting on another task; release or cancel that dependency first`);
   }
   const reason = oneLine(task.last_error || task.status, 200);
-  const note = `
-
-## Retry
+  const note = `## Retry
 A previous attempt stopped (${reason}). ${task.branch ? `Continue from the commits already on \`${task.branch}\`.` : "Start again from the current code."}
 `;
-  const body = `${(task.body_md || "").replace(RETRY_NOTE, "")}${note}`;
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  const claimed = db2.prepare(`
-    UPDATE bridge_tasks
-    SET status = 'pending', engine_task_id = NULL, engine_status_raw = NULL, engine_url = NULL, last_error = NULL,
-        paused_until = NULL, attempts = 1, body_md = ?, updated_at = ?
-    WHERE id = ? AND status = ? AND engine_task_id IS ?
-  `).run(body, now, taskId, task.status, task.engine_task_id ?? null);
-  if (claimed.changes !== 1) {
-    throw conflict(`Task #${taskId} changed while it was being retried (another retry?); refresh and try again`);
-  }
-  if (task.engine_task_id) {
-    const adapter = adapterFor(task.project);
-    const refusal = await stopEngineTask(adapter, task.engine_task_id);
-    if (refusal) {
-      const restored = db2.prepare(`
-        UPDATE bridge_tasks
-        SET status = ?, engine_task_id = ?, engine_status_raw = ?, engine_url = ?, last_error = ?,
-            paused_until = ?, attempts = ?, body_md = ?, updated_at = ?
-        WHERE id = ? AND status = 'pending' AND engine_task_id IS NULL
-      `).run(
-        task.status,
-        task.engine_task_id,
-        task.engine_status_raw ?? null,
-        task.engine_url ?? null,
-        task.last_error ?? null,
-        task.paused_until ?? null,
-        task.attempts,
-        task.body_md ?? null,
-        (/* @__PURE__ */ new Date()).toISOString(),
-        taskId
-      );
-      if (restored.changes === 0) await cancelOrphan(db2, adapter, taskId, task.engine_task_id);
-      throw new HttpError(503, `Could not stop the old engine task ${task.engine_task_id} (${refusal}); try again later`);
-    }
-  }
+  await rerunTask(db2, task, adapterFor, { from: RETRYABLE, noteKind: "retry", note, profile: parsedProfile });
   db2.prepare("INSERT INTO events (req_id, task_id, type, payload, read, at) VALUES (?, ?, 'task_retried', ?, 0, ?)").run(
     task.req_id,
     taskId,
     JSON.stringify({ taskId, project: task.project, oldEngineTaskId: task.engine_task_id ?? null }),
-    now
+    (/* @__PURE__ */ new Date()).toISOString()
   );
   return task;
 }
-async function stopEngineTask(adapter, engineTaskId) {
+async function stopEngineTask(adapter, engineTaskId, stopped) {
   try {
     await adapter.cancelTask(engineTaskId);
     return null;
@@ -38060,11 +38309,35 @@ async function stopEngineTask(adapter, engineTaskId) {
     if (/\(404\)/.test(err?.message || "")) return null;
     try {
       const current = await adapter.getTask(engineTaskId);
-      if (!current || STOPPED.includes(current.status)) return null;
+      if (!current || stopped.includes(current.status)) return null;
     } catch {
     }
     return err?.message || String(err);
   }
+}
+
+// packages/server/src/services/agentProfile.ts
+function resolveAgentProfile(db2, taskId) {
+  const row = db2.prepare(`
+      SELECT t.model_override, t.effort_override,
+             r.agent_model AS req_model, r.agent_effort AS req_effort,
+             w.agent_model AS ws_model, w.agent_effort AS ws_effort
+      FROM bridge_tasks t
+      JOIN requirements r ON r.id = t.req_id
+      LEFT JOIN workspaces w ON w.id = r.workspace_id
+      WHERE t.id = ?
+    `).get(taskId);
+  if (!row) return { model: null, effort: null };
+  return {
+    model: row.model_override ?? row.req_model ?? row.ws_model ?? null,
+    effort: row.effort_override ?? row.req_effort ?? row.ws_effort ?? null
+  };
+}
+function engineProfile(profile) {
+  return { ...profile.model ? { model: profile.model } : {}, ...profile.effort ? { effort: profile.effort } : {} };
+}
+function recordedProfile(profile, engineType) {
+  return engineType === "manual" ? { model: null, effort: null } : profile;
 }
 
 // packages/server/src/services/fanOutService.ts
@@ -38093,6 +38366,7 @@ ${assetsBlock}
 - **Operate headlessly & autonomously**: Do NOT halt execution to ask user confirmation for running standard builds, package installations, tests, or mechanical file refactorings.
 - **Architectural Disambiguation**: If an implementation fork or design choice arises, pick the safest industry standard convention, record the rationale in \`specs/${reqId}/decision.md\`, and proceed without waiting for interactive human prompts.
 - **Cross-Service Contracts**: Never pause to chat interactively with the human about other repositories; instead issue a blocking \`xticket\` so the dependency graph handles orchestration automatically.
+- **Questions for a person**: when a product decision (what users see, scope, data kept) is genuinely open and this requirement does not settle it, run \`xticket ask --question "..." --option "..." --option "..."\` (options are optional, up to 6), commit WIP changes, then stop. Your task is paused until a person answers; the answer arrives as a note when it resumes. Decide technical details yourself.
 
 ## What to do
 1. Read the requirement below and inspect this codebase on the \`${branch ?? baseBranch}\` branch.
@@ -38203,12 +38477,15 @@ ${wrapUntrusted("requirement", requirementMd)}
       try {
         this.branches.ensureTaskBranch(taskId);
         const adapter = this.getAdapter(task.project);
-        const engineTask = await adapter.createGoal({ title: task.title, bodyMd: task.body_md || "" });
+        const profile = resolveAgentProfile(this.db, taskId);
+        const recorded = recordedProfile(profile, this.projectService.getProject(task.project)?.engine_type);
+        const engineTask = await adapter.createGoal({ title: task.title, bodyMd: task.body_md || "", ...engineProfile(profile) });
         const stored = this.db.prepare(`
             UPDATE bridge_tasks
-            SET engine_task_id = ?, status = 'queued', engine_status_raw = ?, engine_url = ?, last_error = NULL, updated_at = ?
+            SET engine_task_id = ?, status = 'queued', engine_status_raw = ?, engine_url = ?, last_error = NULL,
+                model = ?, effort = ?, updated_at = ?
             WHERE id = ? AND status = 'pending'
-          `).run(engineTask.id, engineTask.rawStatus || null, engineTask.url || null, (/* @__PURE__ */ new Date()).toISOString(), taskId);
+          `).run(engineTask.id, engineTask.rawStatus || null, engineTask.url || null, recorded.model, recorded.effort, (/* @__PURE__ */ new Date()).toISOString(), taskId);
         if (stored.changes === 0) {
           await cancelOrphan(this.db, adapter, taskId, engineTask.id);
         }
@@ -38272,9 +38549,9 @@ ${wrapUntrusted("requirement", requirementMd)}
     );
     return { cancelled, failed };
   }
-  /** A person retries a stopped goal: new engine task on the same branch, attempts reset. */
-  async retryGoal(taskId) {
-    const task = await prepareRetry(this.db, taskId, "goal", this.getAdapter);
+  /** A person retries a stopped goal: new engine task on the same branch, attempts reset; `profile` pins a model/effort. */
+  async retryGoal(taskId, profile) {
+    const task = await prepareRetry(this.db, taskId, "goal", this.getAdapter, profile);
     await this.dispatchGoal(taskId);
     const goals = this.db.prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND role = 'goal' AND status <> 'cancelled'").all(task.req_id);
     this.applyFanOutStatus(task.req_id, goals);
@@ -38490,6 +38767,7 @@ var TicketService = class _TicketService {
 Review feasibility against the current contract and tenant-isolation rules,
 write a short plan, implement, update the contract file, add tests.
 If the request is unclear or unsafe, say so instead of guessing.
+If you need a decision from a person, run \`xticket ask --question "..." --option "..."\`, commit WIP changes and stop; the answer arrives as a note when the task resumes.
 ${branch ? `
 ${branchInstructions(branch.name, branch.base, branch.policy)}
 ` : ""}
@@ -38596,9 +38874,9 @@ ${input.body}`)}
       status: current.status
     };
   }
-  /** A person retries a stopped ticket: new engine task on the same branch, attempts reset. */
-  async retryTicket(ticketId) {
-    await prepareRetry(this.db, ticketId, "ticket", this.getAdapter);
+  /** A person retries a stopped ticket: new engine task on the same branch, attempts reset; `profile` pins a model/effort. */
+  async retryTicket(ticketId, profile) {
+    await prepareRetry(this.db, ticketId, "ticket", this.getAdapter, profile);
     try {
       await this.dispatchTicket(ticketId);
     } catch {
@@ -38615,15 +38893,19 @@ ${input.body}`)}
     try {
       this.branches.ensureTaskBranch(ticketId);
       const adapter = this.getAdapter(ticket.project);
+      const profile = resolveAgentProfile(this.db, ticketId);
+      const recorded = recordedProfile(profile, this.projectService.getProject(ticket.project)?.engine_type);
       const engineTask = await adapter.createTask({
         title: ticket.title,
-        bodyMd: ticket.body_md || ""
+        bodyMd: ticket.body_md || "",
+        ...engineProfile(profile)
       });
       const stored = this.db.prepare(`
           UPDATE bridge_tasks
-          SET engine_task_id = ?, status = ?, engine_status_raw = ?, engine_url = ?, last_error = NULL, updated_at = ?
+          SET engine_task_id = ?, status = ?, engine_status_raw = ?, engine_url = ?, last_error = NULL,
+              model = ?, effort = ?, updated_at = ?
           WHERE id = ? AND status = 'pending'
-        `).run(engineTask.id, engineTask.status, engineTask.rawStatus, engineTask.url || null, (/* @__PURE__ */ new Date()).toISOString(), ticketId);
+        `).run(engineTask.id, engineTask.status, engineTask.rawStatus, engineTask.url || null, recorded.model, recorded.effort, (/* @__PURE__ */ new Date()).toISOString(), ticketId);
       if (stored.changes === 0) {
         await cancelOrphan(this.db, adapter, ticketId, engineTask.id);
       }
@@ -38724,6 +39006,12 @@ var TaskReactor = class {
         project: task.project,
         until: extra.resumeAt ?? null
       });
+    } else if (newStatus === "needs_human") {
+      this.recordEvent("task_needs_human", task.req_id, task.id, {
+        taskId: task.id,
+        project: task.project,
+        summary: extra.summary ? oneLine(extra.summary, 500) : null
+      });
     } else if (newStatus === "failed" || newStatus === "cancelled") {
       if (newStatus === "failed") {
         this.recordEvent("task_failed", task.req_id, task.id, { taskId: task.id, project: task.project });
@@ -38745,7 +39033,10 @@ var TaskReactor = class {
         req_id: task.req_id,
         payload: { id: task.req_id, status: after }
       });
-      if (after === "in_review") this.hooks.onRequirementInReview?.(task.req_id);
+      if (after === "in_review") {
+        this.recordEvent("requirement_in_review", task.req_id, void 0, { reqId: task.req_id });
+        this.hooks.onRequirementInReview?.(task.req_id);
+      }
     }
     return { releasedLinks };
   }
@@ -38883,7 +39174,7 @@ var EngineWatcher = class {
         oldStatus,
         engineTask.status,
         "watcher",
-        { rawStatus: engineTask.rawStatus, prUrl: engineTask.prUrl || null, resumeAt: pausedUntil }
+        { rawStatus: engineTask.rawStatus, prUrl: engineTask.prUrl || null, resumeAt: pausedUntil, summary: engineTask.summary ?? null }
       );
     } else {
       this.onEvent?.({
@@ -38918,9 +39209,10 @@ function isPermanent(err) {
   return Array.isArray(err?.issues) || status === 400 || status === 404 || status === 409 || status === 429;
 }
 var OutboxScanner = class {
-  constructor(projectService2, ticketService2) {
+  constructor(projectService2, ticketService2, questionService2) {
     this.projectService = projectService2;
     this.ticketService = ticketService2;
+    this.questionService = questionService2;
   }
   isScanning = false;
   async scanOnce() {
@@ -38942,17 +39234,23 @@ var OutboxScanner = class {
       const files = fs4.readdirSync(outboxDir).filter((f) => f.endsWith(".json"));
       for (const file of files) {
         const filePath = path3.join(outboxDir, file);
+        let kind = file.startsWith("question-") ? "question" : "ticket";
         try {
           const data = JSON.parse(fs4.readFileSync(filePath, "utf-8"));
-          const validated = CreateTicketInputSchema.parse(data);
+          kind = data?.kind === "question" ? "question" : "ticket";
           const sourceProject = data.project || project.name;
           const sourceTaskId = data.engineTaskId || data.taskId;
-          await this.ticketService.createTicket(validated, sourceProject, sourceTaskId);
+          if (kind === "question") {
+            if (!this.questionService) throw Object.assign(new Error("This bridge does not take questions"), { status: 400 });
+            await this.questionService.ask(AskQuestionInputSchema.parse(data), sourceProject, sourceTaskId);
+          } else {
+            await this.ticketService.createTicket(CreateTicketInputSchema.parse(data), sourceProject, sourceTaskId);
+          }
           this.moveTo(outboxDir, "processed", file);
           processed++;
         } catch (err) {
           if (err instanceof SyntaxError || isPermanent(err)) {
-            this.reject(outboxDir, file, project.name, err);
+            this.reject(outboxDir, file, project.name, kind, err);
           }
         }
       }
@@ -38964,12 +39262,12 @@ var OutboxScanner = class {
     fs4.mkdirSync(target, { recursive: true });
     fs4.renameSync(path3.join(outboxDir, file), path3.join(target, file));
   }
-  reject(outboxDir, file, projectName, err) {
+  reject(outboxDir, file, projectName, kind, err) {
     const reason = Array.isArray(err?.issues) ? err.issues.map((i2) => `${i2.path.join(".") || "field"}: ${i2.message}`).join("; ") : err?.message || String(err);
     this.moveTo(outboxDir, "failed", file);
     fs4.writeFileSync(path3.join(outboxDir, "failed", `${file}.error.txt`), `${reason}
 `, "utf-8");
-    this.ticketService.recordEvent("ticket_rejected", null, null, { project: projectName, file, reason });
+    this.ticketService.recordEvent("ticket_rejected", null, null, { project: projectName, file, kind, reason });
   }
 };
 
@@ -39000,33 +39298,62 @@ var SseBroadcaster = class {
 };
 
 // packages/server/src/notify/notifier.ts
+var NOTIFY_TIMEOUT_MS = 1e4;
+function slackEscape(text) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function bodyFor(channel, event) {
+  if (channel.type === "slack") return JSON.stringify({ text: `*${slackEscape(event.title)}*
+${slackEscape(event.message)}` });
+  if (channel.type === "telegram") return JSON.stringify({ text: `${event.title}
+${event.message}`, disable_web_page_preview: true });
+  return JSON.stringify(event);
+}
+function hostOf(url) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "the URL";
+  }
+}
+function codeOf(err) {
+  const cause = err?.cause;
+  return String(cause?.code ?? cause?.errors?.[0]?.code ?? err?.code ?? "");
+}
+function failureText(err, url) {
+  if (err?.name === "TimeoutError" || err?.name === "AbortError") {
+    return `No answer within ${NOTIFY_TIMEOUT_MS / 1e3} seconds. Check the URL and that the service is reachable.`;
+  }
+  const code = codeOf(err);
+  if (code === "ENOTFOUND" || code === "EAI_AGAIN") return `Could not find the host ${hostOf(url)}. Check the URL.`;
+  if (code === "ECONNREFUSED" || code === "ECONNRESET") return "The host refused the connection. Check the URL and port.";
+  const reason = (code || err?.cause?.message || err?.message || String(err)).split(url).join(hostOf(url)).slice(0, 120);
+  return `Could not reach the URL (${reason}). Check it and your network.`;
+}
 var Notifier = class {
   constructor(channels = [], customFetch = globalThis.fetch) {
     this.channels = channels;
     this.customFetch = customFetch;
   }
-  async notify(event) {
-    for (const ch of this.channels) {
-      if (!ch.enabled || !ch.url) continue;
-      try {
-        let body;
-        if (ch.type === "slack") {
-          body = JSON.stringify({ text: `*[DevFlow Bridge]* ${event.title}
-${event.message}` });
-        } else if (ch.type === "telegram") {
-          body = JSON.stringify({ text: `*DevFlow Bridge: ${event.title}*
-${event.message}`, parse_mode: "Markdown" });
-        } else {
-          body = JSON.stringify(event);
+  /** Post to every enabled channel (the given ones, else the constructor's). Never throws. */
+  async notify(event, channels = this.channels) {
+    const targets = channels.filter((ch) => ch.enabled && ch.url);
+    return Promise.all(
+      targets.map(async (ch) => {
+        const channel = ch.name || ch.id || ch.type;
+        try {
+          const res = await this.customFetch(ch.url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: bodyFor(ch, event),
+            signal: AbortSignal.timeout(NOTIFY_TIMEOUT_MS)
+          });
+          return res.ok ? { channel, ok: true } : { channel, ok: false, error: `The service answered HTTP ${res.status}. Check the URL (and the token or chat id in it).` };
+        } catch (err) {
+          return { channel, ok: false, error: failureText(err, ch.url) };
         }
-        await this.customFetch(ch.url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body
-        });
-      } catch (err) {
-      }
-    }
+      })
+    );
   }
 };
 
@@ -39045,8 +39372,8 @@ var StoneforgeAdapter = class {
     this.timeoutMs = timeoutMs;
   }
   type = "stoneforge";
-  async fetchJson(path17, options = {}) {
-    const url = `${this.baseUrl}${path17}`;
+  async fetchJson(path18, options = {}) {
+    const url = `${this.baseUrl}${path18}`;
     const headers = {
       "Content-Type": "application/json",
       ...this.token ? { Authorization: `Bearer ${this.token}` } : {},
@@ -39460,7 +39787,7 @@ var MetricsService = class {
 // packages/server/src/api/app.ts
 var import_express = __toESM(require_express2(), 1);
 import fs11 from "node:fs";
-import crypto4 from "node:crypto";
+import crypto5 from "node:crypto";
 import { execFile as execFile3 } from "node:child_process";
 
 // node_modules/helmet/index.mjs
@@ -44500,13 +44827,13 @@ var logOutputSync = ({ serializedResult, fdNumber, state, verboseInfo, encoding,
   }
 };
 var writeToFiles = (serializedResult, stdioItems, outputFiles) => {
-  for (const { path: path17, append } of stdioItems.filter(({ type }) => FILE_TYPES.has(type))) {
-    const pathString = typeof path17 === "string" ? path17 : path17.toString();
+  for (const { path: path18, append } of stdioItems.filter(({ type }) => FILE_TYPES.has(type))) {
+    const pathString = typeof path18 === "string" ? path18 : path18.toString();
     if (append || outputFiles.has(pathString)) {
-      appendFileSync(path17, serializedResult);
+      appendFileSync(path18, serializedResult);
     } else {
       outputFiles.add(pathString);
-      writeFileSync(path17, serializedResult);
+      writeFileSync(path18, serializedResult);
     }
   }
 };
@@ -46939,14 +47266,78 @@ function findCliBinary(name) {
   }
   return null;
 }
+function formatResetTime(isoDateString) {
+  if (!isoDateString) return "";
+  const diffMs = Math.max(0, new Date(isoDateString).getTime() - Date.now());
+  const days = Math.floor(diffMs / (86400 * 1e3));
+  const hours = Math.floor(diffMs % (86400 * 1e3) / (3600 * 1e3));
+  const mins = Math.floor(diffMs % (3600 * 1e3) / 6e4);
+  if (days > 0) {
+    return `Resets in ${days}d ${hours}h`;
+  }
+  if (hours > 0) {
+    return `Resets in ${hours}h ${mins}m`;
+  }
+  return `Resets in ${mins}m`;
+}
 var AiDraftService = class {
   defaultOllamaUrl;
   settingsService;
   db;
-  constructor(ollamaUrl = process.env.OLLAMA_URL || "http://127.0.0.1:11434", settingsService, db2) {
+  cachedAgyUsage = null;
+  constructor(ollamaUrl = process.env.OLLAMA_URL || "http://127.0.0.1:11434", settingsService2, db2) {
     this.defaultOllamaUrl = ollamaUrl;
-    this.settingsService = settingsService;
+    this.settingsService = settingsService2;
     this.db = db2;
+  }
+  invalidateAgyUsageCache() {
+    this.cachedAgyUsage = null;
+  }
+  async getAntigravityLiveUsage(agyBin) {
+    if (!agyBin) return null;
+    const now = Date.now();
+    if (this.cachedAgyUsage && now - this.cachedAgyUsage.timestamp < 1e4) {
+      return this.cachedAgyUsage.data;
+    }
+    try {
+      const { stdout } = await execa(agyBin, ["-p", "/usage", "--output-format", "json"], {
+        timeout: 4e3
+      });
+      const parsed = JSON.parse(stdout);
+      const groups = parsed?.command?.data?.groups || [];
+      const result = {};
+      const refreshedTime = (/* @__PURE__ */ new Date()).toLocaleTimeString();
+      for (const group of groups) {
+        const name = String(group.name || "");
+        const buckets = group.buckets || [];
+        const weeklyBucket = buckets.find((b) => b.window === "weekly" || b.id?.includes("weekly"));
+        const fiveHourBucket = buckets.find((b) => b.window === "5h" || b.id?.includes("5h"));
+        const quota = {
+          lastRefreshedAt: refreshedTime,
+          windowLabel: "Five Hour Limit Remaining"
+        };
+        if (weeklyBucket && typeof weeklyBucket.remaining_fraction === "number") {
+          quota.weeklyLimitRemainingPercent = Math.round(weeklyBucket.remaining_fraction * 100);
+          quota.weeklyResetsIn = formatResetTime(weeklyBucket.reset_time);
+        }
+        if (fiveHourBucket && typeof fiveHourBucket.remaining_fraction === "number") {
+          quota.sessionLimitRemainingPercent = Math.round(fiveHourBucket.remaining_fraction * 100);
+          quota.sessionResetsIn = formatResetTime(fiveHourBucket.reset_time);
+        }
+        if (name.toLowerCase().includes("gemini")) {
+          result.gemini = quota;
+        } else if (name.toLowerCase().includes("claude") || name.toLowerCase().includes("gpt")) {
+          result.claudeAndGpt = quota;
+        }
+      }
+      this.cachedAgyUsage = {
+        data: result,
+        timestamp: now
+      };
+      return result;
+    } catch {
+      return this.cachedAgyUsage ? this.cachedAgyUsage.data : null;
+    }
   }
   getClaudeLiveQuota() {
     try {
@@ -46965,17 +47356,11 @@ var AiDraftService = class {
           const weeklyRemaining = Math.max(0, Math.min(100, 100 - weeklyUtil));
           let weeklyResetsIn = "Resets in 7d";
           if (sd?.resets_at) {
-            const diffMs = Math.max(0, new Date(sd.resets_at).getTime() - Date.now());
-            const days = Math.floor(diffMs / (86400 * 1e3));
-            const hours = Math.floor(diffMs % (86400 * 1e3) / (3600 * 1e3));
-            weeklyResetsIn = `Resets in ${days}d ${hours}h`;
+            weeklyResetsIn = formatResetTime(sd.resets_at);
           }
           let sessionResetsIn = "Resets in 5h";
           if (fh?.resets_at) {
-            const diffMs = Math.max(0, new Date(fh.resets_at).getTime() - Date.now());
-            const hours = Math.floor(diffMs / (3600 * 1e3));
-            const mins = Math.floor(diffMs % (3600 * 1e3) / 6e4);
-            sessionResetsIn = `Resets in ${hours}h ${mins}m`;
+            sessionResetsIn = formatResetTime(fh.resets_at);
           }
           const lastRefreshedAt = cu.fetchedAtMs ? new Date(cu.fetchedAtMs).toLocaleTimeString() : (/* @__PURE__ */ new Date()).toLocaleTimeString();
           return {
@@ -47109,6 +47494,35 @@ var AiDraftService = class {
     }
     const isRateLimited = Boolean(maxPausedUntil && new Date(maxPausedUntil).getTime() > Date.now());
     const refreshedTime = (/* @__PURE__ */ new Date()).toLocaleTimeString();
+    const enabledEngines = cliSettings?.enabledEngines || ["claude-cli", "agy-cli", "codex-cli", "ollama", "heuristic"];
+    const isEngineEnabled = (id) => enabledEngines.includes(id);
+    const claudeBin = cliSettings?.claude?.customPath || findCliBinary("claude");
+    const claudeInstalled = Boolean(claudeBin);
+    const claudeAvailable = claudeInstalled && cliSettings?.claude?.enabled !== false && isEngineEnabled("claude-cli");
+    const agyBin = cliSettings?.agy?.customPath || findCliBinary("agy");
+    const agyInstalled = Boolean(agyBin);
+    const agyAvailable = agyInstalled && cliSettings?.agy?.enabled !== false && isEngineEnabled("agy-cli");
+    const codexBin = cliSettings?.codex?.customPath || findCliBinary("codex");
+    const codexInstalled = Boolean(codexBin);
+    const codexAvailable = codexInstalled && cliSettings?.codex?.enabled !== false && isEngineEnabled("codex-cli");
+    const ollamaUrl = cliSettings?.ollama?.url || this.defaultOllamaUrl;
+    const ollamaBin = findCliBinary("ollama");
+    let ollamaOnline = false;
+    let ollamaModels = [];
+    try {
+      const res = await fetch(`${ollamaUrl}/api/tags`, {
+        signal: AbortSignal.timeout(1500)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        ollamaModels = (data.models || []).map((m) => m.name || m.model);
+        ollamaOnline = true;
+      }
+    } catch {
+    }
+    const ollamaInstalled = ollamaOnline || Boolean(ollamaBin);
+    const ollamaAvailable = ollamaOnline && cliSettings?.ollama?.enabled !== false && isEngineEnabled("ollama");
+    const agyUsage = await this.getAntigravityLiveUsage(agyBin);
     const computeQuota = (engineId) => {
       if (engineId === "ollama" || engineId === "heuristic") {
         return {
@@ -47120,10 +47534,53 @@ var AiDraftService = class {
           lastRefreshedAt: refreshedTime
         };
       }
+      if (engineId === "agy-cli") {
+        if (agyUsage?.gemini) {
+          return agyUsage.gemini;
+        }
+        if (!agyInstalled) {
+          return {
+            weeklyLimitRemainingPercent: void 0,
+            weeklyResetsIn: void 0,
+            sessionLimitRemainingPercent: void 0,
+            sessionResetsIn: void 0,
+            windowLabel: void 0,
+            lastRefreshedAt: refreshedTime
+          };
+        }
+      }
       if (engineId === "claude-cli") {
+        if (agyUsage?.claudeAndGpt) {
+          return agyUsage.claudeAndGpt;
+        }
         const liveClaude = this.getClaudeLiveQuota();
         if (liveClaude) {
           return liveClaude;
+        }
+        if (!claudeInstalled) {
+          return {
+            weeklyLimitRemainingPercent: void 0,
+            weeklyResetsIn: void 0,
+            sessionLimitRemainingPercent: void 0,
+            sessionResetsIn: void 0,
+            windowLabel: void 0,
+            lastRefreshedAt: refreshedTime
+          };
+        }
+      }
+      if (engineId === "codex-cli") {
+        if (agyUsage?.claudeAndGpt) {
+          return agyUsage.claudeAndGpt;
+        }
+        if (!codexInstalled) {
+          return {
+            weeklyLimitRemainingPercent: void 0,
+            weeklyResetsIn: void 0,
+            sessionLimitRemainingPercent: void 0,
+            sessionResetsIn: void 0,
+            windowLabel: void 0,
+            lastRefreshedAt: refreshedTime
+          };
         }
       }
       const now = Date.now();
@@ -47165,49 +47622,23 @@ var AiDraftService = class {
         lastRefreshedAt: refreshedTime
       };
     };
-    const enabledEngines = cliSettings?.enabledEngines || ["claude-cli", "agy-cli", "codex-cli", "ollama", "heuristic"];
-    const isEngineEnabled = (id) => enabledEngines.includes(id);
-    const claudeBin = cliSettings?.claude?.customPath || findCliBinary("claude");
-    const claudeInstalled = Boolean(claudeBin);
-    const claudeAvailable = claudeInstalled && cliSettings?.claude?.enabled !== false && isEngineEnabled("claude-cli");
-    const agyBin = cliSettings?.agy?.customPath || findCliBinary("agy");
-    const agyInstalled = Boolean(agyBin);
-    const agyAvailable = agyInstalled && cliSettings?.agy?.enabled !== false && isEngineEnabled("agy-cli");
-    const codexBin = cliSettings?.codex?.customPath || findCliBinary("codex");
-    const codexInstalled = Boolean(codexBin);
-    const codexAvailable = codexInstalled && cliSettings?.codex?.enabled !== false && isEngineEnabled("codex-cli");
-    const ollamaUrl = cliSettings?.ollama?.url || this.defaultOllamaUrl;
-    const ollamaBin = findCliBinary("ollama");
-    let ollamaOnline = false;
-    let ollamaModels = [];
-    try {
-      const res = await fetch(`${ollamaUrl}/api/tags`, {
-        signal: AbortSignal.timeout(1500)
-      });
-      if (res.ok) {
-        const data = await res.json();
-        ollamaModels = (data.models || []).map((m) => m.name || m.model);
-        ollamaOnline = true;
-      }
-    } catch {
-    }
-    const ollamaInstalled = ollamaOnline || Boolean(ollamaBin);
-    const ollamaAvailable = ollamaOnline && cliSettings?.ollama?.enabled !== false && isEngineEnabled("ollama");
+    const claudeEffectiveInstalled = claudeInstalled || Boolean(agyUsage?.claudeAndGpt);
+    const claudeEffectiveAvailable = claudeAvailable || agyAvailable && Boolean(agyUsage?.claudeAndGpt);
     const providers = [
       {
         id: "claude-cli",
         name: "Claude Code CLI",
-        installed: claudeInstalled,
-        available: claudeAvailable,
+        installed: claudeEffectiveInstalled,
+        available: claudeEffectiveAvailable,
         enabled: isEngineEnabled("claude-cli"),
-        path: claudeBin,
-        note: claudeBin ? `Discovered at ${claudeBin} (Model: ${cliSettings?.claude?.model || "sonnet-5"})` : "Not detected on local PC (`npm i -g @anthropic-ai/claude-code`)",
+        path: claudeBin || (agyUsage?.claudeAndGpt ? agyBin : null),
+        note: claudeBin ? `Discovered at ${claudeBin} (Model: ${cliSettings?.claude?.model || "sonnet-5"})` : agyUsage?.claudeAndGpt ? `Connected to local Antigravity runtime (Model: ${cliSettings?.claude?.model || "claude-sonnet-4-6"})` : "Not detected on local PC (`npm i -g @anthropic-ai/claude-code`)",
         rateLimit: {
-          supported: true,
-          supportType: "bridge_monitored",
+          supported: claudeEffectiveInstalled,
+          supportType: agyUsage?.claudeAndGpt ? "native" : "bridge_monitored",
           status: isRateLimited ? "rate_limited" : "healthy",
           pausedUntil: isRateLimited ? maxPausedUntil : null,
-          message: isRateLimited ? `Engine rate limited; paused until ${maxPausedUntil}` : "Bridge monitors 429 rate limit backoff (CLI does not expose local quota CLI)",
+          message: isRateLimited ? `Engine rate limited; paused until ${maxPausedUntil}` : agyUsage?.claudeAndGpt ? "Synchronized with local Google Antigravity live quota" : "Bridge monitors 429 rate limit backoff (CLI does not expose local quota CLI)",
           totalDispatches,
           completedTasks,
           rateLimitEvents,
@@ -47225,11 +47656,11 @@ var AiDraftService = class {
         path: agyBin,
         note: agyBin ? `Discovered at ${agyBin} (Model: ${cliSettings?.agy?.model || "gemini-3.8-flash"})` : "Not detected on local PC (Google Antigravity CLI)",
         rateLimit: {
-          supported: true,
-          supportType: "bridge_monitored",
+          supported: agyInstalled,
+          supportType: "native",
           status: isRateLimited ? "rate_limited" : "healthy",
           pausedUntil: isRateLimited ? maxPausedUntil : null,
-          message: isRateLimited ? `Engine rate limited; paused until ${maxPausedUntil}` : "Bridge monitors RPM & quota backoff (AGY handles local session)",
+          message: isRateLimited ? `Engine rate limited; paused until ${maxPausedUntil}` : agyUsage?.gemini ? "Synchronized with local Google Antigravity live quota" : "Bridge monitors RPM & quota backoff (AGY handles local session)",
           totalDispatches,
           completedTasks,
           rateLimitEvents,
@@ -47247,7 +47678,7 @@ var AiDraftService = class {
         path: codexBin,
         note: codexBin ? `Discovered at ${codexBin} (Model: ${cliSettings?.codex?.model || "default"})` : "Not detected on local PC (OpenAI Codex CLI)",
         rateLimit: {
-          supported: true,
+          supported: codexInstalled,
           supportType: "bridge_monitored",
           status: isRateLimited ? "rate_limited" : "healthy",
           pausedUntil: isRateLimited ? maxPausedUntil : null,
@@ -47705,10 +48136,10 @@ Requirement: ${prompt}`
 // packages/server/src/services/aiChatService.ts
 import crypto3 from "node:crypto";
 var AiChatService = class {
-  constructor(db2, projectService2, settingsService, requirementService2) {
+  constructor(db2, projectService2, settingsService2, requirementService2) {
     this.db = db2;
     this.projectService = projectService2;
-    this.settingsService = settingsService;
+    this.settingsService = settingsService2;
     this.requirementService = requirementService2 || new RequirementService(this.db);
   }
   requirementService;
@@ -48984,8 +49415,8 @@ var KNOWN_IDES = [
   }
 ];
 var IdeService = class {
-  constructor(settingsService, projectService2) {
-    this.settingsService = settingsService;
+  constructor(settingsService2, projectService2) {
+    this.settingsService = settingsService2;
     this.projectService = projectService2;
   }
   activeProcess = null;
@@ -50504,23 +50935,751 @@ Already merged and pushed: ${mergedProjects.join(", ")}. Starting the merge agai
   }
 };
 
+// packages/server/src/services/questionService.ts
+import crypto4 from "node:crypto";
+var RUNNING = ["pending", "queued", "running", "needs_human", "rate_limited"];
+var STOPPED2 = ["in_review", "qa", "done", "failed", "cancelled"];
+var PAUSED_MESSAGE = "Your task is paused until a person answers. Stop working now; the answer arrives as a note when the task resumes.";
+var STOPPED_MESSAGE = "Your task's run is over, so it was not paused. A person will see the question; their answer is passed to the next run of this task.";
+var SELECT_QUESTIONS = `
+  SELECT q.*, a.status AS asker_status FROM bridge_tasks q
+  LEFT JOIN bridge_tasks a ON a.id = q.origin_task_id
+  WHERE q.role = 'question'`;
+function answerContext(question, answer) {
+  return `## Answer from a person
+You asked: ${oneLine(question, 500)}
+
+${neutralize(answer)}
+
+Continue with this answer.`;
+}
+function statusOf(row) {
+  if (row.status === "needs_human") return "open";
+  if (row.status === "done") return "answered";
+  return "cancelled";
+}
+function toQuestion(row) {
+  let options = [];
+  try {
+    const parsed = JSON.parse(row.options || "[]");
+    if (Array.isArray(parsed)) options = parsed.map(String);
+  } catch {
+  }
+  return {
+    id: row.id,
+    req_id: row.req_id,
+    task_id: row.origin_task_id,
+    asker_status: row.asker_status ?? "cancelled",
+    project: row.project,
+    question: row.title,
+    details: row.body_md || "",
+    options,
+    status: statusOf(row),
+    answer: row.answer_md ?? null,
+    answered_at: row.answered_at ?? null,
+    created_at: row.created_at
+  };
+}
+var QuestionService = class {
+  constructor(db2, linkService2, getAdapter2, emit) {
+    this.db = db2;
+    this.linkService = linkService2;
+    this.getAdapter = getAdapter2;
+    this.emit = emit;
+  }
+  /** Asking tasks whose engine hold is in flight; an answer arriving meanwhile is delivered by the hold path. */
+  holding = /* @__PURE__ */ new Set();
+  get(id) {
+    const row = this.row(id);
+    return row ? toQuestion(row) : null;
+  }
+  list(filter = {}) {
+    const rows = filter.reqId ? this.db.prepare(`${SELECT_QUESTIONS} AND q.req_id = ? ORDER BY q.id DESC LIMIT 200`).all(filter.reqId) : this.db.prepare(`${SELECT_QUESTIONS} ORDER BY q.id DESC LIMIT 200`).all();
+    const questions = rows.map(toQuestion);
+    return filter.status ? questions.filter((q) => q.status === filter.status) : questions;
+  }
+  /**
+   * File a question for the agent's task and pause that task while its run is going. A task whose
+   * run is over (in review, merged, failed) is never paused: its answer becomes a review comment
+   * for the next run. Idempotent per task and question text.
+   */
+  async ask(input, sourceProject, sourceEngineTaskId) {
+    const parsed = AskQuestionInputSchema.parse(input);
+    if (!sourceEngineTaskId) {
+      throw badRequest("A question must come from an agent task: set XTICKET_TASK to your engine task id");
+    }
+    const source = this.db.prepare("SELECT * FROM bridge_tasks WHERE project = ? AND engine_task_id = ? AND role IN ('goal', 'ticket') ORDER BY id DESC LIMIT 1").get(sourceProject, sourceEngineTaskId);
+    if (!source) throw new HttpError(404, `No task ${sourceEngineTaskId} in project ${sourceProject}`);
+    const normalized = parsed.question.toLowerCase().replace(/\s+/g, " ");
+    const key = crypto4.createHash("sha256").update(["question", source.id, normalized].join("|")).digest("hex");
+    let row = this.db.prepare("SELECT * FROM bridge_tasks WHERE idempotency_key = ?").get(key);
+    let created = false;
+    if (!row) {
+      const req = this.db.prepare("SELECT status FROM requirements WHERE id = ?").get(source.req_id);
+      if (!req || req.status === "cancelled" || req.status === "done") {
+        throw conflict(`Requirement ${source.req_id} is ${req?.status ?? "missing"}; it takes no questions`);
+      }
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const id = this.db.transaction(() => {
+        const info = this.db.prepare(`
+            INSERT INTO bridge_tasks (
+              req_id, project, role, engine_task_id, title, body_md, origin_task_id, depth, status,
+              revision, attempts, idempotency_key, options, created_at, updated_at
+            ) VALUES (?, ?, 'question', NULL, ?, ?, ?, ?, 'needs_human', ?, 0, ?, ?, ?, ?)
+          `).run(
+          source.req_id,
+          source.project,
+          oneLine(parsed.question, 500),
+          parsed.body,
+          source.id,
+          source.depth ?? 0,
+          source.revision ?? 1,
+          key,
+          JSON.stringify(parsed.options),
+          now,
+          now
+        );
+        const questionId = Number(info.lastInsertRowid);
+        this.linkService.createLink(source.id, questionId, null);
+        return questionId;
+      })();
+      row = this.row(id);
+      created = true;
+    }
+    let held;
+    try {
+      held = await this.holdAsker(row, source.id);
+    } finally {
+      if (created) {
+        this.recordEvent("question_asked", row.req_id, source.id, {
+          questionId: row.id,
+          taskId: source.id,
+          reqId: row.req_id,
+          project: row.project,
+          question: row.title,
+          options: toQuestion(row).options
+        });
+      }
+    }
+    const current = this.row(row.id);
+    const status = statusOf(current);
+    const runOver = STOPPED2.includes(current.asker_status);
+    return {
+      questionId: current.id,
+      taskId: source.id,
+      status,
+      held,
+      answer: current.answer_md ?? null,
+      message: status === "open" ? runOver ? STOPPED_MESSAGE : PAUSED_MESSAGE : `This question was already ${status}.`
+    };
+  }
+  /** Answer an open question and resume (or note) the asking task; says how the answer was delivered. */
+  async answer(questionId, input) {
+    const parsed = AnswerQuestionInputSchema.parse(input);
+    const row = this.row(questionId);
+    if (!row) throw new HttpError(404, `Question #${questionId} not found`);
+    if (parsed.option && !toQuestion(row).options.includes(parsed.option)) {
+      throw badRequest(`"${parsed.option}" is not one of the options`);
+    }
+    if (row.status !== "needs_human") throw conflict(`Question #${questionId} is already ${statusOf(row)}`);
+    const text = parsed.option ? parsed.answer ? `${parsed.option} \u2014 ${parsed.answer}` : parsed.option : parsed.answer;
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const claimed = this.db.prepare("UPDATE bridge_tasks SET status = 'done', answer_md = ?, answered_at = ?, updated_at = ? WHERE id = ? AND status = 'needs_human'").run(text, now, now, questionId);
+    if (claimed.changes !== 1) throw conflict(`Question #${questionId} was answered meanwhile`);
+    const sourceId = row.origin_task_id;
+    const delivered = await this.deliverAnswer(sourceId, questionId, answerContext(row.title, text));
+    this.recordEvent("question_answered", row.req_id, sourceId, {
+      questionId,
+      taskId: sourceId,
+      reqId: row.req_id,
+      project: row.project,
+      answer: oneLine(text, 200)
+    });
+    return { ...this.get(questionId), delivered };
+  }
+  /**
+   * Pause the asking task while its question is open; true while it is held. Only a running task
+   * is paused, and 'held' is written only if the task did not move on (for example to review)
+   * while the engine call was in flight. The question is already visible, so a person may answer
+   * meanwhile: the answer then waits on its link (see deliverAnswer) and is delivered here once
+   * the hold has settled.
+   */
+  async holdAsker(question, sourceId) {
+    const source = this.task(sourceId);
+    if (source.status === "held") return true;
+    if (!RUNNING.includes(source.status)) return false;
+    const link = this.db.prepare("SELECT state FROM links WHERE task_id = ? AND depends_on_id = ?").get(sourceId, question.id);
+    if (question.status !== "needs_human" || link?.state !== "waiting" || !source.engine_task_id) return false;
+    this.holding.add(sourceId);
+    try {
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      try {
+        await this.getAdapter(source.project).holdTask(source.engine_task_id, `Waiting for a person to answer question #${question.id}`);
+      } catch (err) {
+        const message = err?.message || String(err);
+        this.db.prepare("UPDATE bridge_tasks SET last_error = ?, updated_at = ? WHERE id = ?").run(`Hold failed: ${message}`, now, sourceId);
+        await this.settleUnheldAnswer(sourceId, question.id);
+        if (isRateLimit(err)) {
+          throw new HttpError(503, `Question #${question.id} was filed; your task pauses once the ${source.project} engine's rate limit resets (resubmit to retry)`);
+        }
+        throw new HttpError(502, `Question #${question.id} was filed but your task could not be paused (${message}); resubmit to retry`);
+      }
+      const wrote = this.db.prepare(`
+          UPDATE bridge_tasks SET status = 'held', last_error = NULL, updated_at = ?
+          WHERE id = ? AND engine_task_id = ? AND status IN (${RUNNING.map(() => "?").join(", ")})
+        `).run(now, sourceId, source.engine_task_id, ...RUNNING);
+      const current = this.task(sourceId);
+      const heldMeanwhile = current.status === "held" && current.engine_task_id === source.engine_task_id;
+      if (wrote.changes !== 1 && !heldMeanwhile) {
+        await this.settleUnheldAnswer(sourceId, question.id);
+        return false;
+      }
+      await this.resumeIfWaitEnded(sourceId, question.id);
+      return this.task(sourceId).status === "held";
+    } finally {
+      this.holding.delete(sourceId);
+    }
+  }
+  /**
+   * The hold landed, but the wait for the answer may have ended meanwhile: answered (the retry
+   * sweep may even have released the link already), or an operator cancelled or released the
+   * link. If nothing else holds the task, resume it now so it is not left paused for nothing.
+   */
+  async resumeIfWaitEnded(sourceId, questionId) {
+    this.db.prepare("UPDATE links SET state = 'ready' WHERE task_id = ? AND depends_on_id = ? AND state = 'error'").run(sourceId, questionId);
+    const state = this.linkStateOf(sourceId, questionId);
+    const waiting = this.db.prepare("SELECT COUNT(*) AS c FROM links WHERE task_id = ? AND state = 'waiting'").get(sourceId);
+    if (state === "waiting" || waiting.c > 0) return;
+    if (state === "ready") {
+      await this.linkService.releaseSourceIfUnblocked(sourceId);
+      return;
+    }
+    const question = this.row(questionId);
+    const extra = question.status === "done" && question.answer_md != null ? answerContext(question.title, question.answer_md) : `## Question withdrawn
+Nobody will answer question #${questionId}; continue with your best judgment and note the choice in your report.`;
+    await this.linkService.releaseSourceIfUnblocked(sourceId, extra);
+  }
+  /** The link to a question once its answer is stored on it and awaits delivery. */
+  answeredLink(sourceId, questionId) {
+    return this.db.prepare("SELECT context_md FROM links WHERE task_id = ? AND depends_on_id = ? AND state = 'ready'").get(sourceId, questionId);
+  }
+  /**
+   * Run over: the answer becomes a review comment for the next run (no engine call). Held and
+   * waiting on nothing else: release with the answer (a failed release leaves the link in
+   * 'error' for the sweeper). Otherwise send the answer as a note now; a task still held by
+   * another dependency gets it again with the final release.
+   */
+  async deliverAnswer(sourceId, questionId, context) {
+    const source = this.task(sourceId);
+    if (STOPPED2.includes(source.status)) {
+      this.db.transaction(() => {
+        this.db.prepare("UPDATE links SET state = 'released', released_at = ? WHERE task_id = ? AND depends_on_id = ? AND state IN ('waiting', 'ready', 'error')").run((/* @__PURE__ */ new Date()).toISOString(), sourceId, questionId);
+        this.addAnswerComment(source, questionId);
+      })();
+      return "review_comment";
+    }
+    const ready = this.db.prepare("UPDATE links SET state = 'ready', context_md = ? WHERE task_id = ? AND depends_on_id = ? AND state = 'waiting'").run(context, sourceId, questionId);
+    if (ready.changes !== 1) {
+      await this.noteAnswer(source, questionId, context, false);
+      return "note";
+    }
+    if (this.holding.has(sourceId)) return "pending";
+    const stillWaiting = this.db.prepare("SELECT COUNT(*) AS c FROM links WHERE task_id = ? AND state = 'waiting'").get(sourceId).c;
+    if (source.status === "held" && stillWaiting === 0) {
+      await this.linkService.releaseSourceIfUnblocked(sourceId);
+      return this.linkStateOf(sourceId, questionId) === "released" ? "resumed" : "pending";
+    }
+    if (source.status === "held") {
+      await this.noteAnswer(source, questionId, context, false);
+      return "noted";
+    }
+    await this.noteAnswer(source, questionId, context, true);
+    return "note";
+  }
+  /**
+   * The hold did not take (it failed, or the task moved on meanwhile): an answer stored on the
+   * link goes to a running agent as a note, or becomes a review comment when its run is over.
+   */
+  async settleUnheldAnswer(sourceId, questionId) {
+    const answered = this.answeredLink(sourceId, questionId);
+    if (!answered) return;
+    const source = this.task(sourceId);
+    if (!STOPPED2.includes(source.status)) {
+      await this.noteAnswer(source, questionId, answered.context_md || "", true);
+      return;
+    }
+    this.db.transaction(() => {
+      const settled = this.db.prepare("UPDATE links SET state = 'released', released_at = ? WHERE task_id = ? AND depends_on_id = ? AND state = 'ready'").run((/* @__PURE__ */ new Date()).toISOString(), sourceId, questionId);
+      if (settled.changes === 1) this.addAnswerComment(source, questionId);
+    })();
+  }
+  /** An open review comment with the answer, so the next "Request changes" run of the task carries it. */
+  addAnswerComment(source, questionId) {
+    const question = this.row(questionId);
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    this.db.prepare(`
+        INSERT INTO review_comments (req_id, task_id, file_path, line, body_md, state, created_at, updated_at)
+        VALUES (?, ?, NULL, NULL, ?, 'open', ?, ?)
+      `).run(source.req_id, source.id, `Answer to your question "${oneLine(question.title, 200)}": ${question.answer_md ?? ""}`, now, now);
+  }
+  /** Send the answer to the engine task as a note (best effort); `settle` also marks its link released. */
+  async noteAnswer(source, questionId, context, settle) {
+    if (source.engine_task_id) {
+      try {
+        await this.getAdapter(source.project).appendNote(source.engine_task_id, context);
+      } catch {
+      }
+    }
+    if (settle) {
+      this.db.prepare("UPDATE links SET state = 'released', released_at = ? WHERE task_id = ? AND depends_on_id = ? AND state = 'ready'").run((/* @__PURE__ */ new Date()).toISOString(), source.id, questionId);
+    }
+  }
+  linkStateOf(sourceId, questionId) {
+    return this.db.prepare("SELECT state FROM links WHERE task_id = ? AND depends_on_id = ?").get(sourceId, questionId)?.state;
+  }
+  task(id) {
+    return this.db.prepare("SELECT * FROM bridge_tasks WHERE id = ?").get(id);
+  }
+  row(id) {
+    return this.db.prepare(`${SELECT_QUESTIONS} AND q.id = ?`).get(id);
+  }
+  recordEvent(type, reqId, taskId, payload) {
+    this.db.prepare("INSERT INTO events (req_id, task_id, type, payload, read, at) VALUES (?, ?, ?, ?, 0, ?)").run(reqId, taskId, type, JSON.stringify(payload), (/* @__PURE__ */ new Date()).toISOString());
+    this.emit?.({ type, req_id: reqId, task_id: taskId, payload });
+  }
+};
+
+// packages/server/src/services/reviewService.ts
+import path16 from "node:path";
+var REVIEWABLE = ["in_review", "done"];
+var FINISHED = ["done", "failed", "cancelled", "in_review"];
+var NOTE_TO = ["queued", "running", "needs_human", "held", "rate_limited"];
+function toComment(row) {
+  return {
+    id: row.id,
+    req_id: row.req_id,
+    task_id: row.task_id,
+    project: row.project,
+    file_path: row.file_path,
+    line: row.line,
+    body: row.body_md,
+    state: row.state,
+    round: row.round,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    sent_at: row.sent_at
+  };
+}
+function isSafeRelativePath(p) {
+  return !path16.isAbsolute(p) && !p.startsWith("\\") && !p.split(/[\\/]/).includes("..");
+}
+function reviewNote(round, branch, comments) {
+  const where = branch ? `Keep working on \`${branch}\`` : "Keep working on the same code";
+  const items = comments.map((c3, i2) => {
+    const location = c3.file_path ? `\`${neutralize(c3.file_path)}${c3.line ? `:${c3.line}` : ""}\`` : "General";
+    const [first, ...rest] = neutralize(c3.body).split("\n");
+    return [`${i2 + 1}. ${location} \u2014 ${first}`, ...rest.map((line) => `   ${line}`)].join("\n");
+  });
+  return `## Review feedback (round ${round})
+A reviewer asked for changes. ${where}: address every point below, commit, and report back for review.
+
+${items.join("\n")}
+`;
+}
+var ReviewService = class {
+  constructor(db2, requirementService2, fanOutService2, ticketService2, getAdapter2, emit) {
+    this.db = db2;
+    this.requirementService = requirementService2;
+    this.fanOutService = fanOutService2;
+    this.ticketService = ticketService2;
+    this.getAdapter = getAdapter2;
+    this.emit = emit;
+  }
+  listComments(reqId) {
+    const rows = this.db.prepare("SELECT c.*, t.project FROM review_comments c JOIN bridge_tasks t ON t.id = c.task_id WHERE c.req_id = ? ORDER BY c.id").all(reqId);
+    return rows.map(toComment);
+  }
+  addComment(reqId, input) {
+    const parsed = CreateReviewCommentInputSchema.parse(input);
+    if (!this.requirementService.getRequirement(reqId)) throw new HttpError(404, `Requirement ${reqId} not found`);
+    const task = this.workTask(parsed.task_id);
+    if (!task || task.req_id !== reqId) throw badRequest(`Task #${parsed.task_id} is not a goal or ticket of ${reqId}`);
+    if (parsed.line !== void 0 && !parsed.file_path) throw badRequest("A line number needs a file path");
+    if (parsed.file_path && !isSafeRelativePath(parsed.file_path)) {
+      throw badRequest("File path must be relative to the repository (no leading / and no ..)");
+    }
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const info = this.db.prepare(`
+        INSERT INTO review_comments (req_id, task_id, file_path, line, body_md, state, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'open', ?, ?)
+      `).run(reqId, task.id, parsed.file_path ?? null, parsed.line ?? null, parsed.body, now, now);
+    return this.comment(Number(info.lastInsertRowid));
+  }
+  updateComment(id, input) {
+    const parsed = UpdateReviewCommentInputSchema.parse(input);
+    const current = this.comment(id);
+    if (!current) throw new HttpError(404, `Comment #${id} not found`);
+    if (parsed.body !== void 0 && current.state !== "open") throw conflict("Only open comments can be edited");
+    this.db.prepare("UPDATE review_comments SET body_md = COALESCE(?, body_md), state = COALESCE(?, state), updated_at = ? WHERE id = ?").run(parsed.body ?? null, parsed.state ?? null, (/* @__PURE__ */ new Date()).toISOString(), id);
+    return this.comment(id);
+  }
+  deleteComment(id) {
+    const current = this.comment(id);
+    if (!current) throw new HttpError(404, `Comment #${id} not found`);
+    if (current.state !== "open") throw conflict("Comments already sent to an agent are kept; resolve them instead");
+    this.db.prepare("DELETE FROM review_comments WHERE id = ?").run(id);
+  }
+  /**
+   * Send open comments back: each task (in review or done) starts a new run on its branch with a
+   * "Review feedback" note. Tasks whose old engine task cannot be stopped, or that were cancelled
+   * meanwhile with their requirement, keep their comments open and are reported; the rest
+   * proceed. From QA, the requirement returns to in_progress (unless it was cancelled meanwhile).
+   */
+  async requestChanges(reqId, input = {}) {
+    const parsed = RequestChangesInputSchema.parse(input);
+    const req = this.requirementService.getRequirement(reqId);
+    if (!req) throw new HttpError(404, `Requirement ${reqId} not found`);
+    if (req.status !== "in_review" && req.status !== "qa") {
+      throw conflict(`${reqId} is ${req.status}; request changes once it is in review or QA`);
+    }
+    if (req.merge_state === "running") throw conflict(`A merge of ${reqId} is running; wait for it to finish`);
+    const byTask = /* @__PURE__ */ new Map();
+    for (const c3 of this.listComments(reqId).filter((c4) => c4.state === "open")) {
+      byTask.set(c3.task_id, [...byTask.get(c3.task_id) ?? [], c3]);
+    }
+    const ids = parsed.task_ids?.length ? [...new Set(parsed.task_ids)] : [...byTask.keys()];
+    if (ids.length === 0) throw badRequest("Add at least one comment before requesting changes");
+    const tasks = ids.map((id) => {
+      const task = this.workTask(id);
+      if (!task || task.req_id !== reqId) throw badRequest(`Task #${id} is not a goal or ticket of ${reqId}`);
+      if (!REVIEWABLE.includes(task.status)) throw conflict(`Task #${id} is ${task.status}; only finished work can be sent back`);
+      if (!byTask.has(id)) throw badRequest(`Task #${id} has no open comments`);
+      return task;
+    });
+    const last = this.db.prepare("SELECT MAX(round) AS r FROM review_comments WHERE req_id = ?").get(reqId);
+    const round = (last.r ?? 0) + 1;
+    const results = [];
+    const markSent = this.db.prepare("UPDATE review_comments SET state = 'sent', round = ?, sent_at = ?, updated_at = ? WHERE id = ? AND state = 'open'");
+    for (const task of tasks) {
+      const comments = byTask.get(task.id);
+      try {
+        await rerunTask(this.db, task, this.getAdapter, {
+          from: REVIEWABLE,
+          noteKind: "review",
+          note: reviewNote(round, task.branch, comments),
+          stopped: FINISHED,
+          clearMerge: true,
+          profile: { model: parsed.model, effort: parsed.effort }
+        });
+      } catch (err) {
+        results.push({ taskId: task.id, ok: false, error: err?.message || String(err) });
+        continue;
+      }
+      try {
+        if (task.role === "goal") await this.fanOutService.dispatchGoal(task.id);
+        else await this.ticketService.dispatchTicket(task.id);
+      } catch {
+      }
+      const status = this.workTask(task.id).status;
+      if (status === "cancelled") {
+        results.push({ taskId: task.id, ok: false, error: "The requirement was cancelled meanwhile" });
+        continue;
+      }
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      for (const c3 of comments) markSent.run(round, now, now, c3.id);
+      results.push({ taskId: task.id, ok: true, status });
+    }
+    const sent = results.filter((r) => r.ok);
+    if (sent.length === 0) throw new HttpError(503, `No task could be sent back: ${results[0]?.error ?? "unknown error"}`);
+    if (req.status === "qa") {
+      this.db.prepare("UPDATE requirements SET status = 'in_progress', updated_at = datetime('now') WHERE id = ? AND status = 'qa'").run(reqId);
+    }
+    this.requirementService.recalculateDerivedStatus(reqId);
+    this.recordEvent("changes_requested", reqId, void 0, {
+      reqId,
+      round,
+      taskIds: sent.map((r) => r.taskId),
+      comments: sent.reduce((n2, r) => n2 + (byTask.get(r.taskId)?.length ?? 0), 0)
+    });
+    return { round, results };
+  }
+  /** Send a person's note to a task whose agent is still working (or waiting). */
+  async sendNote(taskId, input) {
+    const { body } = SendTaskNoteInputSchema.parse(input);
+    const task = this.workTask(taskId);
+    if (!task) throw new HttpError(404, `Task #${taskId} not found`);
+    if (!task.engine_task_id || !NOTE_TO.includes(task.status)) {
+      throw conflict(`Task #${taskId} is ${task.status}; notes go to running agents (use Request changes for finished work)`);
+    }
+    try {
+      await this.getAdapter(task.project).appendNote(task.engine_task_id, `## Note from a person
+${neutralize(body)}`);
+    } catch (err) {
+      if (isRateLimit(err)) throw new HttpError(503, `The ${task.project} engine is rate limited; send the note again later`);
+      throw new HttpError(502, `Could not send the note to ${task.project}: ${err?.message || err}`);
+    }
+    this.recordEvent("task_note_sent", task.req_id, task.id, { taskId, reqId: task.req_id, project: task.project, note: oneLine(body, 200) });
+    return { ok: true };
+  }
+  workTask(id) {
+    return this.db.prepare("SELECT * FROM bridge_tasks WHERE id = ? AND role IN ('goal', 'ticket')").get(id);
+  }
+  comment(id) {
+    const row = this.db.prepare("SELECT c.*, t.project FROM review_comments c JOIN bridge_tasks t ON t.id = c.task_id WHERE c.id = ?").get(id);
+    return row ? toComment(row) : void 0;
+  }
+  recordEvent(type, reqId, taskId, payload) {
+    this.db.prepare("INSERT INTO events (req_id, task_id, type, payload, read, at) VALUES (?, ?, ?, ?, 0, ?)").run(reqId, taskId ?? null, type, JSON.stringify(payload), (/* @__PURE__ */ new Date()).toISOString());
+    this.emit?.({ type, req_id: reqId, task_id: taskId, payload });
+  }
+};
+
+// packages/server/src/api/humanLoopRoutes.ts
+var QUESTION_STATUSES = ["open", "answered", "cancelled"];
+function registerHumanLoopRoutes(app2, deps) {
+  const { questionService: questionService2, reviewService } = deps;
+  app2.post("/api/agent/questions", deps.requireAgentToken, async (req, res, next) => {
+    try {
+      const input = AskQuestionInputSchema.parse(req.body);
+      const project = typeof req.body.project === "string" && req.body.project ? req.body.project : "unknown";
+      const engineTaskId = typeof req.body.engineTaskId === "string" ? req.body.engineTaskId : void 0;
+      res.status(201).json(await questionService2.ask(input, project, engineTaskId));
+    } catch (err) {
+      next(err);
+    }
+  });
+  app2.get("/api/questions", (req, res, next) => {
+    try {
+      const status = typeof req.query.status === "string" ? req.query.status : void 0;
+      if (status && !QUESTION_STATUSES.includes(status)) throw badRequest(`status must be one of ${QUESTION_STATUSES.join(", ")}`);
+      const reqId = typeof req.query.req === "string" ? req.query.req : void 0;
+      res.json(questionService2.list({ reqId, status }));
+    } catch (err) {
+      next(err);
+    }
+  });
+  app2.get("/api/requirements/:id/questions", (req, res) => {
+    res.json(questionService2.list({ reqId: req.params.id }));
+  });
+  app2.post("/api/questions/:id/answer", async (req, res, next) => {
+    try {
+      res.json(await questionService2.answer(Number(req.params.id), req.body ?? {}));
+    } catch (err) {
+      next(err);
+    }
+  });
+  app2.put("/api/requirements/:id/agent-profile", (req, res, next) => {
+    try {
+      const updated = deps.requirementService.updateAgentProfile(req.params.id, req.body ?? {});
+      deps.broadcaster.broadcast({ type: "requirement_updated", payload: { id: updated.id } });
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  });
+  app2.get("/api/requirements/:id/comments", (req, res) => {
+    res.json(reviewService.listComments(req.params.id));
+  });
+  app2.post("/api/requirements/:id/comments", (req, res, next) => {
+    try {
+      res.status(201).json(reviewService.addComment(req.params.id, req.body ?? {}));
+    } catch (err) {
+      next(err);
+    }
+  });
+  app2.patch("/api/comments/:id", (req, res, next) => {
+    try {
+      res.json(reviewService.updateComment(Number(req.params.id), req.body ?? {}));
+    } catch (err) {
+      next(err);
+    }
+  });
+  app2.delete("/api/comments/:id", (req, res, next) => {
+    try {
+      reviewService.deleteComment(Number(req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+  app2.post("/api/requirements/:id/request-changes", async (req, res, next) => {
+    try {
+      res.json(await reviewService.requestChanges(req.params.id, req.body ?? {}));
+    } catch (err) {
+      next(err);
+    }
+  });
+  app2.post("/api/tasks/:id/note", async (req, res, next) => {
+    try {
+      res.json(await reviewService.sendNote(Number(req.params.id), req.body ?? {}));
+    } catch (err) {
+      next(err);
+    }
+  });
+  app2.get("/api/settings/notifications", (_req, res) => {
+    res.json(deps.settingsService.getNotificationSettings());
+  });
+  app2.put("/api/settings/notifications", (req, res, next) => {
+    try {
+      const updated = deps.settingsService.updateNotificationSettings(req.body);
+      deps.broadcaster.broadcast({ type: "settings_updated", payload: { section: "notifications" } });
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  });
+  app2.post("/api/settings/notifications/test", async (req, res, next) => {
+    try {
+      const channelId = typeof req.body?.channel_id === "string" ? req.body.channel_id : void 0;
+      res.json(await deps.notificationService.sendTest(channelId));
+    } catch (err) {
+      next(err);
+    }
+  });
+}
+
+// packages/server/src/notify/notificationService.ts
+var CURSOR_KEY = "notification_cursor";
+function parsePayload(raw) {
+  try {
+    const value = JSON.parse(raw || "{}");
+    return value && typeof value === "object" ? value : {};
+  } catch {
+    return {};
+  }
+}
+function isoOrEmpty(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+function describeEvent(event, appUrl = "") {
+  const p = event.payload ?? {};
+  const req = event.req_id || p.reqId || "";
+  const on6 = req ? ` (${req})` : "";
+  const link = appUrl && req ? `
+${appUrl.replace(/\/+$/, "")}/requirements/${req}` : "";
+  switch (event.type) {
+    case "question_asked":
+      return {
+        title: `${p.project} agent asks a question${on6}`,
+        message: `${p.question ?? ""}${Array.isArray(p.options) && p.options.length ? `
+Options: ${p.options.join(" / ")}` : ""}${link}`
+      };
+    case "task_needs_human":
+      return { title: `${p.project} agent needs help${on6}`, message: `${p.summary || "The agent stopped and is waiting for a person."}${link}` };
+    case "requirement_in_review":
+      return { title: `${req} is ready for review`, message: `All tasks finished. Review the changes, then merge or request changes.${link}` };
+    case "merge_succeeded": {
+      const warnings = Array.isArray(p.warnings) && p.warnings.length ? p.warnings.join("\n") : "Every task branch was merged and pushed.";
+      return { title: `${req} merged and moved to QA`, message: `${warnings}${link}` };
+    }
+    case "merge_failed":
+      return { title: `Merge failed for ${req}`, message: `${String(p.error ?? "").split("\n")[0]}${link}` };
+    case "task_failed":
+      return { title: p.project ? `A ${p.project} task failed${on6}` : `A task failed${on6}`, message: `${p.error || p.reason || "Open the requirement to retry it."}${link}` };
+    case "task_blocked":
+      return { title: `A task is blocked${on6}`, message: `${p.reason || p.error || "It waits on work that failed or was cancelled."}${link}` };
+    case "engine_down":
+      return { title: `${p.project} engine is down`, message: "Work for this project waits until the engine is reachable again." };
+    case "engine_rate_limited": {
+      const until = isoOrEmpty(p.until);
+      return { title: `${p.project} engine is rate limited`, message: `Work resumes automatically${until ? ` at ${until}` : ""}.` };
+    }
+    case "changes_requested":
+      return {
+        title: `Changes requested on ${req}`,
+        message: `Round ${p.round}: ${Array.isArray(p.taskIds) ? p.taskIds.length : 0} task(s) started a new run.${link}`
+      };
+    case "question_answered":
+      return { title: `Question answered${req ? ` on ${req}` : ""}`, message: `${p.answer ?? ""}${link}` };
+    default:
+      return null;
+  }
+}
+var NotificationService = class {
+  constructor(db2, settings, notifier2) {
+    this.db = db2;
+    this.settings = settings;
+    this.notifier = notifier2;
+  }
+  async dispatchPending(limit = 100) {
+    const cursor = this.readCursor();
+    if (cursor === null) {
+      this.writeCursor(this.lastEventId());
+      return 0;
+    }
+    const rows = this.db.prepare("SELECT id, type, req_id, payload FROM events WHERE id > ? ORDER BY id LIMIT ?").all(cursor, limit);
+    if (rows.length === 0) return 0;
+    const settings = this.settings.getNotificationSettings();
+    const channels = settings.channels.filter((c3) => c3.enabled);
+    let sent = 0;
+    for (const row of rows) {
+      if (channels.length > 0 && settings.events[row.type]) {
+        try {
+          const payload = parsePayload(row.payload);
+          const text = describeEvent({ type: row.type, req_id: row.req_id, payload }, settings.app_url);
+          if (text) {
+            const results = await this.notifier.notify({ type: row.type, ...text, payload }, channels);
+            for (const r of results) if (!r.ok) console.warn(`[notify] ${r.channel}: ${r.error}`);
+            sent++;
+          }
+        } catch (err) {
+          console.warn(`[notify] skipped event ${row.id} (${row.type}): ${err?.message || err}`);
+        }
+      }
+      this.writeCursor(row.id);
+    }
+    return sent;
+  }
+  /** Send a test message to one channel (by id, even if disabled) or to every enabled channel. */
+  async sendTest(channelId) {
+    const all = this.settings.getNotificationSettings().channels;
+    const targets = channelId ? all.filter((c3) => c3.id === channelId) : all.filter((c3) => c3.enabled);
+    if (channelId && targets.length === 0) {
+      throw new HttpError(404, `No notification channel "${channelId}". Save the channel first, then send the test again.`);
+    }
+    return this.notifier.notify(
+      { type: "test", title: "Test notification", message: "Notifications from SP Kickstack reach this channel." },
+      targets.map((c3) => ({ ...c3, enabled: true }))
+    );
+  }
+  readCursor() {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = ?").get(CURSOR_KEY);
+    const id = row ? Number(row.value) : NaN;
+    return Number.isFinite(id) ? id : null;
+  }
+  writeCursor(id) {
+    this.db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(CURSOR_KEY, String(id));
+  }
+  lastEventId() {
+    return this.db.prepare("SELECT COALESCE(MAX(id), 0) AS id FROM events").get().id;
+  }
+};
+
 // packages/server/src/api/app.ts
 function safeEqual(a2, b) {
   const left = Buffer.from(a2);
   const right = Buffer.from(b);
-  return left.length === right.length && crypto4.timingSafeEqual(left, right);
+  return left.length === right.length && crypto5.timingSafeEqual(left, right);
 }
 function createApp(deps) {
   const app2 = (0, import_express.default)();
-  const settingsService = deps.settingsService || new SettingsService(deps.db);
-  const ideService = deps.ideService || new IdeService(settingsService, deps.projectService);
+  const settingsService2 = deps.settingsService || new SettingsService(deps.db);
+  const ideService = deps.ideService || new IdeService(settingsService2, deps.projectService);
   const gitReviewService = new GitReviewService(deps.projectService);
   const terminalService = deps.terminalService || new TerminalService(deps.projectService);
   const reactor2 = deps.reactor || new TaskReactor(deps.db, deps.requirementService, deps.linkService, (evt) => deps.broadcaster.broadcast(evt));
-  const mergeGate2 = deps.mergeGate || new MergeGateService(deps.db, deps.projectService, deps.requirementService, reactor2, { settingsService });
+  const mergeGate2 = deps.mergeGate || new MergeGateService(deps.db, deps.projectService, deps.requirementService, reactor2, { settingsService: settingsService2 });
   if (!deps.reactor) {
     reactor2.setHooks({ onRequirementInReview: (id) => mergeGate2.autoStart(id) });
   }
+  const getAdapter2 = deps.getAdapter ?? (() => {
+    throw new HttpError(503, "Engine adapters are not configured on this server");
+  });
+  const questionService2 = deps.questionService || new QuestionService(deps.db, deps.linkService, getAdapter2, (evt) => deps.broadcaster.broadcast(evt));
+  const reviewService = deps.reviewService || new ReviewService(deps.db, deps.requirementService, deps.fanOutService, deps.ticketService, getAdapter2, (evt) => deps.broadcaster.broadcast(evt));
+  const notificationService2 = deps.notificationService || new NotificationService(deps.db, settingsService2, deps.notifier);
   const startMerge = (res, id) => {
     const { done } = mergeGate2.start(id, "manual");
     done.catch(() => {
@@ -50536,8 +51695,8 @@ function createApp(deps) {
     reactor2
   );
   const metricsService2 = deps.metricsService || new MetricsService(deps.db, deps.sprintService);
-  const aiDraftService = deps.aiDraftService || new AiDraftService(void 0, settingsService, deps.db);
-  const aiChatService = deps.aiChatService || new AiChatService(deps.db, deps.projectService, settingsService, deps.requirementService);
+  const aiDraftService = deps.aiDraftService || new AiDraftService(void 0, settingsService2, deps.db);
+  const aiChatService = deps.aiChatService || new AiChatService(deps.db, deps.projectService, settingsService2, deps.requirementService);
   const webOrigins = deps.webOrigins || resolveWebOrigins();
   const allowedHosts = deps.allowedHosts || resolveAllowedHosts();
   app2.use(helmet({ contentSecurityPolicy: false }));
@@ -50760,11 +51919,12 @@ function createApp(deps) {
     }
   });
   app2.get("/api/requirements/:id/graph", (req, res) => {
-    const tasks = deps.db.prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND (last_error IS NULL OR last_error <> ?)").all(req.params.id, DEDUPE_NOTE);
+    const tasks = deps.db.prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND role <> 'question' AND (last_error IS NULL OR last_error <> ?)").all(req.params.id, DEDUPE_NOTE);
     const links = deps.db.prepare(`
         SELECT l.* FROM links l
         JOIN bridge_tasks t ON l.task_id = t.id
-        WHERE t.req_id = ?
+        JOIN bridge_tasks d ON l.depends_on_id = d.id
+        WHERE t.req_id = ? AND d.role <> 'question'
       `).all(req.params.id);
     res.json({ tasks, links });
   });
@@ -50869,13 +52029,13 @@ function createApp(deps) {
   });
   app2.get("/api/settings", (_req, res) => {
     res.json({
-      branch_merge: settingsService.getBranchMergeSettings(),
-      ai_cli: settingsService.getAiCliSettings()
+      branch_merge: settingsService2.getBranchMergeSettings(),
+      ai_cli: settingsService2.getAiCliSettings()
     });
   });
   app2.put("/api/settings/branch-merge", (req, res, next) => {
     try {
-      const updated = settingsService.updateBranchMergeSettings(req.body);
+      const updated = settingsService2.updateBranchMergeSettings(req.body);
       deps.broadcaster.broadcast({ type: "settings_updated", payload: { branch_merge: updated } });
       res.json(updated);
     } catch (err) {
@@ -50884,7 +52044,7 @@ function createApp(deps) {
   });
   app2.put("/api/settings/ai-cli", (req, res, next) => {
     try {
-      const updated = settingsService.updateAiCliSettings(req.body);
+      const updated = settingsService2.updateAiCliSettings(req.body);
       deps.broadcaster.broadcast({ type: "settings_updated", payload: { ai_cli: updated } });
       res.json(updated);
     } catch (err) {
@@ -50912,6 +52072,9 @@ function createApp(deps) {
       const taskId = Number(req.params.id);
       const task = deps.db.prepare("SELECT * FROM bridge_tasks WHERE id = ?").get(taskId);
       if (!task) return res.status(404).json({ error: "Task not found" });
+      if (task.role === "question") {
+        return res.status(409).json({ error: `Task #${taskId} is a question for a person; answer it with POST /api/questions/${taskId}/answer` });
+      }
       if (task.status === "done") return res.json({ ok: true, releasedLinks: [] });
       const now = (/* @__PURE__ */ new Date()).toISOString();
       const updated = deps.db.prepare("UPDATE bridge_tasks SET status = ?, updated_at = ? WHERE id = ? AND status = ?").run("done", now, taskId, task.status);
@@ -50929,7 +52092,7 @@ function createApp(deps) {
       const taskId = Number(req.params.id);
       const task = deps.db.prepare("SELECT role FROM bridge_tasks WHERE id = ?").get(taskId);
       if (!task) return res.status(404).json({ error: "Task not found" });
-      const retried = task.role === "goal" ? await deps.fanOutService.retryGoal(taskId) : task.role === "ticket" ? await deps.ticketService.retryTicket(taskId) : null;
+      const retried = task.role === "goal" ? await deps.fanOutService.retryGoal(taskId, req.body ?? {}) : task.role === "ticket" ? await deps.ticketService.retryTicket(taskId, req.body ?? {}) : null;
       if (!retried) return res.status(409).json({ error: `A ${task.role} task cannot be retried` });
       deps.broadcaster.broadcast({ type: "task_retried", payload: { taskId, status: retried.status } });
       res.json(retried);
@@ -51068,12 +52231,13 @@ function createApp(deps) {
   };
   app2.post("/api/tickets", requireAgentToken, handleCreateTicket);
   app2.post("/api/agent/tickets", requireAgentToken, handleCreateTicket);
+  registerHumanLoopRoutes(app2, { questionService: questionService2, reviewService, requirementService: deps.requirementService, settingsService: settingsService2, notificationService: notificationService2, broadcaster: deps.broadcaster, requireAgentToken });
   const hasValidGitHubSignature = (req) => {
     if (!deps.webhookSecret) return true;
     const signature = req.headers["x-hub-signature-256"];
     const raw = req.rawBody;
     if (typeof signature !== "string" || !raw) return false;
-    const expected = "sha256=" + crypto4.createHmac("sha256", deps.webhookSecret).update(raw).digest("hex");
+    const expected = "sha256=" + crypto5.createHmac("sha256", deps.webhookSecret).update(raw).digest("hex");
     return safeEqual(signature, expected);
   };
   app2.post("/api/webhooks/github", async (req, res, next) => {
@@ -51102,11 +52266,14 @@ function createApp(deps) {
     const data = metricsService2.getTelemetry(req.query.workspace);
     res.json(data);
   });
-  app2.get("/api/ai/providers", async (_req, res, next) => {
+  app2.get("/api/ai/providers", async (req, res, next) => {
     try {
       res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
       res.setHeader("Pragma", "no-cache");
       res.setHeader("Expires", "0");
+      if (req.query.refresh === "true") {
+        aiDraftService.invalidateAgyUsageCache();
+      }
       const providers = await aiDraftService.getProviders();
       res.json(providers);
     } catch (err) {
@@ -51742,11 +52909,11 @@ function startScheduler(jobs, intervalMs) {
 // packages/server/src/index.ts
 var PORT = Number(process.env.PORT || 4100);
 var HOST = process.env.HOST || "127.0.0.1";
-var WORKSPACE_DIR = process.env.WORKSPACE_DIR || path16.resolve("./workspace");
+var WORKSPACE_DIR = process.env.WORKSPACE_DIR || path17.resolve("./workspace");
 if (!fs12.existsSync(WORKSPACE_DIR)) {
   fs12.mkdirSync(WORKSPACE_DIR, { recursive: true });
 }
-var dbPath = path16.join(WORKSPACE_DIR, "bridge.db");
+var dbPath = path17.join(WORKSPACE_DIR, "bridge.db");
 var db = initDatabase(dbPath);
 var workspaceService = new WorkspaceService(db);
 var projectService = new ProjectService(db);
@@ -51772,7 +52939,10 @@ var linkService = new LinkService(db, projectService, getAdapter);
 var ticketService = new TicketService(db, projectService, linkService, getAdapter, branchService);
 var fanOutService = new FanOutService(db, projectService, requirementService, getAdapter, branchService);
 var broadcaster = new SseBroadcaster();
+var questionService = new QuestionService(db, linkService, getAdapter, (evt) => broadcaster.broadcast(evt));
 var notifier = new Notifier();
+var settingsService = new SettingsService(db);
+var notificationService = new NotificationService(db, settingsService, notifier);
 var reactor = new TaskReactor(db, requirementService, linkService, (evt) => broadcaster.broadcast(evt));
 var mergeGate = new MergeGateService(db, projectService, requirementService, reactor, { getAdapter });
 reactor.setHooks({ onRequirementInReview: (id) => mergeGate.autoStart(id) });
@@ -51795,10 +52965,10 @@ var watcher = new EngineWatcher(
   5e3,
   reactor
 );
-var outboxScanner = new OutboxScanner(projectService, ticketService);
+var outboxScanner = new OutboxScanner(projectService, ticketService, questionService);
 var retrySweeper = new RetrySweeper(db, fanOutService, ticketService, linkService, { throttle: engineThrottle });
 var TICK_MS = Number(process.env.WATCH_INTERVAL_MS) || 5e3;
-var yamlPath = path16.join(WORKSPACE_DIR, "projects.yaml");
+var yamlPath = path17.join(WORKSPACE_DIR, "projects.yaml");
 if (fs12.existsSync(yamlPath)) {
   const yamlContent = fs12.readFileSync(yamlPath, "utf-8");
   projectService.seedFromYaml(yamlContent);
@@ -51818,6 +52988,10 @@ var app = createApp({
   notifier,
   reactor,
   mergeGate,
+  getAdapter,
+  questionService,
+  settingsService,
+  notificationService,
   demoMode: process.env.DEMO_MODE === "1",
   agentToken: process.env.AGENT_TOKEN || void 0,
   webhookSecret: process.env.GITHUB_WEBHOOK_SECRET || void 0
@@ -51828,7 +53002,8 @@ var server = app.listen(PORT, HOST, () => {
     [
       ["watcher", () => watcher.scanOnce()],
       ["retry", () => retrySweeper.sweepOnce()],
-      ["outbox", () => outboxScanner.scanOnce()]
+      ["outbox", () => outboxScanner.scanOnce()],
+      ["notify", () => notificationService.dispatchPending()]
     ],
     TICK_MS
   );

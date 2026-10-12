@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import {
   fetchAiProviders,
+  refreshAiProviders,
   fetchSettings,
   updateAiCliSettings,
 } from '../lib/api.js';
@@ -109,7 +110,7 @@ export function EngineQuickViewPopover() {
     isRefetching,
   } = useQuery({
     queryKey: ['ai-providers'],
-    queryFn: fetchAiProviders,
+    queryFn: () => fetchAiProviders(),
     refetchInterval: 8000,
   });
 
@@ -118,6 +119,7 @@ export function EngineQuickViewPopover() {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
+      await refreshAiProviders();
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['ai-providers'] }),
         queryClient.invalidateQueries({ queryKey: ['settings'] }),

@@ -736,6 +736,18 @@ export async function fetchAiProviders(): Promise<EngineProviderStatus[]> {
   return res.json();
 }
 
+export async function refreshAiProviders(): Promise<EngineProviderStatus[]> {
+  const res = await fetch(`${BASE}/ai/providers?refresh=true&_t=${Date.now()}`, {
+    cache: 'no-store',
+    headers: {
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      Pragma: 'no-cache',
+    },
+  });
+  if (!res.ok) return [];
+  return res.json();
+}
+
 export async function draftRequirementAi(payload: { prompt: string; workspace_id?: string; provider?: string }): Promise<any> {
   const res = await fetch(`${BASE}/ai/draft-requirement`, {
     method: 'POST',

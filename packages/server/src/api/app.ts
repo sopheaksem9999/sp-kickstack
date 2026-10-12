@@ -867,11 +867,14 @@ export function createApp(deps: AppDependencies): Express {
   });
 
   // AI Requirement Drafting & Assistant Integration
-  app.get('/api/ai/providers', async (_req, res, next) => {
+  app.get('/api/ai/providers', async (req, res, next) => {
     try {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
+      if (req.query.refresh === 'true') {
+        aiDraftService.invalidateAgyUsageCache();
+      }
       const providers = await aiDraftService.getProviders();
       res.json(providers);
     } catch (err) {

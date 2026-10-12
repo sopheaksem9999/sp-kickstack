@@ -72,10 +72,39 @@ export function findCliBinary(name: string): string | null {
   return null;
 }
 
+function formatResetTime(isoDateString?: string): string {
+  if (!isoDateString) return '';
+  const diffMs = Math.max(0, new Date(isoDateString).getTime() - Date.now());
+  const days = Math.floor(diffMs / (86400 * 1000));
+  const hours = Math.floor((diffMs % (86400 * 1000)) / (3600 * 1000));
+  const mins = Math.floor((diffMs % (3600 * 1000)) / 60000);
+
+  if (days > 0) {
+    return `Resets in ${days}d ${hours}h`;
+  }
+  if (hours > 0) {
+    return `Resets in ${hours}h ${mins}m`;
+  }
+  return `Resets in ${mins}m`;
+}
+
+interface AntigravityGroupQuota {
+  weeklyLimitRemainingPercent?: number;
+  weeklyResetsIn?: string;
+  sessionLimitRemainingPercent?: number;
+  sessionResetsIn?: string;
+  windowLabel?: string;
+  lastRefreshedAt?: string;
+}
+
 export class AiDraftService {
   private defaultOllamaUrl: string;
   private settingsService?: SettingsService;
   private db?: any;
+  private cachedAgyUsage: {
+    data: { gemini?: AntigravityGroupQuota; claudeAndGpt?: AntigravityGroupQuota };
+    timestamp: number;
+  } | null = null;
 
   constructor(
     ollamaUrl: string = process.env.OLLAMA_URL || 'http://127.0.0.1:11434',
@@ -85,6 +114,73 @@ export class AiDraftService {
     this.defaultOllamaUrl = ollamaUrl;
     this.settingsService = settingsService;
     this.db = db;
+  }
+
+  public invalidateAgyUsageCache(): void {
+    this.cachedAgyUsage = null;
+  }
+
+  private async getAntigravityLiveUsage(agyBin: string | null): Promise<{
+    gemini?: AntigravityGroupQuota;
+    claudeAndGpt?: AntigravityGroupQuota;
+  } | null> {
+    if (!agyBin) return null;
+    const now = Date.now();
+    // Cache for 10s to keep general requests fast
+    if (this.cachedAgyUsage && now - this.cachedAgyUsage.timestamp < 10000) {
+      return this.cachedAgyUsage.data;
+    }
+
+    try {
+      const { stdout } = await execa(agyBin, ['-p', '/usage', '--output-format', 'json'], {
+        timeout: 4000,
+      });
+
+      const parsed = JSON.parse(stdout);
+      const groups = parsed?.command?.data?.groups || [];
+      const result: {
+        gemini?: AntigravityGroupQuota;
+        claudeAndGpt?: AntigravityGroupQuota;
+      } = {};
+      const refreshedTime = new Date().toLocaleTimeString();
+
+      for (const group of groups) {
+        const name = String(group.name || '');
+        const buckets = group.buckets || [];
+        const weeklyBucket = buckets.find((b: any) => b.window === 'weekly' || b.id?.includes('weekly'));
+        const fiveHourBucket = buckets.find((b: any) => b.window === '5h' || b.id?.includes('5h'));
+
+        const quota: AntigravityGroupQuota = {
+          lastRefreshedAt: refreshedTime,
+          windowLabel: 'Five Hour Limit Remaining',
+        };
+
+        if (weeklyBucket && typeof weeklyBucket.remaining_fraction === 'number') {
+          quota.weeklyLimitRemainingPercent = Math.round(weeklyBucket.remaining_fraction * 100);
+          quota.weeklyResetsIn = formatResetTime(weeklyBucket.reset_time);
+        }
+
+        if (fiveHourBucket && typeof fiveHourBucket.remaining_fraction === 'number') {
+          quota.sessionLimitRemainingPercent = Math.round(fiveHourBucket.remaining_fraction * 100);
+          quota.sessionResetsIn = formatResetTime(fiveHourBucket.reset_time);
+        }
+
+        if (name.toLowerCase().includes('gemini')) {
+          result.gemini = quota;
+        } else if (name.toLowerCase().includes('claude') || name.toLowerCase().includes('gpt')) {
+          result.claudeAndGpt = quota;
+        }
+      }
+
+      this.cachedAgyUsage = {
+        data: result,
+        timestamp: now,
+      };
+
+      return result;
+    } catch {
+      return this.cachedAgyUsage ? this.cachedAgyUsage.data : null;
+    }
   }
 
   private getClaudeLiveQuota() {
@@ -107,18 +203,12 @@ export class AiDraftService {
 
           let weeklyResetsIn = 'Resets in 7d';
           if (sd?.resets_at) {
-            const diffMs = Math.max(0, new Date(sd.resets_at).getTime() - Date.now());
-            const days = Math.floor(diffMs / (86400 * 1000));
-            const hours = Math.floor((diffMs % (86400 * 1000)) / (3600 * 1000));
-            weeklyResetsIn = `Resets in ${days}d ${hours}h`;
+            weeklyResetsIn = formatResetTime(sd.resets_at);
           }
 
           let sessionResetsIn = 'Resets in 5h';
           if (fh?.resets_at) {
-            const diffMs = Math.max(0, new Date(fh.resets_at).getTime() - Date.now());
-            const hours = Math.floor(diffMs / (3600 * 1000));
-            const mins = Math.floor((diffMs % (3600 * 1000)) / 60000);
-            sessionResetsIn = `Resets in ${hours}h ${mins}m`;
+            sessionResetsIn = formatResetTime(fh.resets_at);
           }
 
           const lastRefreshedAt = cu.fetchedAtMs
@@ -270,6 +360,46 @@ export class AiDraftService {
     const isRateLimited = Boolean(maxPausedUntil && new Date(maxPausedUntil).getTime() > Date.now());
     const refreshedTime = new Date().toLocaleTimeString();
 
+    // Enabled engines resolution
+    const enabledEngines = cliSettings?.enabledEngines || ['claude-cli', 'agy-cli', 'codex-cli', 'ollama', 'heuristic'];
+    const isEngineEnabled = (id: any) => enabledEngines.includes(id);
+
+    // 1. Check Local Claude CLI
+    const claudeBin = cliSettings?.claude?.customPath || findCliBinary('claude');
+    const claudeInstalled = Boolean(claudeBin);
+    const claudeAvailable = claudeInstalled && cliSettings?.claude?.enabled !== false && isEngineEnabled('claude-cli');
+
+    // 2. Check Local AGY CLI
+    const agyBin = cliSettings?.agy?.customPath || findCliBinary('agy');
+    const agyInstalled = Boolean(agyBin);
+    const agyAvailable = agyInstalled && cliSettings?.agy?.enabled !== false && isEngineEnabled('agy-cli');
+
+    // 3. Check Local Codex CLI
+    const codexBin = cliSettings?.codex?.customPath || findCliBinary('codex');
+    const codexInstalled = Boolean(codexBin);
+    const codexAvailable = codexInstalled && cliSettings?.codex?.enabled !== false && isEngineEnabled('codex-cli');
+
+    // 4. Check Ollama
+    const ollamaUrl = cliSettings?.ollama?.url || this.defaultOllamaUrl;
+    const ollamaBin = findCliBinary('ollama');
+    let ollamaOnline = false;
+    let ollamaModels: string[] = [];
+    try {
+      const res = await fetch(`${ollamaUrl}/api/tags`, {
+        signal: AbortSignal.timeout(1500),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        ollamaModels = (data.models || []).map((m: any) => m.name || m.model);
+        ollamaOnline = true;
+      }
+    } catch {}
+    const ollamaInstalled = ollamaOnline || Boolean(ollamaBin);
+    const ollamaAvailable = ollamaOnline && cliSettings?.ollama?.enabled !== false && isEngineEnabled('ollama');
+
+    // Fetch live local Antigravity usage (covers Gemini and Claude/GPT models managed via AGY)
+    const agyUsage = await this.getAntigravityLiveUsage(agyBin);
+
     // Helper to calculate quota progress matching session/weekly usage tiers
     const computeQuota = (engineId: string) => {
       if (engineId === 'ollama' || engineId === 'heuristic') {
@@ -283,11 +413,57 @@ export class AiDraftService {
         };
       }
 
-      // Check live local PC Claude Code CLI quota cache (~/.claude.json)
+      // Check live Antigravity CLI quota (/usage command)
+      if (engineId === 'agy-cli') {
+        if (agyUsage?.gemini) {
+          return agyUsage.gemini;
+        }
+        if (!agyInstalled) {
+          return {
+            weeklyLimitRemainingPercent: undefined,
+            weeklyResetsIn: undefined,
+            sessionLimitRemainingPercent: undefined,
+            sessionResetsIn: undefined,
+            windowLabel: undefined,
+            lastRefreshedAt: refreshedTime,
+          };
+        }
+      }
+
+      // Check live Claude / GPT quota
       if (engineId === 'claude-cli') {
+        if (agyUsage?.claudeAndGpt) {
+          return agyUsage.claudeAndGpt;
+        }
         const liveClaude = this.getClaudeLiveQuota();
         if (liveClaude) {
           return liveClaude;
+        }
+        if (!claudeInstalled) {
+          return {
+            weeklyLimitRemainingPercent: undefined,
+            weeklyResetsIn: undefined,
+            sessionLimitRemainingPercent: undefined,
+            sessionResetsIn: undefined,
+            windowLabel: undefined,
+            lastRefreshedAt: refreshedTime,
+          };
+        }
+      }
+
+      if (engineId === 'codex-cli') {
+        if (agyUsage?.claudeAndGpt) {
+          return agyUsage.claudeAndGpt;
+        }
+        if (!codexInstalled) {
+          return {
+            weeklyLimitRemainingPercent: undefined,
+            weeklyResetsIn: undefined,
+            sessionLimitRemainingPercent: undefined,
+            sessionResetsIn: undefined,
+            windowLabel: undefined,
+            lastRefreshedAt: refreshedTime,
+          };
         }
       }
 
@@ -339,61 +515,31 @@ export class AiDraftService {
       };
     };
 
-    // Enabled engines resolution
-    const enabledEngines = cliSettings?.enabledEngines || ['claude-cli', 'agy-cli', 'codex-cli', 'ollama', 'heuristic'];
-    const isEngineEnabled = (id: any) => enabledEngines.includes(id);
-
-    // 1. Check Local Claude CLI
-    const claudeBin = cliSettings?.claude?.customPath || findCliBinary('claude');
-    const claudeInstalled = Boolean(claudeBin);
-    const claudeAvailable = claudeInstalled && cliSettings?.claude?.enabled !== false && isEngineEnabled('claude-cli');
-
-    // 2. Check Local AGY CLI
-    const agyBin = cliSettings?.agy?.customPath || findCliBinary('agy');
-    const agyInstalled = Boolean(agyBin);
-    const agyAvailable = agyInstalled && cliSettings?.agy?.enabled !== false && isEngineEnabled('agy-cli');
-
-    // 3. Check Local Codex CLI
-    const codexBin = cliSettings?.codex?.customPath || findCliBinary('codex');
-    const codexInstalled = Boolean(codexBin);
-    const codexAvailable = codexInstalled && cliSettings?.codex?.enabled !== false && isEngineEnabled('codex-cli');
-
-    // 4. Check Ollama
-    const ollamaUrl = cliSettings?.ollama?.url || this.defaultOllamaUrl;
-    const ollamaBin = findCliBinary('ollama');
-    let ollamaOnline = false;
-    let ollamaModels: string[] = [];
-    try {
-      const res = await fetch(`${ollamaUrl}/api/tags`, {
-        signal: AbortSignal.timeout(1500),
-      });
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        ollamaModels = (data.models || []).map((m: any) => m.name || m.model);
-        ollamaOnline = true;
-      }
-    } catch {}
-    const ollamaInstalled = ollamaOnline || Boolean(ollamaBin);
-    const ollamaAvailable = ollamaOnline && cliSettings?.ollama?.enabled !== false && isEngineEnabled('ollama');
+    const claudeEffectiveInstalled = claudeInstalled || Boolean(agyUsage?.claudeAndGpt);
+    const claudeEffectiveAvailable = claudeAvailable || (agyAvailable && Boolean(agyUsage?.claudeAndGpt));
 
     const providers: EngineProviderStatus[] = [
       {
         id: 'claude-cli',
         name: 'Claude Code CLI',
-        installed: claudeInstalled,
-        available: claudeAvailable,
+        installed: claudeEffectiveInstalled,
+        available: claudeEffectiveAvailable,
         enabled: isEngineEnabled('claude-cli'),
-        path: claudeBin,
+        path: claudeBin || (agyUsage?.claudeAndGpt ? agyBin : null),
         note: claudeBin
           ? `Discovered at ${claudeBin} (Model: ${cliSettings?.claude?.model || 'sonnet-5'})`
+          : agyUsage?.claudeAndGpt
+          ? `Connected to local Antigravity runtime (Model: ${cliSettings?.claude?.model || 'claude-sonnet-4-6'})`
           : 'Not detected on local PC (`npm i -g @anthropic-ai/claude-code`)',
         rateLimit: {
-          supported: true,
-          supportType: 'bridge_monitored',
+          supported: claudeEffectiveInstalled,
+          supportType: agyUsage?.claudeAndGpt ? 'native' : 'bridge_monitored',
           status: isRateLimited ? 'rate_limited' : 'healthy',
           pausedUntil: isRateLimited ? maxPausedUntil : null,
           message: isRateLimited
             ? `Engine rate limited; paused until ${maxPausedUntil}`
+            : agyUsage?.claudeAndGpt
+            ? 'Synchronized with local Google Antigravity live quota'
             : 'Bridge monitors 429 rate limit backoff (CLI does not expose local quota CLI)',
           totalDispatches,
           completedTasks,
@@ -414,12 +560,14 @@ export class AiDraftService {
           ? `Discovered at ${agyBin} (Model: ${cliSettings?.agy?.model || 'gemini-3.8-flash'})`
           : 'Not detected on local PC (Google Antigravity CLI)',
         rateLimit: {
-          supported: true,
-          supportType: 'bridge_monitored',
+          supported: agyInstalled,
+          supportType: 'native',
           status: isRateLimited ? 'rate_limited' : 'healthy',
           pausedUntil: isRateLimited ? maxPausedUntil : null,
           message: isRateLimited
             ? `Engine rate limited; paused until ${maxPausedUntil}`
+            : agyUsage?.gemini
+            ? 'Synchronized with local Google Antigravity live quota'
             : 'Bridge monitors RPM & quota backoff (AGY handles local session)',
           totalDispatches,
           completedTasks,
@@ -440,7 +588,7 @@ export class AiDraftService {
           ? `Discovered at ${codexBin} (Model: ${cliSettings?.codex?.model || 'default'})`
           : 'Not detected on local PC (OpenAI Codex CLI)',
         rateLimit: {
-          supported: true,
+          supported: codexInstalled,
           supportType: 'bridge_monitored',
           status: isRateLimited ? 'rate_limited' : 'healthy',
           pausedUntil: isRateLimited ? maxPausedUntil : null,

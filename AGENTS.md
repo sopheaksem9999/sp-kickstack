@@ -42,3 +42,6 @@ no API key, $0).
 
 - Automated error triage: .agents/rules/clef-auto-triage.md — automated bug diagnosis and severity classification (P0–P3) via Clef.
 - Web UI Radix Priority: .agents/rules/ui-radix-priority.md — prioritize Radix UI primitives over native HTML elements for web UI components.
+- Desktop & Settings Governance: .agents/rules/desktop-and-settings-governance.md — all features must check and support the desktop module (packages/desktop, Tauri IPC, desktop bundling) and settings module (packages/web/src/pages/SettingsPage.tsx).
+- Tab URL Active Governance: .agents/rules/ui-tab-url-governance.md — all screens with tabs must synchronize active tabs with the URL query parameter (?tab=<id>) for browser history, reload persistence, and deep linking.
+

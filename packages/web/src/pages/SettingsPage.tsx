@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '../lib/ThemeContext.js';
 import {
@@ -10,6 +11,8 @@ import {
   fetchIdeStatus,
   startIdeServer,
   stopIdeServer,
+  fetchAiProviders,
+  fetchDetectedIdes,
 } from '../lib/api.js';
 import { toast } from 'sonner';
 import {
@@ -35,8 +38,10 @@ import {
   Code2,
   Power,
   ExternalLink,
+  RefreshCw,
+  Activity,
 } from 'lucide-react';
-import { BranchMergePolicy, ReasoningEffort } from '@sp-kickstack/shared';
+import { BranchMergePolicy, ReasoningEffort, EngineId } from '@sp-kickstack/shared';
 
 export interface ModelPreset {
   id: string;
@@ -256,6 +261,56 @@ export const OLLAMA_PRESETS: ModelPreset[] = [
     provider: 'Local / Ollama',
     description: 'Standard lightweight general open model',
     badge: 'General',
+  },
+];
+
+export const ALL_SYSTEM_ENGINES: Array<{
+  id: EngineId;
+  label: string;
+  command: string;
+  desc: string;
+  badge: string;
+  installTip: string;
+}> = [
+  {
+    id: 'claude-cli',
+    label: 'Claude Code CLI',
+    command: 'claude -p',
+    desc: 'Runs local `claude -p` via ~/.local/bin/claude',
+    badge: 'Claude Code',
+    installTip: 'npm i -g @anthropic-ai/claude-code',
+  },
+  {
+    id: 'agy-cli',
+    label: 'Antigravity CLI (agy)',
+    command: 'agy -p',
+    desc: 'Runs local `agy -p` via ~/.local/bin/agy',
+    badge: 'Google AGY',
+    installTip: 'Installed via Antigravity SDK',
+  },
+  {
+    id: 'codex-cli',
+    label: 'Codex CLI',
+    command: 'codex exec',
+    desc: 'Runs local `codex exec` via ~/.local/bin/codex',
+    badge: 'OpenAI Codex',
+    installTip: 'npm i -g @openai/codex',
+  },
+  {
+    id: 'ollama',
+    label: 'Local Ollama',
+    command: 'http://127.0.0.1:11434',
+    desc: 'Uses local Ollama HTTP instance (e.g. llama3.2)',
+    badge: 'Ollama Local',
+    installTip: 'curl -fsSL https://ollama.com/install.sh',
+  },
+  {
+    id: 'heuristic',
+    label: 'Built-in Heuristic',
+    command: 'Offline Core',
+    desc: 'Zero-latency rules engine (100% offline, instant)',
+    badge: 'Offline Rules',
+    installTip: 'Built into SP-Kickstack Core',
   },
 ];
 
@@ -522,7 +577,7 @@ export function ClaudeModeCard({
               type="text"
               value={model}
               onChange={(e) => onSelectModel(e.target.value)}
-              placeholder="e.g. sonnet-5, claude-3-7-sonnet, or custom fine-tune"
+              placeholder="e.g. sonnet, sonnet-5, opus, fable, haiku, or custom fine-tune"
               className="w-full px-3 py-2 pr-20 rounded-lg border border-[#3c445c] bg-[#0f1118] text-xs font-mono text-white focus:outline-none focus:ring-2 focus:ring-[#8b5cf6]"
             />
             <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/60">
@@ -825,16 +880,45 @@ export function AgyModeCard({
   );
 }
 
-type SettingsTab = 'ai' | 'git' | 'ide' | 'appearance' | 'safety';
+export type SettingsTab = 'ai' | 'git' | 'ide' | 'appearance' | 'safety';
+export const VALID_TABS: SettingsTab[] = ['ai', 'git', 'ide', 'appearance', 'safety'];
 
 export function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<SettingsTab>('ai');
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const tabParam = searchParams.get('tab') as SettingsTab | null;
+  const initialTab: SettingsTab =
+    tabParam && VALID_TABS.includes(tabParam) ? tabParam : 'ai';
+
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
+
+  // Sync activeTab with URL search params (supports back/forward browser history & direct links)
+  useEffect(() => {
+    const currentParam = searchParams.get('tab') as SettingsTab | null;
+    const resolvedTab = currentParam && VALID_TABS.includes(currentParam) ? currentParam : 'ai';
+    if (resolvedTab !== activeTab) {
+      setActiveTab(resolvedTab);
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (newTab: SettingsTab) => {
+    setActiveTab(newTab);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('tab', newTab);
+    setSearchParams(nextParams);
+  };
 
   const { data: settingsData } = useQuery({
     queryKey: ['settings'],
     queryFn: fetchSettings,
+  });
+
+  const { data: aiProviders, refetch: refetchAiProviders } = useQuery({
+    queryKey: ['ai-providers'],
+    queryFn: fetchAiProviders,
+    refetchInterval: activeTab === 'ai' ? 8000 : false,
   });
 
   // Embedded IDE Settings
@@ -854,12 +938,20 @@ export function SettingsPage() {
     queryFn: fetchIdeSettings,
   });
 
+  const { data: detectedIdesList = [] } = useQuery({
+    queryKey: ['detected-ides'],
+    queryFn: fetchDetectedIdes,
+  });
+
+  const [idePreferredIde, setIdePreferredIde] = useState('');
+
   useEffect(() => {
     if (ideSettingsData) {
       setIdePort(ideSettingsData.port || 8443);
       setIdeBinaryPath(ideSettingsData.binaryPath || '');
       setIdeExternalUrl(ideSettingsData.externalUrl || '');
       setIdeAutoStart(Boolean(ideSettingsData.autoStart));
+      setIdePreferredIde(ideSettingsData.preferredIde || '');
     }
   }, [ideSettingsData]);
 
@@ -867,9 +959,10 @@ export function SettingsPage() {
     mutationFn: () =>
       updateIdeIdeSettings(),
     onSuccess: () => {
-      toast.success('Embedded IDE configuration saved');
+      toast.success('IDE configuration saved');
       queryClient.invalidateQueries({ queryKey: ['ide-settings'] });
       queryClient.invalidateQueries({ queryKey: ['ide-status'] });
+      queryClient.invalidateQueries({ queryKey: ['detected-ides'] });
     },
     onError: (err: any) => {
       toast.error(err.message || 'Failed to save IDE settings');
@@ -882,6 +975,7 @@ export function SettingsPage() {
       binaryPath: ideBinaryPath.trim() || undefined,
       externalUrl: ideExternalUrl.trim() || undefined,
       autoStart: ideAutoStart,
+      preferredIde: idePreferredIde || undefined,
     });
 
   const startIdeMutation = useMutation({
@@ -911,7 +1005,14 @@ export function SettingsPage() {
   const [mergePolicy, setMergePolicy] = useState<BranchMergePolicy>('manual_review_merge');
 
   // AI CLI Settings
-  const [defaultProvider, setDefaultProvider] = useState<'auto' | 'claude-cli' | 'agy-cli' | 'codex-cli' | 'ollama' | 'heuristic'>('auto');
+  const [enabledEngines, setEnabledEngines] = useState<EngineId[]>([
+    'claude-cli',
+    'agy-cli',
+    'codex-cli',
+    'ollama',
+    'heuristic',
+  ]);
+  const [defaultProvider, setDefaultProvider] = useState<EngineId>('claude-cli');
   const [claudeModel, setClaudeModel] = useState('sonnet-5');
   const [claudeEffort, setClaudeEffort] = useState<ReasoningEffort>('medium');
   const [claudeUltracode, setClaudeUltracode] = useState(false);
@@ -935,7 +1036,16 @@ export function SettingsPage() {
     }
     if (settingsData?.ai_cli) {
       const cli = settingsData.ai_cli;
-      setDefaultProvider(cli.defaultProvider || 'auto');
+      let activeList = enabledEngines;
+      if (Array.isArray(cli.enabledEngines) && cli.enabledEngines.length > 0) {
+        activeList = cli.enabledEngines;
+        setEnabledEngines(cli.enabledEngines);
+      }
+      let prov = cli.defaultProvider || 'claude-cli';
+      if (prov === 'auto' || !activeList.includes(prov as EngineId)) {
+        prov = activeList[0] || 'claude-cli';
+      }
+      setDefaultProvider(prov as EngineId);
       setClaudeModel(cli.claude?.model || 'sonnet-5');
       setClaudeEffort(cli.claude?.effort || 'medium');
       setClaudeUltracode(Boolean(cli.claude?.ultracode));
@@ -950,6 +1060,26 @@ export function SettingsPage() {
       setOllamaUrl(cli.ollama?.url || 'http://127.0.0.1:11434');
     }
   }, [settingsData]);
+
+  const toggleEngine = (id: EngineId) => {
+    setEnabledEngines((prev) => {
+      let next: EngineId[];
+      if (prev.includes(id)) {
+        if (prev.length <= 1) {
+          toast.error('At least one engine must remain active in the system');
+          return prev;
+        }
+        next = prev.filter((e) => e !== id);
+      } else {
+        next = [...prev, id];
+      }
+
+      if (!next.includes(defaultProvider)) {
+        setDefaultProvider(next[0]);
+      }
+      return next;
+    });
+  };
 
   const updateBranchMutation = useMutation({
     mutationFn: () =>
@@ -970,34 +1100,38 @@ export function SettingsPage() {
     mutationFn: () =>
       updateAiCliSettings({
         defaultProvider,
+        enabledEngines,
         claude: {
-          enabled: true,
+          enabled: enabledEngines.includes('claude-cli'),
           model: claudeModel.trim() || 'sonnet-5',
           effort: claudeEffort,
           customPath: claudePath.trim() || undefined,
           ultracode: claudeUltracode,
         },
         agy: {
-          enabled: true,
+          enabled: enabledEngines.includes('agy-cli'),
           model: agyModel.trim() || 'gemini-3.8-flash',
           effort: agyEffort,
           customPath: agyPath.trim() || undefined,
         },
         codex: {
-          enabled: true,
+          enabled: enabledEngines.includes('codex-cli'),
           model: codexModel.trim() || 'default',
           effort: codexEffort,
           customPath: codexPath.trim() || undefined,
         },
         ollama: {
-          enabled: true,
+          enabled: enabledEngines.includes('ollama'),
           model: ollamaModel.trim() || 'llama3.2',
           effort: 'medium',
           url: ollamaUrl.trim() || 'http://127.0.0.1:11434',
         },
+        heuristic: {
+          enabled: enabledEngines.includes('heuristic'),
+        },
       }),
     onSuccess: () => {
-      toast.success('Local AI CLI configuration & models saved');
+      toast.success('Local AI CLI configuration & active engines saved');
       queryClient.invalidateQueries({ queryKey: ['settings'] });
       queryClient.invalidateQueries({ queryKey: ['ai-providers'] });
     },
@@ -1078,7 +1212,7 @@ export function SettingsPage() {
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => handleTabChange(tab.id)}
                   className={`w-full flex items-center gap-2.5 md:gap-3 px-2.5 md:px-3 py-2 md:py-2.5 rounded-xl text-left transition-all ${
                     isActive
                       ? 'bg-[#7b68ee]/10 dark:bg-[#7b68ee]/20 text-[#7b68ee] dark:text-purple-300 font-bold border border-[#7b68ee]/30 shadow-xs'
@@ -1137,80 +1271,398 @@ export function SettingsPage() {
                 </span>
               </div>
 
-              {/* Default Engine Radio Picker */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                  Default AI Engine for Requirement Drafting
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {[
-                    {
-                      id: 'auto',
-                      label: 'Auto (Recommended)',
-                      desc: 'Auto-detects and uses the best available local CLI',
-                      badge: 'Smart Auto',
-                    },
-                    {
-                      id: 'claude-cli',
-                      label: 'Claude Code CLI',
-                      desc: 'Runs local `claude -p` via ~/.local/bin/claude',
-                      badge: 'Claude Code',
-                    },
-                    {
-                      id: 'agy-cli',
-                      label: 'Antigravity CLI (agy)',
-                      desc: 'Runs local `agy -p` via ~/.local/bin/agy',
-                      badge: 'Google AGY',
-                    },
-                    {
-                      id: 'codex-cli',
-                      label: 'Codex CLI',
-                      desc: 'Runs local `codex exec` via ~/.local/bin/codex',
-                      badge: 'OpenAI Codex',
-                    },
-                    {
-                      id: 'ollama',
-                      label: 'Local Ollama',
-                      desc: 'Uses local Ollama HTTP instance (e.g. llama3.2)',
-                      badge: 'Ollama',
-                    },
-                    {
-                      id: 'heuristic',
-                      label: 'Built-in Heuristic',
-                      desc: 'Zero-latency rules engine (100% offline, instant)',
-                      badge: 'Offline Rules',
-                    },
-                  ].map((engine) => (
-                    <div
-                      key={engine.id}
-                      onClick={() => setDefaultProvider(engine.id as any)}
-                      className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
-                        defaultProvider === engine.id
-                          ? 'bg-purple-50/70 dark:bg-purple-950/40 border-[#7b68ee] ring-2 ring-[#7b68ee]/30 shadow-sm'
-                          : 'bg-slate-50 dark:bg-[#1a1a1a] border-slate-200 dark:border-[#2d2d2d] hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-xs text-slate-900 dark:text-white">
-                          {engine.label}
-                        </span>
-                        {defaultProvider === engine.id ? (
-                          <CheckCircle2 className="w-4 h-4 text-[#7b68ee]" />
-                        ) : (
-                          <span className="text-[10px] font-mono text-slate-400">{engine.badge}</span>
-                        )}
+              {/* Step 1: Select Active Engines for This System */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-[#7b68ee]/20 text-[#7b68ee] inline-flex items-center justify-center text-[11px] font-black">
+                        1
+                      </span>
+                      <span>Select Active Engines for This System</span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Choose which local AI engines to activate. Unselected engines will be hidden from default engine selectors, telemetry diagnostics, and model configuration below.
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-mono text-purple-600 dark:text-purple-400 font-bold">
+                    {enabledEngines.length} of {ALL_SYSTEM_ENGINES.length} Active
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {ALL_SYSTEM_ENGINES.map((engine) => {
+                    const isEnabled = enabledEngines.includes(engine.id);
+                    const prov = aiProviders?.find((p) => p.id === engine.id);
+                    const isInstalled = Boolean(prov?.installed);
+
+                    return (
+                      <div
+                        key={engine.id}
+                        onClick={() => toggleEngine(engine.id)}
+                        className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between select-none ${
+                          isEnabled
+                            ? 'bg-purple-50/70 dark:bg-purple-950/30 border-[#7b68ee] ring-1 ring-[#7b68ee]/40 shadow-xs'
+                            : 'bg-slate-50/60 dark:bg-[#181818] border-slate-200 dark:border-[#2a2a2a] opacity-60 hover:opacity-90'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-1.5">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div
+                                className={`w-4 h-4 rounded-md border flex items-center justify-center transition-colors ${
+                                  isEnabled
+                                    ? 'bg-[#7b68ee] border-[#7b68ee] text-white'
+                                    : 'border-slate-300 dark:border-[#444] bg-white dark:bg-[#202020]'
+                                }`}
+                              >
+                                {isEnabled && <Check className="w-3 h-3 stroke-[3]" />}
+                              </div>
+                              <span className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                                {engine.label}
+                              </span>
+                            </div>
+
+                            <span
+                              className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded ${
+                                isEnabled
+                                  ? 'bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300'
+                                  : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
+                              }`}
+                            >
+                              {isEnabled ? 'ACTIVE' : 'DISABLED'}
+                            </span>
+                          </div>
+
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 leading-snug">
+                            {engine.desc}
+                          </p>
+
+                          <div className="mt-2.5 pt-2 border-t border-slate-200/60 dark:border-[#282828] flex items-center justify-between gap-2 text-[10px]">
+                            {isInstalled ? (
+                              <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300 font-mono truncate">
+                                <Check className="w-3 h-3 text-emerald-500 shrink-0" />
+                                <span className="truncate">Installed on PC</span>
+                              </div>
+                            ) : (
+                              <span className="text-amber-600 dark:text-amber-400 font-mono truncate">
+                                Not Detected
+                              </span>
+                            )}
+                            <span className="text-slate-400 font-mono text-[9px]">
+                              {engine.command}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                        {engine.desc}
-                      </p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Detail Cards per AI CLI */}
-              <div className="space-y-4 pt-2">
+              {/* Step 2: Default Engine Radio Picker */}
+              <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-[#2a2a2a]">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-[#7b68ee]/20 text-[#7b68ee] inline-flex items-center justify-center text-[11px] font-black">
+                        2
+                      </span>
+                      <span>Default AI Engine for Requirement Drafting</span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Primary engine used for requirement drafting. Showing only the engines enabled in Step 1.
+                    </p>
+                  </div>
+                  <span className="text-[11px] text-slate-400">
+                    Click to select default
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {ALL_SYSTEM_ENGINES.filter((e) => enabledEngines.includes(e.id)).map((engine) => {
+                    const prov = aiProviders?.find((p) => p.id === engine.id);
+                    const isInstalled = Boolean(prov?.installed);
+                    const rl = prov?.rateLimit;
+                    const isSelected = defaultProvider === engine.id;
+
+                    return (
+                      <div
+                        key={engine.id}
+                        onClick={() => setDefaultProvider(engine.id)}
+                        className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between group ${
+                          isSelected
+                            ? 'bg-purple-50/80 dark:bg-purple-950/40 border-[#7b68ee] ring-2 ring-[#7b68ee]/30 shadow-sm'
+                            : 'bg-slate-50 dark:bg-[#1a1a1a] border-slate-200 dark:border-[#2d2d2d] hover:border-slate-300 dark:hover:border-slate-700'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-1.5">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span
+                                className={`w-2 h-2 rounded-full shrink-0 ${
+                                  !isInstalled
+                                    ? 'bg-slate-400'
+                                    : rl?.status === 'rate_limited'
+                                    ? 'bg-rose-500 animate-ping'
+                                    : rl?.status === 'unlimited'
+                                    ? 'bg-cyan-400'
+                                    : 'bg-emerald-500'
+                                }`}
+                              />
+                              <span className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                                {engine.label}
+                              </span>
+                            </div>
+
+                            {isSelected ? (
+                              <CheckCircle2 className="w-4 h-4 text-[#7b68ee] shrink-0" />
+                            ) : (
+                              <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                                {engine.badge}
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 leading-snug">
+                            {engine.desc}
+                          </p>
+
+                          {/* Detected Path or Missing Notice */}
+                          <div className="mt-2.5 pt-2 border-t border-slate-200/60 dark:border-[#282828] flex items-center justify-between gap-2 text-[10px]">
+                            {isInstalled ? (
+                              <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300 font-mono truncate">
+                                <Check className="w-3 h-3 text-emerald-500 shrink-0" />
+                                <span className="truncate">
+                                  {prov?.path || 'Ready on local PC'}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-amber-700 dark:text-amber-300 font-mono truncate">
+                                ✕ Not Detected
+                              </span>
+                            )}
+
+                            <span
+                              className={`px-1.5 py-0.2 rounded font-mono font-semibold shrink-0 text-[9px] ${
+                                rl?.supportType === 'unlimited_offline'
+                                  ? 'bg-cyan-100 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300'
+                                  : rl?.status === 'rate_limited'
+                                  ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'
+                                  : 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300'
+                              }`}
+                            >
+                              {rl?.supportType === 'unlimited_offline'
+                                ? '⚡ Unlimited'
+                                : rl?.status === 'rate_limited'
+                                ? '⚠️ Rate Limited'
+                                : '🛡️ 429 Monitored'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Warning callout if selected provider is not installed */}
+                {(() => {
+                  const selectedProv = aiProviders?.find((p) => p.id === defaultProvider);
+                  if (selectedProv && !selectedProv.installed) {
+                    return (
+                      <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-2.5">
+                        <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                        <div className="space-y-0.5">
+                          <strong className="font-bold">
+                            Engine Not Detected on Local PC: {selectedProv.name}
+                          </strong>
+                          <p className="text-[11px] opacity-90">
+                            The selected engine was not found on your system PATH (~/.local/bin, /usr/local/bin, /opt/homebrew/bin). Running AI drafts or tasks will fail until you install the CLI or configure a custom executable path below.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+
+              {/* Live Rate Limit & Telemetry Dashboard */}
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#1a1a1a] border border-slate-200 dark:border-[#2d2d2d] space-y-4">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200/70 dark:border-[#2d2d2d]">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    <div>
+                      <h3 className="font-bold text-xs text-slate-900 dark:text-white flex items-center gap-2">
+                        <span>Engine Rate Limit & Telemetry Diagnostics</span>
+                        <span className="text-[10px] font-mono px-2 py-0.2 rounded font-bold bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300">
+                          Live Monitor
+                        </span>
+                      </h3>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        Real-time subprocess health, rate limit backoffs, and execution metrics.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => refetchAiProviders()}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-[#333333] bg-white dark:bg-[#222222] text-[11px] font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#282828] transition-colors"
+                    title="Refresh Telemetry"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Refresh</span>
+                  </button>
+                </div>
+
+                {/* Telemetry Comparison Table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-[#2d2d2d] text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500">
+                        <th className="pb-2 pl-2">Engine</th>
+                        <th className="pb-2">Local Detection</th>
+                        <th className="pb-2">Rate Limit Mode</th>
+                        <th className="pb-2">Quota Health</th>
+                        <th className="pb-2 text-right">Dispatches</th>
+                        <th className="pb-2 text-right">Active</th>
+                        <th className="pb-2 text-right pr-2">429 Pauses</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200/60 dark:divide-[#252525]">
+                      {(aiProviders || [])
+                        .filter((prov) => enabledEngines.includes(prov.id as EngineId))
+                        .map((prov) => {
+                          const isSelected = prov.id === defaultProvider;
+                          const rl = prov.rateLimit;
+                          return (
+                            <tr
+                              key={prov.id}
+                              className={`transition-colors ${
+                                isSelected
+                                  ? 'bg-purple-50/50 dark:bg-purple-950/20 font-medium'
+                                  : 'hover:bg-slate-100/50 dark:hover:bg-[#222222]/50'
+                              }`}
+                            >
+                              <td className="py-2.5 pl-2">
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className={`w-2 h-2 rounded-full shrink-0 ${
+                                      !prov.installed
+                                        ? 'bg-slate-400'
+                                        : rl?.status === 'rate_limited'
+                                        ? 'bg-rose-500 animate-ping'
+                                        : rl?.status === 'unlimited'
+                                        ? 'bg-cyan-400'
+                                        : 'bg-emerald-500'
+                                    }`}
+                                  />
+                                  <div>
+                                    <span className="font-bold text-slate-800 dark:text-slate-200">
+                                      {prov.name}
+                                    </span>
+                                    {isSelected && (
+                                      <span className="ml-1.5 text-[9px] font-mono px-1 py-0.2 rounded bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 font-bold">
+                                        DEFAULT
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-2.5">
+                                {prov.installed ? (
+                                  <span className="text-[10px] font-mono text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800/40 truncate max-w-[220px] inline-block">
+                                    {prov.path || 'Available on PATH'}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-slate-400 dark:text-slate-500 italic">
+                                    Not detected on PC
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2.5">
+                                <span className="text-[11px] text-slate-600 dark:text-slate-400">
+                                  {rl?.supportType === 'unlimited_offline'
+                                    ? '100% Offline (Unlimited)'
+                                    : 'Bridge 429 Backoff'}
+                                </span>
+                              </td>
+                              <td className="py-2.5">
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span
+                                      className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border ${
+                                        rl?.status === 'rate_limited'
+                                          ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-300'
+                                          : rl?.status === 'unlimited'
+                                          ? 'bg-cyan-100 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border-cyan-300'
+                                          : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300'
+                                      }`}
+                                    >
+                                      {rl?.status === 'rate_limited'
+                                        ? 'PAUSED'
+                                        : rl?.status === 'unlimited'
+                                        ? 'UNLIMITED'
+                                        : 'HEALTHY'}
+                                    </span>
+                                    <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                                      Wk: {rl?.weeklyLimitRemainingPercent ?? 100}% · Sess: {rl?.sessionLimitRemainingPercent ?? 100}%
+                                    </span>
+                                  </div>
+                                  {rl?.sessionResetsIn && rl?.supportType !== 'unlimited_offline' && (
+                                    <div className="text-[9px] text-slate-400">
+                                      {rl?.sessionResetsIn}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            <td className="py-2.5 text-right font-mono font-semibold text-slate-700 dark:text-slate-300">
+                              {rl?.totalDispatches ?? 0}
+                            </td>
+                            <td className="py-2.5 text-right font-mono text-purple-600 dark:text-purple-400">
+                              {rl?.activeTasks ?? 0}
+                            </td>
+                            <td className="py-2.5 text-right pr-2 font-mono text-amber-600 dark:text-amber-400">
+                              {rl?.rateLimitEvents ?? 0}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Technical Explanation Callout */}
+                <div className="p-3 rounded-lg bg-slate-100 dark:bg-[#20222e] border border-slate-200 dark:border-[#2d3040] text-[11px] leading-relaxed text-slate-600 dark:text-slate-300 space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-200">
+                    <Info className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                    <span>How SP-Kickstack Monitors Engine Rate Limits</span>
+                  </div>
+                  <p>
+                    Command-line AI tools (Claude Code, Google AGY, OpenAI Codex) use authenticated local developer sessions and <strong>do not provide interactive command-line rate-limit query flags</strong>.
+                  </p>
+                  <p>
+                    Instead, SP-Kickstack’s Studio Bridge monitors all CLI subprocess execution streams. When an HTTP 429 rate limit occurs, the bridge automatically captures the rate limit, calculates a <code className="font-mono text-purple-600 dark:text-purple-400">paused_until</code> backoff timestamp, and pauses subsequent tasks to prevent token waste until the quota resets.
+                  </p>
+                </div>
+              </div>
+
+              {/* Step 4: Detail Cards per AI CLI */}
+              <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-[#2a2a2a]">
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-[#7b68ee]/20 text-[#7b68ee] inline-flex items-center justify-center text-[11px] font-black">
+                      4
+                    </span>
+                    <span>Engine Configuration & Model Settings</span>
+                  </label>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Customize models, reasoning effort, and custom binary paths. Only active engines enabled in Step 1 are displayed.
+                  </p>
+                </div>
+
                 {/* Claude Code CLI Settings */}
+                {enabledEngines.includes('claude-cli') && (
                 <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#1a1a1a] border border-slate-200 dark:border-[#2d2d2d] space-y-4">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-200/70 dark:border-[#2d2d2d]">
                     <div className="flex items-center gap-2">
@@ -1318,8 +1770,10 @@ export function SettingsPage() {
                     </div>
                   </div>
                 </div>
+                )}
 
                 {/* Antigravity CLI (agy) Settings */}
+                {enabledEngines.includes('agy-cli') && (
                 <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#1a1a1a] border border-slate-200 dark:border-[#2d2d2d] space-y-4">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-200/70 dark:border-[#2d2d2d]">
                     <div className="flex items-center gap-2">
@@ -1397,8 +1851,10 @@ export function SettingsPage() {
                     </span>
                   </div>
                 </div>
+                )}
 
                 {/* Codex Settings */}
+                {enabledEngines.includes('codex-cli') && (
                 <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#1a1a1a] border border-slate-200 dark:border-[#2d2d2d] space-y-3">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-200/70 dark:border-[#2d2d2d]">
                     <div className="flex items-center gap-2">
@@ -1476,8 +1932,10 @@ export function SettingsPage() {
                     </span>
                   </div>
                 </div>
+                )}
 
                 {/* Ollama Settings */}
+                {enabledEngines.includes('ollama') && (
                 <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#1a1a1a] border border-slate-200 dark:border-[#2d2d2d] space-y-3">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-200/70 dark:border-[#2d2d2d]">
                     <div className="flex items-center gap-2">
@@ -1519,6 +1977,23 @@ export function SettingsPage() {
                     </div>
                   </div>
                 </div>
+                )}
+
+                {/* Heuristic Only Notice */}
+                {!enabledEngines.includes('claude-cli') &&
+                  !enabledEngines.includes('agy-cli') &&
+                  !enabledEngines.includes('codex-cli') &&
+                  !enabledEngines.includes('ollama') && (
+                    <div className="p-6 rounded-xl bg-slate-50 dark:bg-[#1a1a1a] border border-slate-200 dark:border-[#2d2d2d] text-center space-y-1 py-8">
+                      <Cpu className="w-6 h-6 text-purple-500 mx-auto" />
+                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                        Built-in Heuristic Engine is Active
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                        The heuristic rules engine operates 100% offline with zero external dependencies, no API keys, and zero configuration needed.
+                      </p>
+                    </div>
+                  )}
               </div>
 
               {/* Save AI Settings Button */}
@@ -1722,6 +2197,77 @@ export function SettingsPage() {
                     </p>
                   </div>
                 )}
+              </div>
+
+              {/* Installed PC IDEs Detection & Preferred Launcher */}
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#1a1a1a] border border-slate-200 dark:border-[#2d2d2d] space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Detected Local IDEs on PC
+                  </span>
+                  <span className="text-[11px] font-mono font-bold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/60 px-2 py-0.5 rounded">
+                    {detectedIdesList.length} IDE{detectedIdesList.length === 1 ? '' : 's'} detected
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                  {detectedIdesList.map((ide) => (
+                    <div
+                      key={ide.id}
+                      className={`p-2.5 rounded-lg border text-xs flex flex-col justify-between ${
+                        ide.id === idePreferredIde || (!idePreferredIde && ide.isDefault)
+                          ? 'bg-purple-50/60 dark:bg-purple-950/40 border-purple-300 dark:border-purple-800/60'
+                          : 'bg-white dark:bg-[#202128] border-slate-200 dark:border-[#2d2f3d]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-bold text-slate-800 dark:text-slate-200">{ide.name}</span>
+                        {(ide.id === idePreferredIde || (!idePreferredIde && ide.isDefault)) && (
+                          <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400">
+                            ★ Active Default
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-500 truncate" title={ide.appPath || ide.command}>
+                        {ide.appPath || ide.command || 'Installed'}
+                      </span>
+                    </div>
+                  ))}
+                  {detectedIdesList.length === 0 && (
+                    <div className="col-span-full text-xs text-slate-500 py-2">
+                      No standalone IDE apps detected on default paths. You can still use the default system editor or web code-server.
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-2 border-t border-slate-200 dark:border-[#2d2d2d] space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                    Preferred Default IDE (Opened when clicking "Open in IDE" across projects)
+                  </label>
+                  <select
+                    value={idePreferredIde}
+                    onChange={(e) => setIdePreferredIde(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-[#333333] bg-white dark:bg-[#202128] text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Auto-detect (Recommended - use first detected IDE)</option>
+                    {detectedIdesList.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name} ({d.appPath ? 'App' : 'CLI'})
+                      </option>
+                    ))}
+                    <option value="antigravity">Antigravity IDE</option>
+                    <option value="vscode">VS Code</option>
+                    <option value="cursor">Cursor</option>
+                    <option value="windsurf">Windsurf</option>
+                    <option value="trae">Trae</option>
+                    <option value="zed">Zed</option>
+                    <option value="android-studio">Android Studio</option>
+                    <option value="xcode">Xcode</option>
+                    <option value="intellij">IntelliJ IDEA</option>
+                    <option value="webstorm">WebStorm</option>
+                    <option value="sublime">Sublime Text</option>
+                  </select>
+                </div>
               </div>
 
               {/* Configuration Inputs */}

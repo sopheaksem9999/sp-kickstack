@@ -111,7 +111,7 @@ describe('Shared Schemas Validation', () => {
     const req = {
       messages: [msg],
       provider: 'claude-cli' as const,
-      model: 'claude-3-7-sonnet',
+      model: 'sonnet',
       effort: 'high' as const,
     };
     const parsedReq = AiChatRequestSchema.safeParse(req);

@@ -1371,7 +1371,7 @@ Guidelines:
     cliSettings: any,
     sessionId?: string
   ): Promise<AiChatResponse> {
-    const model = req.model || cliSettings?.claude?.model || 'claude-3-7-sonnet';
+    const model = req.model || cliSettings?.claude?.model || 'sonnet';
     const effort = req.effort || cliSettings?.claude?.effort || 'medium';
 
     // Build conversation transcript for CLI prompt with attachment contents

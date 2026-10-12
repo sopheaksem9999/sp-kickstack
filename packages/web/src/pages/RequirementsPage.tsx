@@ -1,4 +1,5 @@
-import { useState, useMemo, Fragment, useRef } from 'react';
+import { useState, useEffect, useMemo, Fragment, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchRequirements,
@@ -48,14 +49,42 @@ const priorityConfig: Record<Priority, { color: string; label: string }> = {
 type GroupByOption = 'none' | 'status' | 'priority' | 'project';
 type SortField = 'id' | 'title' | 'priority' | 'status' | 'created_at';
 
+export type ScrumTab = 'sprint' | 'backlog' | 'all';
+export const VALID_SCRUM_TABS: ScrumTab[] = ['sprint', 'backlog', 'all'];
+
 export function RequirementsPage() {
   const queryClient = useQueryClient();
   const { activeWorkspaceId } = useWorkspace();
   const { openSheet } = useCreateRequirement();
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawTab = searchParams.get('tab') as ScrumTab | null;
+  const initialTab: ScrumTab = rawTab && VALID_SCRUM_TABS.includes(rawTab) ? rawTab : 'sprint';
+
   // Scrum Tab & Sprint Modal State
-  const [scrumTab, setScrumTab] = useState<'sprint' | 'backlog' | 'all'>('sprint');
+  const [scrumTab, setScrumTab] = useState<ScrumTab>(initialTab);
   const [isCreateSprintOpen, setIsCreateSprintOpen] = useState(false);
+
+  // Sync scrumTab with URL search params (supports back/forward browser history & direct links)
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab') as ScrumTab | null;
+    const resolvedTab = tabFromUrl && VALID_SCRUM_TABS.includes(tabFromUrl) ? tabFromUrl : 'sprint';
+    if (resolvedTab !== scrumTab) {
+      setScrumTab(resolvedTab);
+    }
+  }, [searchParams, scrumTab]);
+
+  const handleTabChange = (newTab: ScrumTab) => {
+    setScrumTab(newTab);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('tab', newTab);
+        return next;
+      },
+      { replace: false }
+    );
+  };
   
   // View states - active Board by default
   const [viewMode, setViewMode] = useState<'list' | 'board'>('board');
@@ -494,7 +523,7 @@ export function RequirementsPage() {
         {/* Left: Scrum Tabs */}
         <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100/80 dark:bg-[#1e1e1e] rounded-xl border border-slate-200 dark:border-[#2d2d2d] w-fit shadow-inner">
           <button
-            onClick={() => setScrumTab('sprint')}
+            onClick={() => handleTabChange('sprint')}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               scrumTab === 'sprint'
                 ? 'bg-white dark:bg-[#282828] text-indigo-600 dark:text-indigo-400 shadow-sm'
@@ -516,7 +545,7 @@ export function RequirementsPage() {
           </button>
 
           <button
-            onClick={() => setScrumTab('backlog')}
+            onClick={() => handleTabChange('backlog')}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               scrumTab === 'backlog'
                 ? 'bg-white dark:bg-[#282828] text-indigo-600 dark:text-indigo-400 shadow-sm'
@@ -530,7 +559,7 @@ export function RequirementsPage() {
           </button>
 
           <button
-            onClick={() => setScrumTab('all')}
+            onClick={() => handleTabChange('all')}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               scrumTab === 'all'
                 ? 'bg-white dark:bg-[#282828] text-indigo-600 dark:text-indigo-400 shadow-sm'

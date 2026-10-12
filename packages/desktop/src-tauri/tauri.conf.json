@@ -44,6 +44,10 @@
       "icons/Square142x142Logo.png",
       "icons/Square150x150Logo.png",
       "icons/Square310x310Logo.png"
-    ]
+    ],
+    "macOS": {
+      "frameworks": [],
+      "minimumSystemVersion": "10.15"
+    }
   }
 }

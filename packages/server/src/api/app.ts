@@ -284,6 +284,16 @@ export function createApp(deps: AppDependencies): Express {
     }
   });
 
+  app.post('/api/projects/:name/open-ide', async (req, res, next) => {
+    try {
+      const { ideId } = req.body || {};
+      const result = await ideService.openProjectInIde(req.params.name, ideId);
+      res.json(result);
+    } catch (err: any) {
+      next(err);
+    }
+  });
+
   // Requirements
   app.get('/api/requirements', (req, res) => {
     const ws = req.query.workspace as string | undefined;
@@ -831,6 +841,9 @@ export function createApp(deps: AppDependencies): Express {
   // AI Requirement Drafting & Assistant Integration
   app.get('/api/ai/providers', async (_req, res, next) => {
     try {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       const providers = await aiDraftService.getProviders();
       res.json(providers);
     } catch (err) {
@@ -980,6 +993,15 @@ export function createApp(deps: AppDependencies): Express {
     try {
       const status = await ideService.getStatus();
       res.json(status);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.get('/api/ide/detected', (_req, res, next) => {
+    try {
+      const detected = ideService.detectInstalledIdes();
+      res.json(detected);
     } catch (err) {
       next(err);
     }

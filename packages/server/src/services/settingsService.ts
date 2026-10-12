@@ -66,6 +66,7 @@ export class SettingsService {
       agy: { ...current.agy, ...updates.agy },
       codex: updates.codex ? { ...(current.codex || {}), ...updates.codex } : current.codex,
       ollama: { ...current.ollama, ...updates.ollama },
+      heuristic: updates.heuristic ? { ...(current.heuristic || {}), ...updates.heuristic } : current.heuristic,
     });
 
     this.db.prepare(`

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Sparkles,
@@ -87,31 +88,42 @@ const PROVIDER_OPTIONS: ProviderOption[] = [
   { id: 'heuristic', name: 'Heuristic Architect', desc: 'Offline requirement generator' },
 ];
 
-const MODEL_OPTIONS_MAP: Record<string, Array<{ id: string; name: string }>> = {
+interface ModelOptionItem {
+  id: string;
+  name: string;
+  desc?: string;
+  isConfigured?: boolean;
+}
+
+const MODEL_OPTIONS_MAP: Record<string, ModelOptionItem[]> = {
   'claude-cli': [
-    { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet (Hybrid)' },
-    { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet' },
-    { id: 'claude-3-5-haiku', name: 'Claude 3.5 Haiku' },
-    { id: 'claude-3-opus', name: 'Claude 3 Opus' },
+    { id: 'default', name: 'Default (recommended)', desc: 'Opus 5.5 · Best for everyday, complex tasks' },
+    { id: 'opus', name: 'Opus', desc: 'Opus 5.5 · Best for everyday, complex tasks' },
+    { id: 'fable', name: 'Fable', desc: 'Fable 5.1 · Most capable for hardest and longest-running tasks' },
+    { id: 'sonnet', name: 'Sonnet', desc: 'Sonnet 5.5 · Efficient for routine and complex tasks' },
+    { id: 'haiku', name: 'Haiku', desc: 'Haiku 5.5 · Fastest for quick answers' },
+    { id: 'sonnet-5', name: 'Sonnet 5', desc: 'Sonnet 5 preset' },
   ],
   'agy-cli': [
-    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (Deep)' },
-    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+    { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', desc: 'Ultra-fast low-latency Google DeepMind model' },
+    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (Deep)', desc: 'Advanced code reasoning and large context' },
+    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', desc: 'Fast multimodal reasoning' },
+    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', desc: 'Reliable general performance' },
+    { id: 'default', name: 'Default Model', desc: 'Preset from local Antigravity CLI' },
   ],
   'codex-cli': [
-    { id: 'default', name: 'Default Codex Model' },
-    { id: 'o3-mini', name: 'o3-mini (High reasoning)' },
-    { id: 'gpt-4o', name: 'GPT-4o (Omni)' },
+    { id: 'default', name: 'Default Codex Model', desc: 'OpenAI developer CLI default' },
+    { id: 'o3-mini', name: 'o3-mini (High reasoning)', desc: 'Fast STEM and complex coding model' },
+    { id: 'gpt-4o', name: 'GPT-4o (Omni)', desc: 'High-capability flagship model' },
   ],
   'ollama': [
-    { id: 'default', name: 'Default Local Model' },
-    { id: 'qwen2.5-coder:14b', name: 'Qwen 2.5 Coder 14B' },
-    { id: 'deepseek-r1:14b', name: 'DeepSeek R1 14B' },
-    { id: 'llama3.3:70b', name: 'Llama 3.3 70B' },
+    { id: 'default', name: 'Default Local Model', desc: 'Default configured model on port 11434' },
+    { id: 'qwen2.5-coder:14b', name: 'Qwen 2.5 Coder 14B', desc: 'Offline code specialized LLM' },
+    { id: 'deepseek-r1:14b', name: 'DeepSeek R1 14B', desc: 'Offline distilled reasoning model' },
+    { id: 'llama3.3:70b', name: 'Llama 3.3 70B', desc: 'High parameter local open weights model' },
   ],
-  'auto': [{ id: 'default', name: 'Auto Default' }],
-  'heuristic': [{ id: 'default', name: 'Built-in Spec Engine' }],
+  'auto': [{ id: 'default', name: 'Auto Default', desc: 'Inherits selected engine preset' }],
+  'heuristic': [{ id: 'default', name: 'Built-in Spec Engine', desc: 'Local rule-based generator' }],
 };
 
 const EFFORT_OPTIONS: Array<{ id: ReasoningEffort; name: string; desc: string }> = [
@@ -122,13 +134,28 @@ const EFFORT_OPTIONS: Array<{ id: ReasoningEffort; name: string; desc: string }>
 ];
 
 export function AiChatPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlSessionParam = searchParams.get('tab') || searchParams.get('session');
   const { activeWorkspaceId, activeWorkspace } = useWorkspace();
   const queryClient = useQueryClient();
 
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(urlSessionParam || null);
   const [sessionSearch, setSessionSearch] = useState('');
   const [chatInput, setChatInput] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<ChatAttachmentItem[]>([]);
+
+  const handleSelectSession = (sessionId: string) => {
+    setActiveSessionId(sessionId);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('tab', sessionId);
+        next.set('session', sessionId);
+        return next;
+      },
+      { replace: false }
+    );
+  };
 
   // Mentions (@ assets) state
   const [showMentionMenu, setShowMentionMenu] = useState(false);
@@ -175,8 +202,8 @@ export function AiChatPage() {
   const configuredDefaultProvider = appSettings?.ai_cli?.defaultProvider || 'auto';
 
   const getModelForProvider = (provider: string): string => {
-    if (provider === 'claude-cli') return appSettings?.ai_cli?.claude?.model || 'claude-3-7-sonnet';
-    if (provider === 'agy-cli') return appSettings?.ai_cli?.agy?.model || 'gemini-2.5-pro';
+    if (provider === 'claude-cli') return appSettings?.ai_cli?.claude?.model || 'sonnet';
+    if (provider === 'agy-cli') return appSettings?.ai_cli?.agy?.model || 'gemini-3.8-flash';
     if (provider === 'codex-cli') return appSettings?.ai_cli?.codex?.model || 'default';
     if (provider === 'ollama') return appSettings?.ai_cli?.ollama?.model || 'default';
     return 'default';
@@ -323,14 +350,32 @@ export function AiChatPage() {
     queryFn: () => fetchAiChatSessions(activeWorkspaceId),
   });
 
-  // Automatically select the first session or create one if none exist
+  // Automatically select the session from URL or first session, and sync with URL
   useEffect(() => {
+    const sessionFromUrl = searchParams.get('tab') || searchParams.get('session');
     if (sessions.length > 0) {
-      if (!activeSessionId || !sessions.some((s) => s.id === activeSessionId)) {
-        setActiveSessionId(sessions[0].id);
+      if (sessionFromUrl && sessions.some((s) => s.id === sessionFromUrl)) {
+        if (sessionFromUrl !== activeSessionId) {
+          setActiveSessionId(sessionFromUrl);
+        }
+      } else if (!activeSessionId || !sessions.some((s) => s.id === activeSessionId)) {
+        const defaultId = sessions[0].id;
+        setActiveSessionId(defaultId);
+        if (!sessionFromUrl) {
+          setSearchParams(
+            (prev) => {
+              const next = new URLSearchParams(prev);
+              next.set('tab', defaultId);
+              next.set('session', defaultId);
+              return next;
+            },
+            { replace: true }
+          );
+        }
       }
     }
-  }, [sessions, activeSessionId]);
+  }, [sessions, activeSessionId, searchParams, setSearchParams]);
+
 
   // 6. Fetch the active session with full message transcript
   const {
@@ -408,7 +453,7 @@ export function AiChatPage() {
         ['ai-chat-sessions', activeWorkspaceId],
         (old = []) => [newSession, ...old]
       );
-      setActiveSessionId(newSession.id);
+      handleSelectSession(newSession.id);
       setSelectedProvider(newSession.provider || configuredDefaultProvider);
       setSelectedModel(newSession.model || getModelForProvider(newSession.provider || configuredDefaultProvider));
       setSelectedEffort(newSession.effort || getEffortForProvider(newSession.provider || configuredDefaultProvider));
@@ -486,8 +531,24 @@ export function AiChatPage() {
       );
       if (activeSessionId === deletedId) {
         const remaining = sessions.filter((s) => s.id !== deletedId);
-        setActiveSessionId(remaining.length > 0 ? remaining[0].id : null);
+        const nextId = remaining.length > 0 ? remaining[0].id : null;
+        setActiveSessionId(nextId);
+        setSearchParams(
+          (prev) => {
+            const next = new URLSearchParams(prev);
+            if (nextId) {
+              next.set('tab', nextId);
+              next.set('session', nextId);
+            } else {
+              next.delete('tab');
+              next.delete('session');
+            }
+            return next;
+          },
+          { replace: true }
+        );
       }
+
       toast.success('Chat session deleted');
     },
     onError: (err: any) => {
@@ -913,9 +974,42 @@ export function AiChatPage() {
     s.title.toLowerCase().includes(sessionSearch.toLowerCase())
   );
 
-  const availableModels = MODEL_OPTIONS_MAP[selectedProvider] || [{ id: 'default', name: 'Default Model' }];
+  const availableModels = useMemo(() => {
+    const providerList = [...(MODEL_OPTIONS_MAP[selectedProvider] || [{ id: 'default', name: 'Default Model' }])];
+    const configuredModel = getModelForProvider(selectedProvider);
+
+    // Map through list and mark configured model
+    const list = providerList.map((m) => {
+      if (m.id === configuredModel) {
+        return {
+          ...m,
+          isConfigured: true,
+        };
+      }
+      return m;
+    });
+
+    // If configured model is custom or not in the preset list, add it at the top
+    if (configuredModel && configuredModel !== 'default' && !list.some((m) => m.id === configuredModel)) {
+      list.unshift({
+        id: configuredModel,
+        name: configuredModel,
+        desc: 'Configured in Settings > AI CLI',
+        isConfigured: true,
+      });
+    }
+
+    return list;
+  }, [selectedProvider, appSettings]);
+
   const currentProviderName = PROVIDER_OPTIONS.find((p) => p.id === selectedProvider)?.name || selectedProvider;
-  const currentModelName = availableModels.find((m) => m.id === selectedModel)?.name || selectedModel;
+  const currentModelName = useMemo(() => {
+    const found = availableModels.find((m) => m.id === selectedModel);
+    if (found) {
+      return found.name;
+    }
+    return selectedModel;
+  }, [availableModels, selectedModel]);
 
   return (
     <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-slate-50 dark:bg-[#14151a]">
@@ -984,7 +1078,7 @@ export function AiChatPage() {
               return (
                 <div
                   key={s.id}
-                  onClick={() => setActiveSessionId(s.id)}
+                  onClick={() => handleSelectSession(s.id)}
                   className={`group relative flex items-start justify-between p-2.5 rounded-xl cursor-pointer transition-all ${
                     isActive
                       ? 'bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/60 shadow-sm'
@@ -1153,7 +1247,12 @@ export function AiChatPage() {
                   <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     Select AI Engine
                   </div>
-                  {PROVIDER_OPTIONS.map((p) => {
+                  {PROVIDER_OPTIONS.filter((p) => {
+                    if (p.id === 'auto') return true;
+                    const enabledList = appSettings?.ai_cli?.enabledEngines;
+                    if (!enabledList || enabledList.length === 0) return true;
+                    return enabledList.includes(p.id as any);
+                  }).map((p) => {
                     const isSelected = selectedProvider === p.id;
                     return (
                       <button
@@ -1192,9 +1291,14 @@ export function AiChatPage() {
                     <ChevronDown className="w-3.5 h-3.5 text-slate-400 ml-0.5 shrink-0" />
                   </button>
                 </PopoverTrigger>
-                <PopoverContent align="end" className="w-64 p-2 space-y-1">
-                  <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    Select Model ({selectedProvider})
+                <PopoverContent align="end" className="w-80 p-2 space-y-1 max-h-[380px] overflow-y-auto">
+                  <div className="flex items-center justify-between px-2 py-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Select Model ({selectedProvider})
+                    </span>
+                    <span className="text-[10px] text-purple-500 dark:text-purple-400 font-medium">
+                      Settings Sync
+                    </span>
                   </div>
                   {availableModels.map((m) => {
                     const isSelected = selectedModel === m.id;
@@ -1206,17 +1310,29 @@ export function AiChatPage() {
                           handleModelChange(m.id);
                           setIsModelOpen(false);
                         }}
-                        className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-left text-xs transition-colors ${
+                        className={`w-full flex items-start justify-between px-2.5 py-2 rounded-lg text-left text-xs transition-colors ${
                           isSelected
-                            ? 'bg-purple-100 dark:bg-purple-950/80 text-purple-900 dark:text-purple-200 font-semibold'
+                            ? 'bg-purple-100 dark:bg-purple-950/80 text-purple-900 dark:text-purple-200 font-semibold ring-1 ring-purple-500/40'
                             : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#252736]'
                         }`}
                       >
                         <div className="min-w-0 pr-2">
-                          <div className="truncate font-mono text-xs">{m.name}</div>
-                          <div className="text-[10px] text-slate-400 font-mono">{m.id}</div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-semibold text-xs">{m.name}</span>
+                            {m.isConfigured && (
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-600 dark:text-purple-300 border border-purple-500/30 font-medium">
+                                Settings Default
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono mt-0.5">{m.id}</div>
+                          {m.desc && (
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-tight">
+                              {m.desc}
+                            </div>
+                          )}
                         </div>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />}
+                        {isSelected && <Check className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0 mt-0.5" />}
                       </button>
                     );
                   })}

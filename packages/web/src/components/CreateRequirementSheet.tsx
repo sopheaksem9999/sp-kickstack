@@ -43,6 +43,8 @@ import {
   Terminal,
   Wand2,
   AlertTriangle,
+  Building2,
+  Lock,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import {
@@ -68,12 +70,11 @@ export function CreateRequirementSheet() {
   const { isOpen, closeSheet } = useCreateRequirement();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { activeWorkspaceId, workspaces } = useWorkspace();
+  const { activeWorkspaceId, workspaces, wsPath } = useWorkspace();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [workspaceId, setWorkspaceId] = useState(
-    activeWorkspaceId !== 'all' ? activeWorkspaceId : 'default'
-  );
+  // Requirement is locked to current active workspace by default and cannot be changed
+  const workspaceId = activeWorkspaceId || 'default';
 
   const { data: projects = [] } = useQuery({
     queryKey: ['projects', workspaceId],
@@ -112,12 +113,7 @@ export function CreateRequirementSheet() {
     staleTime: 30000,
   });
 
-  // Synchronize workspace when opening or workspace changes
-  useEffect(() => {
-    if (activeWorkspaceId !== 'all') {
-      setWorkspaceId(activeWorkspaceId);
-    }
-  }, [activeWorkspaceId, isOpen]);
+
 
   // Auto-select all projects in workspace by default
   useEffect(() => {
@@ -392,7 +388,7 @@ What feature, solution, or refactoring would you like to design today? You can s
       toast.success(`Created ${created.id}: ${created.title}`, {
         action: {
           label: 'View Spec',
-          onClick: () => navigate(`/requirements/${created.id}`),
+          onClick: () => navigate(wsPath(`/requirements/${created.id}`)),
         },
       });
 
@@ -400,7 +396,7 @@ What feature, solution, or refactoring would you like to design today? You can s
         await startRequirementFanOut(created.id);
         queryClient.invalidateQueries({ queryKey: ['requirements'] });
         toast.success(`Fanned out to ${selectedProjects.join(', ')}`);
-        navigate(`/requirements/${created.id}`);
+        navigate(wsPath(`/requirements/${created.id}`));
       }
     } catch (err: any) {
       toast.error(err.message || 'Failed to create requirement');
@@ -429,25 +425,19 @@ What feature, solution, or refactoring would you like to design today? You can s
             </div>
 
             <div className="flex items-center gap-2.5">
-              {/* Workspace Picker */}
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-200/80 dark:bg-[#23242e] border border-slate-300 dark:border-[#2d2f3d] text-xs">
-                <span className="text-[10px] text-slate-400 uppercase font-semibold">Workspace:</span>
-                <select
-                  value={workspaceId}
-                  onChange={(e) => setWorkspaceId(e.target.value)}
-                  className="bg-transparent text-slate-800 dark:text-slate-200 font-semibold focus:outline-none cursor-pointer"
-                >
-                  {workspaces.map((w) => (
-                    <option key={w.id} value={w.id} className="bg-white dark:bg-[#242424] text-slate-800 dark:text-slate-100">
-                      {w.name}
-                    </option>
-                  ))}
-                  {!workspaces.some((w) => w.id === workspaceId) && (
-                    <option value={workspaceId} className="bg-white dark:bg-[#242424] text-slate-800 dark:text-slate-100">
-                      {workspaceId}
-                    </option>
-                  )}
-                </select>
+              {/* Workspace Badge (Locked to active space by default, cannot change) */}
+              <div
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-200/80 dark:bg-[#23242e] border border-slate-300 dark:border-[#2d2f3d] text-xs font-semibold text-slate-800 dark:text-slate-200 select-none shadow-2xs"
+                title={`Created in active workspace: ${currentWorkspace?.name || workspaceId} (cannot be changed)`}
+              >
+                <Building2 className="w-3.5 h-3.5 text-[#7b68ee] shrink-0" />
+                <span className="truncate max-w-[150px]">
+                  {currentWorkspace?.name || workspaceId}
+                </span>
+                <span className="text-[9px] font-mono font-bold uppercase px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 flex items-center gap-1">
+                  <Lock className="w-2.5 h-2.5" />
+                  Locked
+                </span>
               </div>
 
               {/* Close / Cancel Button */}

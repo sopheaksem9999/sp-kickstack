@@ -26,12 +26,15 @@ import {
   SendAiChatMessageInput,
   IdeSettings,
   IdeServerStatus,
+  DetectedIde,
   StartIdeInput,
   ProjectTerminalStatus,
   HealthResponse,
   EngineProviderStatus,
   EngineRateLimitInfo,
 } from '@sp-kickstack/shared';
+
+export type { EngineProviderStatus, EngineRateLimitInfo };
 
 const isTauri =
   typeof window !== 'undefined' &&
@@ -527,6 +530,28 @@ export async function fetchProjectIdeUrl(projectName: string): Promise<{ project
   return res.json();
 }
 
+export async function fetchDetectedIdes(): Promise<DetectedIde[]> {
+  const res = await fetch(`${BASE}/ide/detected`);
+  if (!res.ok) throw new Error('Failed to fetch detected IDEs');
+  return res.json();
+}
+
+export async function openProjectInIde(
+  projectName: string,
+  ideId?: string
+): Promise<{ ok: boolean; ide: DetectedIde; path: string }> {
+  const res = await fetch(`${BASE}/projects/${encodeURIComponent(projectName)}/open-ide`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ideId }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to open project in IDE');
+  }
+  return res.json();
+}
+
 // ========================================================
 // Native In-App Git Review & Code Diff APIs
 // ========================================================
@@ -700,7 +725,13 @@ export async function fetchTelemetry(workspaceId?: string): Promise<any> {
 }
 
 export async function fetchAiProviders(): Promise<EngineProviderStatus[]> {
-  const res = await fetch(`${BASE}/ai/providers`);
+  const res = await fetch(`${BASE}/ai/providers?_t=${Date.now()}`, {
+    cache: 'no-store',
+    headers: {
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      Pragma: 'no-cache',
+    },
+  });
   if (!res.ok) return [];
   return res.json();
 }

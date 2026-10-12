@@ -190,6 +190,15 @@ fn resolve_workspace_dir(app: &tauri::AppHandle) -> PathBuf {
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                // Keep app and backend process alive in the background:
+                // Hide window to system tray instead of destroying it
+                let _ = window.hide();
+                api.prevent_close();
+            }
+            _ => {}
+        })
         .setup(|app| {
             println!("⚡ SP Kickstack Desktop App Initialized");
 
@@ -270,6 +279,15 @@ fn main() {
         .expect("error while building SP Kickstack desktop application");
 
     app.run(|app_handle, event| match event {
+        tauri::RunEvent::Reopen { has_visible_windows, .. } => {
+            // Restore window when user clicks the app icon in macOS Dock or Launchpad
+            if !has_visible_windows {
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+        }
         tauri::RunEvent::Exit => {
             if let Some(backend) = app_handle.try_state::<BackendProcess>() {
                 if let Ok(mut guard) = backend.0.lock() {

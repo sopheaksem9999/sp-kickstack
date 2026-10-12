@@ -35,14 +35,27 @@ export function findCliBinary(name: string): string | null {
   const home = process.env.HOME || '';
   const pathDirs = (process.env.PATH || '').split(':').filter(Boolean);
   const extraDirs = [
+    path.dirname(process.execPath),
     path.join(home, '.local', 'bin'),
     path.join(home, '.cargo', 'bin'),
     path.join(home, '.npm-global', 'bin'),
+    path.join(home, '.gemini', 'antigravity', 'bin'),
+    path.join(home, 'bin'),
     '/usr/local/bin',
     '/opt/homebrew/bin',
     '/usr/bin',
     '/bin',
   ];
+
+  const nvmDir = path.join(home, '.nvm', 'versions', 'node');
+  if (fs.existsSync(nvmDir)) {
+    try {
+      const versions = fs.readdirSync(nvmDir);
+      for (const ver of versions) {
+        extraDirs.push(path.join(nvmDir, ver, 'bin'));
+      }
+    } catch {}
+  }
 
   const allDirs = Array.from(new Set([...pathDirs, ...extraDirs]));
 
@@ -74,6 +87,58 @@ export class AiDraftService {
     this.db = db;
   }
 
+  private getClaudeLiveQuota() {
+    try {
+      const home = process.env.HOME || '';
+      const claudeJsonPath = path.join(home, '.claude.json');
+      if (fs.existsSync(claudeJsonPath)) {
+        const raw = fs.readFileSync(claudeJsonPath, 'utf8');
+        const data = JSON.parse(raw);
+        const cu = data?.cachedUsageUtilization;
+        if (cu && cu.utilization) {
+          const fh = cu.utilization.five_hour;
+          const sd = cu.utilization.seven_day;
+
+          const sessionUtil = typeof fh?.utilization === 'number' ? fh.utilization : 0;
+          const sessionRemaining = Math.max(0, Math.min(100, 100 - sessionUtil));
+
+          const weeklyUtil = typeof sd?.utilization === 'number' ? sd.utilization : 0;
+          const weeklyRemaining = Math.max(0, Math.min(100, 100 - weeklyUtil));
+
+          let weeklyResetsIn = 'Resets in 7d';
+          if (sd?.resets_at) {
+            const diffMs = Math.max(0, new Date(sd.resets_at).getTime() - Date.now());
+            const days = Math.floor(diffMs / (86400 * 1000));
+            const hours = Math.floor((diffMs % (86400 * 1000)) / (3600 * 1000));
+            weeklyResetsIn = `Resets in ${days}d ${hours}h`;
+          }
+
+          let sessionResetsIn = 'Resets in 5h';
+          if (fh?.resets_at) {
+            const diffMs = Math.max(0, new Date(fh.resets_at).getTime() - Date.now());
+            const hours = Math.floor(diffMs / (3600 * 1000));
+            const mins = Math.floor((diffMs % (3600 * 1000)) / 60000);
+            sessionResetsIn = `Resets in ${hours}h ${mins}m`;
+          }
+
+          const lastRefreshedAt = cu.fetchedAtMs
+            ? new Date(cu.fetchedAtMs).toLocaleTimeString()
+            : new Date().toLocaleTimeString();
+
+          return {
+            weeklyLimitRemainingPercent: weeklyRemaining,
+            weeklyResetsIn,
+            sessionLimitRemainingPercent: sessionRemaining,
+            sessionResetsIn,
+            windowLabel: 'Five Hour Limit Remaining',
+            lastRefreshedAt,
+          };
+        }
+      }
+    } catch {}
+    return null;
+  }
+
   public async getProviders(): Promise<EngineProviderStatus[]> {
     const cliSettings = this.settingsService?.getAiCliSettings();
 
@@ -84,6 +149,17 @@ export class AiDraftService {
     let maxPausedUntil: string | null = null;
     let lastUsedAt: string | null = null;
 
+    let sessionDispatches = 0;
+    let weeklyDispatches = 0;
+
+    const engineUsage: Record<string, { session: number; week: number; total: number; lastUsed: string | null }> = {
+      'claude-cli': { session: 0, week: 0, total: 0, lastUsed: null },
+      'agy-cli': { session: 0, week: 0, total: 0, lastUsed: null },
+      'codex-cli': { session: 0, week: 0, total: 0, lastUsed: null },
+      'ollama': { session: 0, week: 0, total: 0, lastUsed: null },
+      'heuristic': { session: 0, week: 0, total: 0, lastUsed: null },
+    };
+
     if (this.db) {
       try {
         const stats = this.db.prepare(`
@@ -92,6 +168,8 @@ export class AiDraftService {
             SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) as completed,
             SUM(CASE WHEN status = 'rate_limited' THEN 1 ELSE 0 END) as rate_limited,
             SUM(CASE WHEN status IN ('pending', 'in_progress') THEN 1 ELSE 0 END) as active,
+            SUM(CASE WHEN created_at >= datetime('now', '-5 hours') THEN 1 ELSE 0 END) as session_count,
+            SUM(CASE WHEN created_at >= datetime('now', '-7 days') THEN 1 ELSE 0 END) as week_count,
             MAX(paused_until) as max_paused,
             MAX(created_at) as last_used
           FROM bridge_tasks
@@ -102,28 +180,183 @@ export class AiDraftService {
           completedTasks = Number(stats.completed) || 0;
           rateLimitEvents = Number(stats.rate_limited) || 0;
           activeTasks = Number(stats.active) || 0;
+          sessionDispatches = Number(stats.session_count) || 0;
+          weeklyDispatches = Number(stats.week_count) || 0;
           maxPausedUntil = stats.max_paused || null;
           lastUsedAt = stats.last_used || null;
         }
+
+        // Bridge tasks per engine
+        try {
+          const taskByEngine = this.db.prepare(`
+            SELECT
+              p.engine_type,
+              COUNT(t.id) as total,
+              SUM(CASE WHEN t.created_at >= datetime('now', '-5 hours') THEN 1 ELSE 0 END) as session_count,
+              SUM(CASE WHEN t.created_at >= datetime('now', '-7 days') THEN 1 ELSE 0 END) as week_count,
+              MAX(t.created_at) as last_used
+            FROM bridge_tasks t
+            JOIN projects p ON p.name = t.project
+            GROUP BY p.engine_type
+          `).all() as any[];
+
+          for (const row of taskByEngine) {
+            const key = row.engine_type;
+            if (engineUsage[key]) {
+              engineUsage[key].total += Number(row.total) || 0;
+              engineUsage[key].session += Number(row.session_count) || 0;
+              engineUsage[key].week += Number(row.week_count) || 0;
+              if (row.last_used && (!engineUsage[key].lastUsed || row.last_used > engineUsage[key].lastUsed!)) {
+                engineUsage[key].lastUsed = row.last_used;
+              }
+            }
+          }
+        } catch {}
+
+        // AI Chat activity (counted as local model/engine executions)
+        try {
+          const chatStats = this.db.prepare(`
+            SELECT
+              COUNT(m.id) as total_chat,
+              SUM(CASE WHEN m.created_at >= datetime('now', '-5 hours') THEN 1 ELSE 0 END) as session_chat,
+              SUM(CASE WHEN m.created_at >= datetime('now', '-7 days') THEN 1 ELSE 0 END) as week_chat,
+              MAX(m.created_at) as last_chat
+            FROM ai_chat_messages m
+            WHERE m.role = 'assistant'
+          `).get() as any;
+
+          if (chatStats) {
+            totalDispatches += Number(chatStats.total_chat) || 0;
+            sessionDispatches += Number(chatStats.session_chat) || 0;
+            weeklyDispatches += Number(chatStats.week_chat) || 0;
+            if (chatStats.last_chat && (!lastUsedAt || chatStats.last_chat > lastUsedAt)) {
+              lastUsedAt = chatStats.last_chat;
+            }
+          }
+
+          const chatByProvider = this.db.prepare(`
+            SELECT
+              s.provider,
+              COUNT(m.id) as total,
+              SUM(CASE WHEN m.created_at >= datetime('now', '-5 hours') THEN 1 ELSE 0 END) as session_count,
+              SUM(CASE WHEN m.created_at >= datetime('now', '-7 days') THEN 1 ELSE 0 END) as week_count,
+              MAX(m.created_at) as last_used
+            FROM ai_chat_messages m
+            JOIN ai_chat_sessions s ON s.id = m.session_id
+            WHERE m.role = 'assistant'
+            GROUP BY s.provider
+          `).all() as any[];
+
+          for (const row of chatByProvider) {
+            let key = row.provider;
+            if (key === 'auto') {
+              key = cliSettings?.defaultProvider && cliSettings.defaultProvider !== 'auto'
+                ? cliSettings.defaultProvider
+                : 'claude-cli';
+            }
+            if (engineUsage[key]) {
+              engineUsage[key].total += Number(row.total) || 0;
+              engineUsage[key].session += Number(row.session_count) || 0;
+              engineUsage[key].week += Number(row.week_count) || 0;
+              if (row.last_used && (!engineUsage[key].lastUsed || row.last_used > engineUsage[key].lastUsed!)) {
+                engineUsage[key].lastUsed = row.last_used;
+              }
+            }
+          }
+        } catch {}
       } catch {}
     }
 
     const isRateLimited = Boolean(maxPausedUntil && new Date(maxPausedUntil).getTime() > Date.now());
+    const refreshedTime = new Date().toLocaleTimeString();
+
+    // Helper to calculate quota progress matching session/weekly usage tiers
+    const computeQuota = (engineId: string) => {
+      if (engineId === 'ollama' || engineId === 'heuristic') {
+        return {
+          weeklyLimitRemainingPercent: undefined,
+          weeklyResetsIn: undefined,
+          sessionLimitRemainingPercent: undefined,
+          sessionResetsIn: undefined,
+          windowLabel: undefined,
+          lastRefreshedAt: refreshedTime,
+        };
+      }
+
+      // Check live local PC Claude Code CLI quota cache (~/.claude.json)
+      if (engineId === 'claude-cli') {
+        const liveClaude = this.getClaudeLiveQuota();
+        if (liveClaude) {
+          return liveClaude;
+        }
+      }
+
+      const now = Date.now();
+      const dayOfWeek = new Date().getUTCDay();
+      const daysUntilSunday = (7 - dayOfWeek) % 7 || 7;
+      const hoursRemaining = 24 - new Date().getUTCHours();
+      const weeklyResetsIn = `${Math.max(1, daysUntilSunday - 1)}d ${hoursRemaining}h`;
+
+      const currentHour = new Date().getUTCHours();
+      const currentMinute = new Date().getUTCMinutes();
+      const hoursIntoBlock = currentHour % 5;
+      const sessionHoursLeft = 4 - hoursIntoBlock;
+      const sessionMinutesLeft = 60 - currentMinute;
+      const sessionResetsIn = `${sessionHoursLeft}h ${sessionMinutesLeft}m`;
+
+      const eng = engineUsage[engineId] || { session: 0, week: 0, total: 0 };
+
+      if (isRateLimited && maxPausedUntil) {
+        const diffMs = Math.max(0, new Date(maxPausedUntil).getTime() - now);
+        const m = Math.floor(diffMs / 60000);
+        const s = Math.floor((diffMs % 60000) / 1000);
+        const pauseStr = m > 0 ? `${m}m ${s}s` : `${s}s`;
+
+        return {
+          weeklyLimitRemainingPercent: Math.max(10, 50 - (eng.week || weeklyDispatches) * 3),
+          weeklyResetsIn,
+          sessionLimitRemainingPercent: 0,
+          sessionResetsIn: `Resumes in ${pauseStr}`,
+          windowLabel: 'Five Hour Limit Remaining',
+          lastRefreshedAt: refreshedTime,
+        };
+      }
+
+      // Dynamic estimation decremented by actual recorded usage
+      const baseWeekly = engineId === 'agy-cli' ? 85 : 95;
+      const baseSession = engineId === 'agy-cli' ? 90 : 98;
+
+      const sessionRemaining = Math.max(15, Math.min(100, baseSession - (eng.session * 4)));
+      const weeklyRemaining = Math.max(20, Math.min(100, baseWeekly - (eng.week * 2)));
+
+      return {
+        weeklyLimitRemainingPercent: weeklyRemaining,
+        weeklyResetsIn,
+        sessionLimitRemainingPercent: sessionRemaining,
+        sessionResetsIn,
+        windowLabel: 'Five Hour Limit Remaining',
+        lastRefreshedAt: refreshedTime,
+      };
+    };
+
+    // Enabled engines resolution
+    const enabledEngines = cliSettings?.enabledEngines || ['claude-cli', 'agy-cli', 'codex-cli', 'ollama', 'heuristic'];
+    const isEngineEnabled = (id: any) => enabledEngines.includes(id);
 
     // 1. Check Local Claude CLI
     const claudeBin = cliSettings?.claude?.customPath || findCliBinary('claude');
     const claudeInstalled = Boolean(claudeBin);
-    const claudeAvailable = claudeInstalled && cliSettings?.claude?.enabled !== false;
+    const claudeAvailable = claudeInstalled && cliSettings?.claude?.enabled !== false && isEngineEnabled('claude-cli');
 
     // 2. Check Local AGY CLI
     const agyBin = cliSettings?.agy?.customPath || findCliBinary('agy');
     const agyInstalled = Boolean(agyBin);
-    const agyAvailable = agyInstalled && cliSettings?.agy?.enabled !== false;
+    const agyAvailable = agyInstalled && cliSettings?.agy?.enabled !== false && isEngineEnabled('agy-cli');
 
     // 3. Check Local Codex CLI
     const codexBin = cliSettings?.codex?.customPath || findCliBinary('codex');
     const codexInstalled = Boolean(codexBin);
-    const codexAvailable = codexInstalled && cliSettings?.codex?.enabled !== false;
+    const codexAvailable = codexInstalled && cliSettings?.codex?.enabled !== false && isEngineEnabled('codex-cli');
 
     // 4. Check Ollama
     const ollamaUrl = cliSettings?.ollama?.url || this.defaultOllamaUrl;
@@ -141,7 +374,7 @@ export class AiDraftService {
       }
     } catch {}
     const ollamaInstalled = ollamaOnline || Boolean(ollamaBin);
-    const ollamaAvailable = ollamaOnline && cliSettings?.ollama?.enabled !== false;
+    const ollamaAvailable = ollamaOnline && cliSettings?.ollama?.enabled !== false && isEngineEnabled('ollama');
 
     const providers: EngineProviderStatus[] = [
       {
@@ -149,6 +382,7 @@ export class AiDraftService {
         name: 'Claude Code CLI',
         installed: claudeInstalled,
         available: claudeAvailable,
+        enabled: isEngineEnabled('claude-cli'),
         path: claudeBin,
         note: claudeBin
           ? `Discovered at ${claudeBin} (Model: ${cliSettings?.claude?.model || 'sonnet-5'})`
@@ -166,6 +400,7 @@ export class AiDraftService {
           rateLimitEvents,
           activeTasks,
           lastUsedAt,
+          ...computeQuota('claude-cli'),
         },
       },
       {
@@ -173,6 +408,7 @@ export class AiDraftService {
         name: 'Antigravity CLI (agy)',
         installed: agyInstalled,
         available: agyAvailable,
+        enabled: isEngineEnabled('agy-cli'),
         path: agyBin,
         note: agyBin
           ? `Discovered at ${agyBin} (Model: ${cliSettings?.agy?.model || 'gemini-3.8-flash'})`
@@ -190,6 +426,7 @@ export class AiDraftService {
           rateLimitEvents,
           activeTasks,
           lastUsedAt,
+          ...computeQuota('agy-cli'),
         },
       },
       {
@@ -197,6 +434,7 @@ export class AiDraftService {
         name: 'Codex CLI',
         installed: codexInstalled,
         available: codexAvailable,
+        enabled: isEngineEnabled('codex-cli'),
         path: codexBin,
         note: codexBin
           ? `Discovered at ${codexBin} (Model: ${cliSettings?.codex?.model || 'default'})`
@@ -214,6 +452,7 @@ export class AiDraftService {
           rateLimitEvents,
           activeTasks,
           lastUsedAt,
+          ...computeQuota('codex-cli'),
         },
       },
       {
@@ -221,6 +460,7 @@ export class AiDraftService {
         name: 'Local Ollama',
         installed: ollamaInstalled,
         available: ollamaAvailable,
+        enabled: isEngineEnabled('ollama'),
         path: ollamaBin || ollamaUrl,
         models: ollamaModels,
         note: ollamaOnline
@@ -245,6 +485,7 @@ export class AiDraftService {
         name: 'Built-in Heuristic Generator',
         installed: true,
         available: true,
+        enabled: isEngineEnabled('heuristic'),
         path: null,
         note: 'Zero-latency offline deterministic rules engine (100% offline, instant)',
         rateLimit: {
@@ -274,6 +515,7 @@ export class AiDraftService {
     }
 
     const cliSettings = this.settingsService?.getAiCliSettings();
+    const enabledEngines = cliSettings?.enabledEngines || ['claude-cli', 'agy-cli', 'codex-cli', 'ollama', 'heuristic'];
 
     let provider = options.provider || 'auto';
 
@@ -284,14 +526,20 @@ export class AiDraftService {
       } else {
         const claudeBin = cliSettings?.claude?.customPath || findCliBinary('claude');
         const agyBin = cliSettings?.agy?.customPath || findCliBinary('agy');
-        if (claudeBin && cliSettings?.claude?.enabled !== false) {
+        if (claudeBin && cliSettings?.claude?.enabled !== false && enabledEngines.includes('claude-cli')) {
           provider = 'claude-cli';
-        } else if (agyBin && cliSettings?.agy?.enabled !== false) {
+        } else if (agyBin && cliSettings?.agy?.enabled !== false && enabledEngines.includes('agy-cli')) {
           provider = 'agy-cli';
+        } else if (enabledEngines.length > 0) {
+          provider = enabledEngines[0];
         } else {
           provider = 'heuristic';
         }
       }
+    }
+
+    if (provider !== 'heuristic' && !enabledEngines.includes(provider as any)) {
+      provider = enabledEngines[0] || 'heuristic';
     }
 
     // 1. Local Claude Code CLI
@@ -674,7 +922,7 @@ Respond with ONLY valid JSON, no markdown codeblocks.`;
     options: AiDraftOptions
   ): Promise<DraftRequirementResult> {
     const apiKey = options.apiKey || process.env.ANTHROPIC_API_KEY;
-    const model = options.model || 'claude-3-5-sonnet-20241022';
+    const model = options.model || 'sonnet';
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',

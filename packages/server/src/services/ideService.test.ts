@@ -100,4 +100,25 @@ describe('IdeService & API', () => {
     expect(res.body.project).toBe('test-backend');
     expect(res.body.url).toContain('%2Ftmp%2Ftest-backend');
   });
+
+  it('detects installed IDEs and sets default correctly', () => {
+    const ides = ideService.detectInstalledIdes();
+    expect(Array.isArray(ides)).toBe(true);
+    if (ides.length > 0) {
+      expect(ides.some((i) => i.isDefault)).toBe(true);
+      expect(ides[0]).toHaveProperty('id');
+      expect(ides[0]).toHaveProperty('name');
+    }
+  });
+
+  it('GET /api/ide/detected returns detected IDE list', async () => {
+    const res = await testRequest(app, 'GET', '/api/ide/detected');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  it('POST /api/projects/:name/open-ide validates project existence', async () => {
+    const res = await testRequest(app, 'POST', '/api/projects/non-existent-proj/open-ide');
+    expect(res.status).toBe(500);
+  });
 });

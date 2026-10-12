@@ -287,7 +287,7 @@ export const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
   const isRunning = terminalStatus?.running || activeTerminals.includes(projectName);
 
   return (
-    <div className={`flex flex-col bg-[#0f1015] border border-slate-800 rounded-xl overflow-hidden font-mono text-xs ${className}`}>
+    <div className={`flex flex-col flex-1 min-h-0 bg-[#0f1015] border border-slate-800 rounded-xl overflow-hidden font-mono text-xs ${className}`}>
       {/* Top Header Bar */}
       {showHeader && (
         <div className="flex flex-wrap items-center justify-between px-4 py-2.5 bg-[#161720] border-b border-slate-800/90 gap-2 shrink-0 select-none">
@@ -319,6 +319,17 @@ export const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
                 )}
               </span>
             </div>
+
+            {/* Device Shell / Local PC Indicator */}
+            {terminalStatus?.shell && (
+              <div
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-950/60 border border-purple-800/40 text-[10px] text-purple-300 font-mono"
+                title={`Host device shell: ${terminalStatus.shell} (with local PC environment)`}
+              >
+                <span>{terminalStatus.shell.split('/').pop()}</span>
+                <span className="text-[9px] text-purple-400/80 font-sans">local env</span>
+              </div>
+            )}
 
             {/* Interrupt (Ctrl+C) */}
             <button

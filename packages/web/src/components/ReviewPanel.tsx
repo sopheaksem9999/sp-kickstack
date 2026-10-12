@@ -6,7 +6,7 @@ import type { BridgeTask, Requirement, ReviewComment } from '@sp-kickstack/share
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog.js';
 import { addReviewComment, deleteReviewComment, fetchReviewComments, requestChanges, updateReviewComment } from '../lib/humanLoopApi.js';
 import { commentLocation, requestChangesOutcome, requestChangesState, reviewableTasks } from '../lib/reviewActions.js';
-import { profilePatch } from '../lib/agentProfile.js';
+import { hasPin, requestChangesProfile } from '../lib/agentProfile.js';
 import type { ProfileValue } from '../lib/agentProfile.js';
 import { AgentProfilePicker } from './AgentProfilePicker.js';
 
@@ -15,6 +15,8 @@ const STATE_STYLE: Record<ReviewComment['state'], string> = {
   sent: 'bg-indigo-100 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300',
   resolved: 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300',
 };
+
+const KEEP: ProfileValue = { model: null, effort: null };
 
 /** Reviewer comments per task and "Request changes" (a new agent run on the same branch). */
 export function ReviewPanel({ req, tasks }: { req: Requirement; tasks: BridgeTask[] }) {
@@ -26,7 +28,20 @@ export function ReviewPanel({ req, tasks }: { req: Requirement; tasks: BridgeTas
   const [line, setLine] = useState('');
   const [body, setBody] = useState('');
   const [confirming, setConfirming] = useState(false);
-  const [profile, setProfile] = useState<ProfileValue>({ model: null, effort: null });
+  const [profile, setProfile] = useState<ProfileValue>(KEEP);
+  const [clearPins, setClearPins] = useState(false);
+  // The tasks "Request changes" sends back are the ones with an open comment; a pin on any of them can be cleared here.
+  const openTaskIds = new Set(comments.filter((c) => c.state === 'open').map((c) => c.task_id));
+  const anyPinned = candidates.some((t) => openTaskIds.has(t.id) && hasPin(t));
+  // A Clear pins ticked before the pins went away (the tasks refreshed) must not stay in effect.
+  const clearing = clearPins && anyPinned;
+
+  // Every way out of the dialog (Keep reviewing, Escape, a click outside, a send) lands here, so a pick never leaks into the next round.
+  const closeDialog = () => {
+    setConfirming(false);
+    setProfile(KEEP);
+    setClearPins(false);
+  };
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['review-comments', req.id] });
@@ -57,16 +72,15 @@ export function ReviewPanel({ req, tasks }: { req: Requirement; tasks: BridgeTas
   });
   const remove = useMutation({ mutationFn: (id: number) => deleteReviewComment(id), onSuccess: refresh, onError: fail });
   const send = useMutation({
-    mutationFn: () => requestChanges(req.id, undefined, profilePatch(profile)),
+    mutationFn: (body: ReturnType<typeof requestChangesProfile>) => requestChanges(req.id, undefined, body),
     onSuccess: (result) => {
       const outcome = requestChangesOutcome(result);
       toast[outcome.kind](outcome.message);
-      setConfirming(false);
-      setProfile({ model: null, effort: null });
+      closeDialog();
       refresh();
     },
     onError: (err: Error) => {
-      setConfirming(false);
+      closeDialog();
       fail(err);
     },
   });
@@ -210,7 +224,7 @@ export function ReviewPanel({ req, tasks }: { req: Requirement; tasks: BridgeTas
           </div>
         ))}
 
-      <Dialog open={confirming} onOpenChange={setConfirming}>
+      <Dialog open={confirming} onOpenChange={(open) => (open ? setConfirming(true) : closeDialog())}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Request changes?</DialogTitle>
@@ -220,18 +234,27 @@ export function ReviewPanel({ req, tasks }: { req: Requirement; tasks: BridgeTas
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
-            <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">Model for this round (optional)</div>
+            <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">Pin a model for the tasks sent back (optional)</div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">The pin stays for later runs of those tasks until you clear it.</p>
             <AgentProfilePicker
               value={profile}
               onChange={setProfile}
+              disabled={clearing}
               defaultLabel="Keep each task's setting"
+              defaultChipLabel="Keep"
               className="w-full justify-between max-w-none rounded-lg border border-slate-200 dark:border-[#2e303d] bg-white dark:bg-[#1a1b23] px-3 py-2"
             />
+            {anyPinned && (
+              <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                <input type="checkbox" checked={clearPins} onChange={(e) => setClearPins(e.target.checked)} className="accent-[#7b68ee]" />
+                <span>Clear pins (use the requirement's or workspace's setting)</span>
+              </label>
+            )}
           </div>
           <DialogFooter>
             <button
               type="button"
-              onClick={() => setConfirming(false)}
+              onClick={closeDialog}
               className="px-3.5 py-2 rounded-lg border border-slate-200 dark:border-[#2e303d] text-xs font-semibold"
             >
               Keep reviewing
@@ -239,7 +262,7 @@ export function ReviewPanel({ req, tasks }: { req: Requirement; tasks: BridgeTas
             <button
               type="button"
               disabled={send.isPending}
-              onClick={() => send.mutate()}
+              onClick={() => send.mutate(requestChangesProfile(profile, clearPins, anyPinned))}
               className="px-3.5 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold disabled:opacity-40"
             >
               Send to agents

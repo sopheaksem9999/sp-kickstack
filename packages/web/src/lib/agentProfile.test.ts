@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { defaultProfileLabel, describeProfile, effectiveProfile, isValidModel, profilePatch, retryBody } from './agentProfile';
+import {
+  defaultProfileLabel,
+  describeProfile,
+  effectiveProfile,
+  hasPin,
+  isValidModel,
+  pickerLabel,
+  profileApplies,
+  profilePatch,
+  requestChangesProfile,
+  retryBody,
+} from './agentProfile';
 
 describe('describeProfile', () => {
   it('joins model and effort', () => {
@@ -92,5 +103,81 @@ describe('retryBody', () => {
   it('ignores a stale Clear pin once the task has no pin', () => {
     expect(retryBody({ model: 'opus', effort: null }, true, false)).toEqual({ model: 'opus' });
     expect(retryBody({ model: null, effort: null }, true, false)).toEqual({});
+  });
+});
+
+describe('requestChangesProfile', () => {
+  it('sends nothing when the picker is left on Keep', () => {
+    expect(requestChangesProfile({ model: null, effort: null }, false, true)).toEqual({});
+    expect(requestChangesProfile({ model: null, effort: null }, false, false)).toEqual({});
+  });
+  it('pins only what was picked for the round', () => {
+    expect(requestChangesProfile({ model: 'opus', effort: 'max' }, false, false)).toEqual({ model: 'opus', effort: 'max' });
+    expect(requestChangesProfile({ model: null, effort: 'high' }, false, true)).toEqual({ effort: 'high' });
+  });
+  it('clears every pin when Clear pins is on and a task has one', () => {
+    expect(requestChangesProfile({ model: 'opus', effort: 'max' }, true, true)).toEqual({ model: null, effort: null });
+    expect(requestChangesProfile({ model: null, effort: null }, true, true)).toEqual({ model: null, effort: null });
+  });
+  it('ignores a stale Clear pins once no task has a pin', () => {
+    expect(requestChangesProfile({ model: 'opus', effort: null }, true, false)).toEqual({ model: 'opus' });
+    expect(requestChangesProfile({ model: null, effort: null }, true, false)).toEqual({});
+  });
+});
+
+describe('hasPin', () => {
+  it('is true when the task pins a model or an effort', () => {
+    expect(hasPin({ model_override: 'opus', effort_override: null })).toBe(true);
+    expect(hasPin({ model_override: null, effort_override: 'low' })).toBe(true);
+    expect(hasPin({ model_override: 'opus', effort_override: 'max' })).toBe(true);
+  });
+  it('is false for an unpinned task', () => {
+    expect(hasPin({ model_override: null, effort_override: null })).toBe(false);
+    expect(hasPin({})).toBe(false);
+  });
+});
+
+describe('profileApplies', () => {
+  it('is false for the manual engine, which has no model or effort to set', () => {
+    expect(profileApplies('manual')).toBe(false);
+  });
+  it('is true for engines that take them, and while the project is still unknown', () => {
+    expect(profileApplies('stoneforge')).toBe(true);
+    expect(profileApplies('clinekanban')).toBe(true);
+    expect(profileApplies(undefined)).toBe(true);
+  });
+});
+
+describe('pickerLabel', () => {
+  const workspace = (model: string | null, effort: 'low' | 'high' | null) => ({ value: { model, effort }, from: 'workspace' });
+
+  it('shows the inherited setting while nothing is chosen', () => {
+    expect(pickerLabel({ model: null, effort: null }, workspace('sonnet', 'high'))).toEqual({
+      text: 'Default: sonnet · high (workspace)',
+      title: 'Default: sonnet · high (workspace)',
+    });
+  });
+  it('falls back when nothing is chosen or inherited', () => {
+    expect(pickerLabel({ model: null, effort: null }, workspace(null, null)).text).toBe('Engine default');
+    expect(pickerLabel({ model: null, effort: null }, undefined, "Keep each task's setting").text).toBe("Keep each task's setting");
+  });
+  it('shows a full choice as it is', () => {
+    expect(pickerLabel({ model: 'opus', effort: 'max' }, workspace('sonnet', 'low'))).toEqual({ text: 'opus · max', title: 'opus · max' });
+  });
+  it('adds the inherited effort next to a chosen model, and says where it comes from', () => {
+    expect(pickerLabel({ model: 'opus', effort: null }, workspace(null, 'low'))).toEqual({
+      text: 'opus · low',
+      title: 'opus · low (effort from workspace)',
+    });
+  });
+  it('adds the inherited model next to a chosen effort', () => {
+    expect(pickerLabel({ model: null, effort: 'high' }, workspace('sonnet', null))).toEqual({
+      text: 'sonnet · high',
+      title: 'sonnet · high (model from workspace)',
+    });
+  });
+  it('shows a partial choice alone when nothing else is inherited', () => {
+    expect(pickerLabel({ model: null, effort: 'high' }, workspace(null, null))).toEqual({ text: 'high effort', title: 'high effort' });
+    expect(pickerLabel({ model: 'opus', effort: null })).toEqual({ text: 'opus', title: 'opus' });
   });
 });

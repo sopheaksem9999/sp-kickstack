@@ -3,7 +3,7 @@ import { Cpu } from 'lucide-react';
 import type { ReasoningEffort } from '@sp-kickstack/shared';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.js';
 import { cn } from './ui/sheet.js';
-import { EFFORTS, MODEL_SUGGESTIONS, defaultProfileLabel, describeProfile, isValidModel } from '../lib/agentProfile.js';
+import { EFFORTS, MODEL_SUGGESTIONS, isValidModel, pickerLabel } from '../lib/agentProfile.js';
 import type { ProfileValue } from '../lib/agentProfile.js';
 
 function Chip({ pressed, disabled, title, onClick, children }: { pressed: boolean; disabled?: boolean; title?: string; onClick: () => void; children: ReactNode }) {
@@ -30,12 +30,14 @@ interface FieldsProps {
   value: ProfileValue;
   onChange: (next: ProfileValue) => void;
   disabled?: boolean;
-  /** Tooltip for the two "Default" chips, e.g. what Default means here. */
+  /** Tooltip for the two default chips, e.g. what the default means here. */
   defaultTitle?: string;
+  /** Text of the two default chips; "Keep" where leaving it alone keeps what is already set. */
+  defaultChipLabel?: string;
 }
 
 /** The model and effort choices on their own, for a popover or a form that already has its own container. */
-export function AgentProfileFields({ value, onChange, disabled, defaultTitle }: FieldsProps) {
+export function AgentProfileFields({ value, onChange, disabled, defaultTitle, defaultChipLabel = 'Default' }: FieldsProps) {
   const custom = value.model && !MODEL_SUGGESTIONS.includes(value.model) ? value.model : '';
   const [draft, setDraft] = useState(custom);
   const hintId = useId();
@@ -63,7 +65,7 @@ export function AgentProfileFields({ value, onChange, disabled, defaultTitle }: 
         <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Model</div>
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Model">
           <Chip pressed={value.model === null} disabled={disabled} title={defaultTitle} onClick={() => pickModel(null)}>
-            Default
+            {defaultChipLabel}
           </Chip>
           {MODEL_SUGGESTIONS.map((m) => (
             <Chip key={m} pressed={value.model === m} disabled={disabled} onClick={() => pickModel(m)}>
@@ -100,7 +102,7 @@ export function AgentProfileFields({ value, onChange, disabled, defaultTitle }: 
         <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Effort</div>
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Effort">
           <Chip pressed={value.effort === null} disabled={disabled} title={defaultTitle} onClick={() => pickEffort(null)}>
-            Default
+            {defaultChipLabel}
           </Chip>
           {EFFORTS.map((e) => (
             <Chip key={e} pressed={value.effort === e} disabled={disabled} onClick={() => pickEffort(e)}>
@@ -119,18 +121,20 @@ interface PickerProps {
   value: ProfileValue;
   /** Called on every choice; the caller decides when to save. */
   onChange: (next: ProfileValue) => void;
-  /** What Default resolves to, e.g. the workspace's setting; builds the trigger text when `defaultLabel` is not given. */
+  /** What Default resolves to, e.g. the workspace's setting; a choice of only one part shows the inherited other part too. */
   inherited?: { value: Partial<ProfileValue> | null | undefined; from: string };
-  /** Trigger text while nothing is chosen; falls back to the inherited setting, then "Engine default". */
+  /** Trigger text while nothing is chosen and nothing is inherited; falls back to "Engine default". */
   defaultLabel?: string;
+  /** Text of the two default chips in the options; "Keep" where leaving it alone keeps what is already set. */
+  defaultChipLabel?: string;
   disabled?: boolean;
   /** Extra classes for the trigger button. */
   className?: string;
 }
 
 /** A compact model and effort picker: a button showing the current choice that opens the options. */
-export function AgentProfilePicker({ value, onChange, inherited, defaultLabel, disabled, className }: PickerProps) {
-  const label = describeProfile(value) || defaultLabel || defaultProfileLabel(inherited);
+export function AgentProfilePicker({ value, onChange, inherited, defaultLabel, defaultChipLabel, disabled, className }: PickerProps) {
+  const { text: label, title } = pickerLabel(value, inherited, defaultLabel);
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -138,7 +142,7 @@ export function AgentProfilePicker({ value, onChange, inherited, defaultLabel, d
           type="button"
           disabled={disabled}
           aria-label="Agent model and effort"
-          title={label}
+          title={title}
           className={cn(
             'inline-flex items-center gap-1.5 max-w-[18rem] rounded-md text-[11px] font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7b68ee]/50 disabled:opacity-50',
             className
@@ -149,7 +153,13 @@ export function AgentProfilePicker({ value, onChange, inherited, defaultLabel, d
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-80">
-        <AgentProfileFields value={value} onChange={onChange} disabled={disabled} defaultTitle={defaultLabel ?? (inherited ? defaultProfileLabel(inherited) : undefined)} />
+        <AgentProfileFields
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          defaultChipLabel={defaultChipLabel}
+          defaultTitle={pickerLabel({ model: null, effort: null }, inherited, defaultLabel).text}
+        />
       </PopoverContent>
     </Popover>
   );

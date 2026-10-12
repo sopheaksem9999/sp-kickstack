@@ -1,4 +1,4 @@
-import type { ReasoningEffort } from '@sp-kickstack/shared';
+import type { EngineType, ReasoningEffort } from '@sp-kickstack/shared';
 
 export const MODEL_SUGGESTIONS = ['opus', 'sonnet', 'haiku', 'fable'];
 export const EFFORTS: ReasoningEffort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -59,4 +59,45 @@ export function retryBody(
   hasPin: boolean
 ): { model?: string | null; effort?: ReasoningEffort | null } {
   return clearPin && hasPin ? { model: null, effort: null } : profilePatch(value);
+}
+
+/** Body for Request changes: Clear pins (only while a task being sent back has a pin) sends null for both parts, otherwise just what was picked. */
+export function requestChangesProfile(
+  value: ProfileValue,
+  clearPins: boolean,
+  anyPinned: boolean
+): { model?: string | null; effort?: ReasoningEffort | null } {
+  return retryBody(value, clearPins, anyPinned);
+}
+
+/** Whether a task carries a model or effort pin (set by Retry with or Request changes). */
+export function hasPin(task: { model_override?: string | null; effort_override?: ReasoningEffort | null }): boolean {
+  return Boolean(task.model_override || task.effort_override);
+}
+
+/** Whether the engine takes a model or effort; the manual engine ignores both, so a pin there does nothing. */
+export function profileApplies(engineType: EngineType | undefined): boolean {
+  return engineType !== 'manual';
+}
+
+/**
+ * Picker trigger text and tooltip. While nothing is chosen it names the inherited setting. A choice of only
+ * a model or only an effort also shows the part it inherits, and the tooltip says where that part comes from.
+ */
+export function pickerLabel(
+  value: Partial<ProfileValue> | null | undefined,
+  inherited?: { value: Partial<ProfileValue> | null | undefined; from: string } | null,
+  fallback = 'Engine default'
+): { text: string; title: string } {
+  if (!describeProfile(value)) {
+    const text = defaultProfileLabel(inherited, fallback);
+    return { text, title: text };
+  }
+  const effective = effectiveProfile([{ value, from: 'chosen' }, ...(inherited ? [inherited] : [])]);
+  const text = describeProfile({ model: effective.model, effort: effective.effort });
+  const inheritedParts = [
+    ...(effective.modelFrom && effective.modelFrom !== 'chosen' ? [`model from ${effective.modelFrom}`] : []),
+    ...(effective.effortFrom && effective.effortFrom !== 'chosen' ? [`effort from ${effective.effortFrom}`] : []),
+  ];
+  return { text, title: inheritedParts.length ? `${text} (${inheritedParts.join(', ')})` : text };
 }

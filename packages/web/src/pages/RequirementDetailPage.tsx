@@ -28,7 +28,7 @@ import { ReviewPanel } from '../components/ReviewPanel.js';
 import { TaskNoteDialog } from '../components/TaskNoteDialog.js';
 import { RequirementAgentControl } from '../components/RequirementAgentControl.js';
 import { RetryWithProfile } from '../components/RetryWithProfile.js';
-import { describeProfile } from '../lib/agentProfile.js';
+import { describeProfile, hasPin, profileApplies } from '../lib/agentProfile.js';
 import { BridgeTask, RequirementStatus, BranchMergePolicy } from '@sp-kickstack/shared';
 import { toast } from 'sonner';
 import {
@@ -184,6 +184,11 @@ export function RequirementDetailPage() {
     queryFn: () => fetchProjects(req?.workspace_id || 'default'),
     enabled: Boolean(req),
   });
+
+  // The manual engine takes no model or effort, so a pin on its tasks does nothing: show neither the pin nor "Retry with".
+  const engineByProject = new Map(allProjects.map((p) => [p.name, p.engine_type]));
+  const takesProfile = (task: BridgeTask) => profileApplies(engineByProject.get(task.project));
+  const showsPin = (task: BridgeTask) => takesProfile(task) && hasPin(task);
 
   const projectsMutation = useMutation({
     mutationFn: (newProjects: string[]) => updateRequirementProjects(id!, newProjects),
@@ -681,17 +686,17 @@ export function RequirementDetailPage() {
                         )}
                       </div>
 
-                      {(task.model || task.effort || task.model_override || task.effort_override) && (
+                      {(task.model || task.effort || showsPin(task)) && (
                         <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-500 dark:text-slate-400">
                           {(task.model || task.effort) && (
-                            <span title="Model and effort this run uses">{describeProfile({ model: task.model, effort: task.effort })}</span>
+                            <span title="Model and effort sent with this run">{describeProfile({ model: task.model, effort: task.effort })}</span>
                           )}
-                          {(task.model_override || task.effort_override) && (
+                          {showsPin(task) && (
                             <span
                               title="Pinned for this task by Retry or Request changes"
                               className="px-1.5 py-px rounded bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 font-sans font-bold"
                             >
-                              pinned
+                              pinned: {describeProfile({ model: task.model_override, effort: task.effort_override })}
                             </span>
                           )}
                         </div>
@@ -739,12 +744,12 @@ export function RequirementDetailPage() {
                             <button
                               onClick={() => retryMutation.mutate(task.id)}
                               disabled={retryMutation.isPending}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-l bg-amber-100 dark:bg-amber-950/40 hover:bg-amber-200 dark:hover:bg-amber-900/50 text-[10px] font-bold text-amber-700 dark:text-amber-300 transition-colors"
+                              className={`flex items-center gap-1 px-2.5 py-1 ${takesProfile(task) ? 'rounded-l' : 'rounded'} bg-amber-100 dark:bg-amber-950/40 hover:bg-amber-200 dark:hover:bg-amber-900/50 text-[10px] font-bold text-amber-700 dark:text-amber-300 transition-colors`}
                               title="Send this task to its engine again on the same branch (the old engine task is cancelled)"
                             >
                               <span>Retry</span>
                             </button>
-                            <RetryWithProfile task={task} />
+                            {takesProfile(task) && <RetryWithProfile task={task} />}
                           </div>
                         )}
 

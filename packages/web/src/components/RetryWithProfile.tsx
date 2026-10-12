@@ -66,16 +66,16 @@ export function RetryWithProfile({ task }: { task: Pick<BridgeTask, 'id' | 'req_
         <div>
           <div className="text-xs font-bold text-slate-800 dark:text-slate-100">Retry with</div>
           <p className="text-[11px] text-slate-500 dark:text-slate-400">
-            {pin ? `Pinned now: ${pin}. ` : ''}Default keeps this task's setting; your choice is pinned on the task and used for its later runs.
+            {pin ? `Pinned now: ${pin}. ` : ''}Keep leaves this task's setting as it is; a choice here is pinned on the task and used for its later runs.
           </p>
         </div>
 
-        <AgentProfileFields value={value} onChange={setValue} disabled={clearing} defaultTitle="Keep this task's current setting" />
+        <AgentProfileFields value={value} onChange={setValue} disabled={clearing} defaultChipLabel="Keep" defaultTitle="Keep this task's current setting" />
 
         {pin && (
           <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
             <input type="checkbox" checked={clearPin} onChange={(e) => setClearPin(e.target.checked)} className="accent-[#7b68ee]" />
-            <span>Clear pin (use the requirement's setting again)</span>
+            <span>Clear pin (use the requirement's or workspace's setting)</span>
           </label>
         )}
 

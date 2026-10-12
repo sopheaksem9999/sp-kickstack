@@ -3,6 +3,7 @@ import {
   Project,
   Requirement,
   BridgeTask,
+  QueueTask,
   Link,
   BridgeEvent,
   CreateRequirementInput,
@@ -167,6 +168,26 @@ export async function cancelRequirement(id: string): Promise<{ ok: boolean }> {
 
 export async function fetchRequirementGraph(id: string): Promise<{ tasks: BridgeTask[]; links: Link[] }> {
   return request(`${BASE}/requirements/${id}/graph`);
+}
+
+export interface FetchTasksParams {
+  req?: string;
+  project?: string;
+  status?: string;
+  /** Only tasks of requirements in this workspace. */
+  workspace?: string;
+  /** Comma separated roles, for example "goal,ticket". */
+  role?: string;
+}
+
+/** Tasks with their requirement's title, priority and status; every filter is optional. */
+export async function fetchTasks(params: FetchTasksParams = {}): Promise<QueueTask[]> {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) query.set(key, value);
+  }
+  const qs = query.toString();
+  return request(`${BASE}/tasks${qs ? `?${qs}` : ''}`);
 }
 
 export async function markTaskDone(taskId: number): Promise<{ ok: boolean }> {

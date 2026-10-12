@@ -194,9 +194,18 @@ export interface BridgeTask {
   /** Model / effort pinned for this task by Retry or Request changes (null = inherit). */
   model_override?: string | null;
   effort_override?: ReasoningEffort | null;
+  /** Engine dispatch attempts so far (the retry sweep and Retry restart it at 1). */
+  attempts?: number;
   created_at: string;
   updated_at: string;
 }
+
+/** A task as GET /api/tasks lists it: the task plus its requirement's title, priority and status. */
+export type QueueTask = BridgeTask & {
+  req_title: string | null;
+  req_priority: Priority | null;
+  req_status: RequirementStatus | null;
+};
 
 export interface Link {
   id: number;

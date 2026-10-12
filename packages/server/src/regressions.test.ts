@@ -1721,3 +1721,125 @@ describe('Review fixes: prompt-safety gaps', () => {
     expect(body.match(/<\s*\/\s*untrusted_input/gi)).toHaveLength(1);
   });
 });
+
+describe('Agent Queue: GET /api/tasks filters and requirement metadata', () => {
+  let h: Harness;
+  let defaultReqId: string;
+  let otherReqId: string;
+  let questionId: number;
+
+  beforeEach(async () => {
+    h = makeHarness();
+    new WorkspaceService(h.db).createWorkspace({ id: 'ws-b', name: 'Workspace B' });
+    const repoOps = path.join(h.ws, 'ops');
+    fs.mkdirSync(repoOps, { recursive: true });
+    const opsEngine = new FakeEngineServer('http://127.0.0.1:3497');
+    h.adapters.ops = new StoneforgeAdapter('http://127.0.0.1:3497', repoOps, undefined, opsEngine.fetch);
+    h.projectService.registerProject({
+      name: 'ops', workspace_id: 'ws-b', kind: 'backend', repo_path: repoOps, engine_type: 'stoneforge',
+      engine_url: 'http://127.0.0.1:3497', base_branch: 'main', enabled: true,
+    });
+
+    const created = await testRequest(h.app, 'POST', '/api/requirements', {
+      body: {
+        title: 'Queue Test Feature',
+        goal: 'Test queue enrichment',
+        acceptance_criteria: ['Shown in the queue'],
+        affected_projects: ['backend', 'mobile'],
+        priority: 'high',
+      },
+    });
+    expect(created.status).toBe(201);
+    defaultReqId = created.body.id;
+    expect((await testRequest(h.app, 'POST', `/api/requirements/${defaultReqId}/ready`)).status).toBe(200);
+
+    const other = await testRequest(h.app, 'POST', '/api/requirements', {
+      body: {
+        title: 'Other Workspace Feature',
+        goal: 'Lives in another workspace',
+        acceptance_criteria: ['Never shown in the default queue'],
+        affected_projects: ['ops'],
+        priority: 'low',
+        workspace_id: 'ws-b',
+      },
+    });
+    expect(other.status).toBe(201);
+    otherReqId = other.body.id;
+    expect((await testRequest(h.app, 'POST', `/api/requirements/${otherReqId}/ready`)).status).toBe(200);
+
+    // An open question for a person is a bridge task with role 'question'; the queue must not list it.
+    const now = new Date().toISOString();
+    questionId = Number(
+      h.db
+        .prepare(
+          `INSERT INTO bridge_tasks (req_id, project, role, title, status, revision, depth, attempts, created_at, updated_at)
+           VALUES (?, 'backend', 'question', 'Which login flow?', 'needs_human', 1, 0, 0, ?, ?)`
+        )
+        .run(defaultReqId, now, now).lastInsertRowid
+    );
+  });
+  afterEach(() => h.db.close());
+
+  it('joins the parent requirement title, priority and status onto every task', async () => {
+    const res = await testRequest(h.app, 'GET', `/api/tasks?req=${defaultReqId}`);
+    expect(res.status).toBe(200);
+    const goals = (res.body as any[]).filter((t) => t.role === 'goal');
+    expect(goals.map((t) => t.project).sort()).toEqual(['backend', 'mobile']);
+    const reqStatus = (h.db.prepare('SELECT status FROM requirements WHERE id = ?').get(defaultReqId) as any).status;
+    for (const t of res.body as any[]) {
+      expect(t.req_title).toBe('Queue Test Feature');
+      expect(t.req_priority).toBe('high');
+      expect(t.req_status).toBe(reqStatus);
+    }
+  });
+
+  it('keeps listing every task, oldest first, when no filter is given', async () => {
+    const res = await testRequest(h.app, 'GET', '/api/tasks');
+    expect(res.status).toBe(200);
+    const ids = (res.body as any[]).map((t) => t.id);
+    expect(ids).toEqual([...ids].sort((a, b) => a - b));
+    const reqIds = new Set((res.body as any[]).map((t) => t.req_id));
+    expect(reqIds).toEqual(new Set([defaultReqId, otherReqId]));
+    expect(ids).toContain(questionId);
+  });
+
+  it('?workspace= keeps only tasks of that workspace', async () => {
+    const inDefault = await testRequest(h.app, 'GET', '/api/tasks?workspace=default');
+    expect(inDefault.status).toBe(200);
+    expect(new Set((inDefault.body as any[]).map((t) => t.req_id))).toEqual(new Set([defaultReqId]));
+
+    const inOther = await testRequest(h.app, 'GET', '/api/tasks?workspace=ws-b');
+    expect(inOther.status).toBe(200);
+    expect((inOther.body as any[]).map((t) => t.project)).toEqual(['ops']);
+    expect((inOther.body as any[])[0].req_title).toBe('Other Workspace Feature');
+
+    const unknown = await testRequest(h.app, 'GET', '/api/tasks?workspace=nope');
+    expect(unknown.status).toBe(200);
+    expect(unknown.body).toEqual([]);
+  });
+
+  it('?role= takes a comma separated list and leaves out question rows', async () => {
+    const agentWork = await testRequest(h.app, 'GET', '/api/tasks?workspace=default&role=goal,ticket');
+    expect(agentWork.status).toBe(200);
+    const roles = new Set((agentWork.body as any[]).map((t) => t.role));
+    expect(roles).toEqual(new Set(['goal']));
+    expect((agentWork.body as any[]).map((t) => t.id)).not.toContain(questionId);
+
+    const questions = await testRequest(h.app, 'GET', '/api/tasks?role=question');
+    expect((questions.body as any[]).map((t) => t.id)).toEqual([questionId]);
+  });
+
+  it('?status= keeps only tasks in that status, and still combines with req and project', async () => {
+    const queued = await testRequest(h.app, 'GET', '/api/tasks?status=queued');
+    expect(queued.status).toBe(200);
+    expect((queued.body as any[]).length).toBeGreaterThan(0);
+    expect((queued.body as any[]).every((t) => t.status === 'queued')).toBe(true);
+
+    const done = await testRequest(h.app, 'GET', '/api/tasks?status=done');
+    expect(done.status).toBe(200);
+    expect(done.body).toEqual([]);
+
+    const one = await testRequest(h.app, 'GET', `/api/tasks?req=${defaultReqId}&project=backend&status=queued`);
+    expect((one.body as any[]).map((t) => t.project)).toEqual(['backend']);
+  });
+});

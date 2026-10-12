@@ -39,3 +39,28 @@ describe('api wrappers surface server errors', () => {
     await expect(api.markTaskDone(1)).resolves.toEqual({ ok: true });
   });
 });
+
+describe('fetchTasks', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const lastUrl = () => String((vi.mocked(fetch).mock.calls[0] as unknown[])[0]);
+
+  it('asks for every task when no filter is given', async () => {
+    respondWith(200, []);
+    await api.fetchTasks();
+    expect(lastUrl()).toBe('/api/tasks');
+  });
+
+  it('sends only the filters that are set', async () => {
+    respondWith(200, []);
+    await api.fetchTasks({ workspace: 'default', role: 'goal,ticket', status: '', project: undefined });
+    const url = new URL(lastUrl(), 'http://localhost');
+    expect(url.pathname).toBe('/api/tasks');
+    expect(Object.fromEntries(url.searchParams)).toEqual({ workspace: 'default', role: 'goal,ticket' });
+  });
+
+  it('rejects with the server message', async () => {
+    respondWith(500, { error: 'Database is locked' });
+    await expect(api.fetchTasks()).rejects.toThrow('Database is locked');
+  });
+});

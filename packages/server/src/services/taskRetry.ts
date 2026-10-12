@@ -1,5 +1,5 @@
 import { AppDatabase } from '../db/index.js';
-import { BridgeTask } from '@sp-kickstack/shared';
+import { AgentProfileInput, AgentProfileInputSchema, BridgeTask } from '@sp-kickstack/shared';
 import { HttpError, conflict } from '../lib/httpError.js';
 import type { EngineAdapter } from '../adapters/types.js';
 import { isRateLimit } from '../adapters/rateLimit.js';
@@ -48,6 +48,8 @@ export interface RerunOptions {
   stopped?: string[];
   /** Forget the last merge: the new commits must be merged again. */
   clearMerge?: boolean;
+  /** Model/effort to pin on the task for this run and the ones after it (already parsed): undefined keeps the pin, null clears it. */
+  profile?: AgentProfileInput;
 }
 
 /**
@@ -64,16 +66,21 @@ export async function rerunTask(
   if (!opts.from.includes(task.status)) throw conflict(`Task #${task.id} is ${task.status}`);
   const body = setBridgeNote(task.body_md || '', opts.noteKind, opts.note);
   const clear = opts.clearMerge ? 1 : 0;
+  const pick = <T>(next: T | null | undefined, current: T | null | undefined) => (next === undefined ? current ?? null : next);
+  const modelOverride = pick(opts.profile?.model, task.model_override);
+  const effortOverride = pick(opts.profile?.effort, task.effort_override);
+  // The old run is gone: model/effort stay empty until the next dispatch records what that run uses.
   const claimed = db
     .prepare(`
       UPDATE bridge_tasks
       SET status = 'pending', engine_task_id = NULL, engine_status_raw = NULL, engine_url = NULL, last_error = NULL,
-          paused_until = NULL, attempts = 1, body_md = ?, updated_at = ?,
+          paused_until = NULL, attempts = 1, body_md = ?, updated_at = ?, model = NULL, effort = NULL,
+          model_override = ?, effort_override = ?,
           merged_at = CASE WHEN ? = 1 THEN NULL ELSE merged_at END,
           merge_sha = CASE WHEN ? = 1 THEN NULL ELSE merge_sha END
       WHERE id = ? AND status = ? AND engine_task_id IS ?
     `)
-    .run(body, new Date().toISOString(), clear, clear, task.id, task.status, task.engine_task_id ?? null);
+    .run(body, new Date().toISOString(), modelOverride, effortOverride, clear, clear, task.id, task.status, task.engine_task_id ?? null);
   if (claimed.changes !== 1) {
     throw conflict(`Task #${task.id} changed meanwhile (another retry or review?); refresh and try again`);
   }
@@ -94,13 +101,14 @@ export async function rerunTask(
     .prepare(`
       UPDATE bridge_tasks
       SET status = ?, engine_task_id = ?, engine_status_raw = ?, engine_url = ?, last_error = ?,
-          paused_until = ?, attempts = ?, body_md = ?, merged_at = ?, merge_sha = ?, updated_at = ?
+          paused_until = ?, attempts = ?, body_md = ?, merged_at = ?, merge_sha = ?, updated_at = ?,
+          model = ?, effort = ?, model_override = ?, effort_override = ?
       WHERE id = ? AND status = 'pending' AND engine_task_id IS NULL
     `)
     .run(
       task.status, task.engine_task_id, task.engine_status_raw ?? null, task.engine_url ?? null, task.last_error ?? null,
       task.paused_until ?? null, task.attempts, task.body_md ?? null, task.merged_at ?? null, task.merge_sha ?? null,
-      new Date().toISOString(), task.id
+      new Date().toISOString(), task.model ?? null, task.effort ?? null, task.model_override ?? null, task.effort_override ?? null, task.id
     );
   // Cancelled meanwhile: track the old agent so the cancel retry stops it.
   if (restored.changes === 0) {
@@ -117,14 +125,18 @@ export async function rerunTask(
 /**
  * Reset a stopped goal/ticket so it can be dispatched again on the same branch: the old
  * engine task is cancelled (so no orphan agent keeps working), attempts restart at 1, and
- * the prompt gets a note to continue from what is already on the branch.
+ * the prompt gets a note to continue from what is already on the branch. `profile` pins a
+ * model/effort on the task (undefined keeps its pin, null clears it).
  */
 export async function prepareRetry(
   db: AppDatabase,
   taskId: number,
   role: 'goal' | 'ticket',
-  adapterFor: (project: string) => EngineAdapter
+  adapterFor: (project: string) => EngineAdapter,
+  profile?: AgentProfileInput
 ): Promise<BridgeTask> {
+  // A bad model/effort is refused (400) before anything is read, claimed or sent.
+  const parsedProfile = AgentProfileInputSchema.parse(profile ?? {});
   const task = db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(taskId) as TaskRow | undefined;
   if (!task || task.role !== role) throw new HttpError(404, `${role === 'goal' ? 'Goal' : 'Ticket'} #${taskId} not found`);
   if (!RETRYABLE.includes(task.status)) {
@@ -153,7 +165,7 @@ export async function prepareRetry(
   const note = `## Retry\nA previous attempt stopped (${reason}). ${
     task.branch ? `Continue from the commits already on \`${task.branch}\`.` : 'Start again from the current code.'
   }\n`;
-  await rerunTask(db, task, adapterFor, { from: RETRYABLE, noteKind: 'retry', note });
+  await rerunTask(db, task, adapterFor, { from: RETRYABLE, noteKind: 'retry', note, profile: parsedProfile });
 
   db.prepare("INSERT INTO events (req_id, task_id, type, payload, read, at) VALUES (?, ?, 'task_retried', ?, 0, ?)").run(
     task.req_id,

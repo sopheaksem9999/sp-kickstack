@@ -626,9 +626,9 @@ export function createApp(deps: AppDependencies): Express {
       if (!task) return res.status(404).json({ error: 'Task not found' });
       const retried =
         task.role === 'goal'
-          ? await deps.fanOutService.retryGoal(taskId)
+          ? await deps.fanOutService.retryGoal(taskId, req.body ?? {})
           : task.role === 'ticket'
-          ? await deps.ticketService.retryTicket(taskId)
+          ? await deps.ticketService.retryTicket(taskId, req.body ?? {})
           : null;
       if (!retried) return res.status(409).json({ error: `A ${task.role} task cannot be retried` });
       deps.broadcaster.broadcast({ type: 'task_retried', payload: { taskId, status: retried.status } });

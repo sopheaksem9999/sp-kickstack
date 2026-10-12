@@ -150,6 +150,7 @@ export class ReviewService {
       try {
         await rerunTask(this.db, task, this.getAdapter, {
           from: REVIEWABLE, noteKind: 'review', note: reviewNote(round, task.branch, comments), stopped: FINISHED, clearMerge: true,
+          profile: { model: parsed.model, effort: parsed.effort },
         });
       } catch (err: any) {
         results.push({ taskId: task.id, ok: false, error: err?.message || String(err) });

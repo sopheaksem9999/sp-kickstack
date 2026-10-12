@@ -34,3 +34,8 @@ export function resolveAgentProfile(db: AppDatabase, taskId: number): AgentProfi
 export function engineProfile(profile: AgentProfile): { model?: string; effort?: ReasoningEffort } {
   return { ...(profile.model ? { model: profile.model } : {}), ...(profile.effort ? { effort: profile.effort } : {}) };
 }
+
+/** What a run records: a manual project runs no agent, so no model or effort is claimed for it. */
+export function recordedProfile(profile: AgentProfile, engineType: string | undefined): AgentProfile {
+  return engineType === 'manual' ? { model: null, effort: null } : profile;
+}

@@ -2,7 +2,7 @@ import { AppDatabase } from '../db/index.js';
 import { ProjectService } from './projectService.js';
 import { RequirementService } from './requirementService.js';
 import { EngineAdapter } from '../adapters/types.js';
-import { BridgeTask } from '@sp-kickstack/shared';
+import { AgentProfileInput, BridgeTask } from '@sp-kickstack/shared';
 import { oneLine, wrapUntrusted } from '../lib/promptSafety.js';
 import { HttpError, conflict } from '../lib/httpError.js';
 import { RequirementStatus, normalizeMergePolicy } from '@sp-kickstack/shared';
@@ -12,7 +12,7 @@ import { BranchService, branchInstructions, taskBranchName } from './branchServi
 import { isRateLimit } from '../adapters/rateLimit.js';
 import { pauseForRateLimit } from './rateLimitPause.js';
 import { prepareRetry } from './taskRetry.js';
-import { resolveAgentProfile, engineProfile } from './agentProfile.js';
+import { resolveAgentProfile, engineProfile, recordedProfile } from './agentProfile.js';
 
 export type AdapterFactory = (projectName: string) => EngineAdapter;
 
@@ -203,6 +203,7 @@ ${wrapUntrusted('requirement', requirementMd)}
         this.branches.ensureTaskBranch(taskId);
         const adapter = this.getAdapter(task.project);
         const profile = resolveAgentProfile(this.db, taskId);
+        const recorded = recordedProfile(profile, this.projectService.getProject(task.project)?.engine_type);
         const engineTask = await adapter.createGoal({ title: task.title, bodyMd: task.body_md || '', ...engineProfile(profile) });
         const stored = this.db
           .prepare(`
@@ -211,7 +212,7 @@ ${wrapUntrusted('requirement', requirementMd)}
                 model = ?, effort = ?, updated_at = ?
             WHERE id = ? AND status = 'pending'
           `)
-          .run(engineTask.id, engineTask.rawStatus || null, engineTask.url || null, profile.model, profile.effort, new Date().toISOString(), taskId);
+          .run(engineTask.id, engineTask.rawStatus || null, engineTask.url || null, recorded.model, recorded.effort, new Date().toISOString(), taskId);
         if (stored.changes === 0) {
           await cancelOrphan(this.db, adapter, taskId, engineTask.id);
         }
@@ -296,9 +297,9 @@ ${wrapUntrusted('requirement', requirementMd)}
     return { cancelled, failed };
   }
 
-  /** A person retries a stopped goal: new engine task on the same branch, attempts reset. */
-  public async retryGoal(taskId: number): Promise<BridgeTask> {
-    const task = await prepareRetry(this.db, taskId, 'goal', this.getAdapter);
+  /** A person retries a stopped goal: new engine task on the same branch, attempts reset; `profile` pins a model/effort. */
+  public async retryGoal(taskId: number, profile?: AgentProfileInput): Promise<BridgeTask> {
+    const task = await prepareRetry(this.db, taskId, 'goal', this.getAdapter, profile);
     await this.dispatchGoal(taskId);
     const goals = this.db
       .prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND role = 'goal' AND status <> 'cancelled'")

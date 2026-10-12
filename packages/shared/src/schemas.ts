@@ -288,7 +288,8 @@ export const UpdateReviewCommentInputSchema = z
   })
   .refine((v) => v.body !== undefined || v.state !== undefined, { message: 'Nothing to update' });
 
-export const RequestChangesInputSchema = z.object({
+/** Request changes may also pin a model/effort on the re-run tasks (undefined keeps their pin, null clears it). */
+export const RequestChangesInputSchema = AgentProfileInputSchema.extend({
   task_ids: z.array(z.number().int().positive()).max(50).optional(),
 });
 

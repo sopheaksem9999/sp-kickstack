@@ -3,6 +3,7 @@ import { ProjectService } from './projectService.js';
 import { LinkService } from './linkService.js';
 import { AdapterFactory } from './fanOutService.js';
 import {
+  AgentProfileInput,
   CreateTicketInput,
   TicketResponse,
   BridgeTask,
@@ -16,7 +17,7 @@ import { BranchService, branchInstructions, taskBranchName } from './branchServi
 import { isRateLimit } from '../adapters/rateLimit.js';
 import { pauseForRateLimit } from './rateLimitPause.js';
 import { prepareRetry } from './taskRetry.js';
-import { resolveAgentProfile, engineProfile } from './agentProfile.js';
+import { resolveAgentProfile, engineProfile, recordedProfile } from './agentProfile.js';
 
 function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -190,9 +191,9 @@ ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input
     };
   }
 
-  /** A person retries a stopped ticket: new engine task on the same branch, attempts reset. */
-  public async retryTicket(ticketId: number): Promise<BridgeTask> {
-    await prepareRetry(this.db, ticketId, 'ticket', this.getAdapter);
+  /** A person retries a stopped ticket: new engine task on the same branch, attempts reset; `profile` pins a model/effort. */
+  public async retryTicket(ticketId: number, profile?: AgentProfileInput): Promise<BridgeTask> {
+    await prepareRetry(this.db, ticketId, 'ticket', this.getAdapter, profile);
     try {
       await this.dispatchTicket(ticketId);
     } catch {
@@ -214,6 +215,7 @@ ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input
       this.branches.ensureTaskBranch(ticketId);
       const adapter = this.getAdapter(ticket.project);
       const profile = resolveAgentProfile(this.db, ticketId);
+      const recorded = recordedProfile(profile, this.projectService.getProject(ticket.project)?.engine_type);
       const engineTask = await adapter.createTask({
         title: ticket.title,
         bodyMd: ticket.body_md || '',
@@ -226,7 +228,7 @@ ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input
               model = ?, effort = ?, updated_at = ?
           WHERE id = ? AND status = 'pending'
         `)
-        .run(engineTask.id, engineTask.status, engineTask.rawStatus, engineTask.url || null, profile.model, profile.effort, new Date().toISOString(), ticketId);
+        .run(engineTask.id, engineTask.status, engineTask.rawStatus, engineTask.url || null, recorded.model, recorded.effort, new Date().toISOString(), ticketId);
       if (stored.changes === 0) {
         await cancelOrphan(this.db, adapter, ticketId, engineTask.id);
       }

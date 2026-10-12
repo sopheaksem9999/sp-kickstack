@@ -68,6 +68,7 @@ export class McpServer {
                     enum: ['low', 'normal', 'high', 'urgent'],
                     default: 'normal',
                   },
+                  workspace_id: { type: 'string', default: 'default', description: 'Workspace to use' },
                 },
                 required: ['title', 'goal', 'affected_projects'],
               },
@@ -95,10 +96,12 @@ export class McpServer {
             },
             {
               name: 'sp_list_projects',
-              description: 'List registered projects and engines in SP-Kickstack',
+              description: 'List registered projects and engines of one workspace in SP-Kickstack',
               inputSchema: {
                 type: 'object',
-                properties: {},
+                properties: {
+                  workspace_id: { type: 'string', default: 'default', description: 'Workspace to use' },
+                },
               },
             },
           ],
@@ -113,6 +116,7 @@ export class McpServer {
       try {
         if (toolName === 'sp_create_requirement') {
           const created = this.deps.requirementService.createRequirement({
+            workspace_id: args.workspace_id || 'default',
             title: args.title,
             goal: args.goal,
             affected_projects: args.affected_projects || ['backend'],
@@ -181,7 +185,7 @@ export class McpServer {
         }
 
         if (toolName === 'sp_list_projects') {
-          const projs = this.deps.projectService.listProjects();
+          const projs = this.deps.projectService.listProjects(args.workspace_id || 'default');
           return {
             jsonrpc: '2.0',
             id,

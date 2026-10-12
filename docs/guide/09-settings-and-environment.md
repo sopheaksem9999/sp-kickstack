@@ -9,7 +9,7 @@ Open **Settings** in the sidebar.
 
 | Tab | What it is for |
 |---|---|
-| **AI & Local Engines** | Which AI drafts requirements and answers in the AI chats (**Auto (Recommended)**, **Claude Code CLI**, **Antigravity CLI (agy)**, **Codex CLI**, **Local Ollama**, **Built-in Heuristic**), and the model for each. Save with **Save AI Configuration**. This does not affect the agents that do the work; their engines decide that. |
+| **AI & Local Engines** | Which AI drafts requirements and answers in the AI chats (**Auto (Recommended)**, **Claude Code CLI**, **Antigravity CLI (agy)**, **Codex CLI**, **Local Ollama**, **Built-in Heuristic**), and the model for each. Save with **Save AI Configuration**. This does not affect the agents that do the work: their engines decide that, unless you choose a model and effort for a workspace, a requirement or a task (see [03](03-requirements-and-fan-out.md#choose-the-agent-model-and-effort)). |
 | **Git & Branch Rules** | The default base branch and the default merge policy. See below. |
 | **Notifications** | Slack, Telegram and webhook channels, event switches and the link address. See [Notifications](07-notifications.md). |
 | **Embedded IDE (VS Code)** | A local code-server or OpenVSCode server for browsing project code: **Local Port** (8443 by default), **Custom Binary Path (Optional)**, **External or Existing IDE URL (Optional)**, **Start Server** / **Stop Server**, **Save IDE Configuration**. |
@@ -45,7 +45,7 @@ Set them in front of the start command, for example
 |---|---|---|
 | `PORT` | `4100` | Port of the bridge server. The web dev server (`npm run dev:web`) always forwards `/api` to port 4100, so change this only if you serve the web app another way. |
 | `HOST` | `127.0.0.1` | Address the server listens on. The bridge has no user login: anyone who can reach this address can use it. Use `0.0.0.0` only on a trusted network, together with `ALLOWED_HOSTS`. |
-| `WORKSPACE_DIR` | `./workspace` (relative to the folder the server starts in; `packages/server/workspace` with `npm run dev`) | Where `bridge.db`, `requirements/`, `projects.yaml` and `backups/` live. Also read by `npm run mcp`. |
+| `WORKSPACE_DIR` | `./workspace` (relative to the folder the server starts in; `packages/server/workspace` with `npm run dev`) | Where `bridge.db`, `requirements/`, `projects.yaml` and `backups/` live. Also read by `npm run mcp` (see [MCP server](#mcp-server)). |
 | `WATCH_INTERVAL_MS` | `5000` | How often (in milliseconds) the bridge checks engines, retries failed calls, reads agent outboxes and sends notifications. |
 | `AGENT_TOKEN` | not set (agent routes open) | When set, `POST /api/tickets`, `POST /api/agent/tickets` and `POST /api/agent/questions` need `Authorization: Bearer <token>`. Give agents the same value as `XTICKET_TOKEN`. |
 | `ENGINE_MAX_STARTS_PER_MINUTE` | `10` | New agents (goals, tickets) the bridge starts per project per minute. `0` = no limit. See [08](08-rate-limits-and-retry.md#the-start-limit). |
@@ -90,6 +90,47 @@ export XTICKET_TASK=<engine task id>
 With `HOST=0.0.0.0` every machine that can reach yours can use the bridge, and only the agent
 routes need the token. Use it only on a network you trust.
 
+## MCP server
+
+`npm run mcp` starts an MCP server on standard input and output, for AI tools that call MCP tools.
+It opens the same `bridge.db` as the bridge; give it the same `WORKSPACE_DIR` (see
+[01](01-getting-started.md#where-your-data-lives)).
+
+| Tool | What it does | Arguments |
+|---|---|---|
+| `sp_list_projects` | Lists the projects of one workspace with their kind, engine type and engine status. | `workspace_id` (default `default`) |
+| `sp_create_requirement` | Creates a requirement as a draft (To Do); it does not start the fan-out. | `title`, `goal` and `affected_projects` (required); `acceptance_criteria`, `user_story`, `priority` (`low`, `normal`, `high`, `urgent`), `workspace_id` (default `default`) |
+| `sp_list_requirements` | Lists the requirements of one workspace with id, title, status and projects. | `workspace_id` (default `default`) |
+| `sp_get_requirement` | Returns one requirement with its details, by id (for example `REQ-001`). | `id` (required) |
+
+### Workspace scope
+
+The tools stay inside one workspace. `workspace_id` is the id shown in brackets in the header's
+workspace selector (for example `speedx` in `Speedx (speedx)`). When you leave it out, the tool
+uses the `default` workspace, so a call without it never sees the projects of another workspace.
+An example for `sp_create_requirement`:
+
+```json
+{
+  "workspace_id": "speedx",
+  "title": "Add password reset",
+  "goal": "Users can reset a forgotten password by email.",
+  "affected_projects": ["backend", "mobile"]
+}
+```
+
+- `sp_list_projects` lists only that workspace's projects (an unknown workspace gives an empty list).
+  It used to list the projects of every workspace; pass `workspace_id` for any workspace other
+  than `default`.
+- `sp_create_requirement` creates the requirement in that workspace. Names in `affected_projects`
+  that are registered to another workspace are dropped. If none are left, it fails with a message
+  such as `backend belongs to another workspace. Pick from this workspace's repositories: web.`
+  (`belong` when it names several; `Register a project in this workspace first.` when the
+  workspace has no projects).
+- `sp_get_requirement` has no `workspace_id`: it looks a requirement up by its id.
+- The tools do not set a requirement's agent model or effort. Set them on the requirement page with
+  **Agent:** (see [03](03-requirements-and-fan-out.md#choose-the-agent-model-and-effort)).
+
 ## If something goes wrong
 
 - **The web app shows "Backend bridge server is unreachable"** after you changed `PORT`: the web
@@ -98,3 +139,6 @@ routes need the token. Use it only on a network you trust.
   `WORKSPACE_DIR`. Set it to an absolute path.
 - **Agents get `Host not allowed`**: add their host name to `ALLOWED_HOSTS`.
 - **Agents get `Invalid or missing agent token`**: `XTICKET_TOKEN` does not equal `AGENT_TOKEN`.
+- **An AI tool sees no projects, or `sp_create_requirement` fails with `... belongs to another
+  workspace`**: the call used the `default` workspace. Pass the `workspace_id` of the workspace the
+  repositories are registered to.

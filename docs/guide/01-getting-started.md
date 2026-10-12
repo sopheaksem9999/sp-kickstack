@@ -127,6 +127,10 @@ server and copy a backup over `bridge.db`.
 repository root, so without the variable it uses a different folder (`./workspace` at the root).
 Set `WORKSPACE_DIR` to the same absolute path for both.
 
+The MCP tools work inside one workspace at a time: `sp_list_projects` and `sp_create_requirement`
+take a `workspace_id` and use the `default` workspace when it is missing (see
+[MCP server](09-settings-and-environment.md#mcp-server)).
+
 ## Other scripts
 
 | Command | What it does |

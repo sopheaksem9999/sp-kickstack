@@ -65,8 +65,13 @@ them instead`). Resolving is only for your bookkeeping; it does not tell the age
    the text under it says why: "Add a comment first",
    "Available once the requirement is in review or QA", or
    "A merge is running; wait for it to finish".
-3. The dialog **Request changes?** says how many comments go to how many agents. Click
-   **Send to agents** (or **Keep reviewing**).
+3. The dialog **Request changes?** says how many comments go to how many agents.
+4. Optional: to run this round with another model or effort, click the button under
+   **Model for this round (optional)**. It reads `Keep each task's setting` until you choose.
+   Pick a model (`opus`, `sonnet`, `haiku`, `fable`, or another id typed into **Other model id**,
+   then Enter) and/or an effort (`low`, `medium`, `high`, `xhigh`, `max`). **Default** keeps each
+   task's setting.
+5. Click **Send to agents** (or **Keep reviewing**).
 
 ### What happens next
 
@@ -88,9 +93,26 @@ For each task that has open comments (it must be IN REVIEW or COMPLETE):
 3. Its comments become `sent · round N`. Rounds count per requirement.
 4. The task's earlier merge, if any, is forgotten: its new commits must go through the merge
    gate again.
+5. If you chose a model or effort in step 4, it is **pinned** on each task that is sent back, and
+   used for this new run and for every later run of that task (see
+   [Which setting wins](03-requirements-and-fan-out.md#which-setting-wins)). The task card shows a
+   **pinned** marker next to the model line.
 
 The requirement moves back to **In Progress**, and to **In Review** again when the agents finish.
 A toast says `Round N sent: X tasks started a new run`.
+
+About the model for the round:
+
+- It only touches the tasks that are sent back (the ones with open comments). Other tasks keep
+  their setting.
+- Model and effort are pinned separately: choosing only an effort leaves the model as it was
+  (the task's earlier pin, else the requirement's or the workspace's).
+- A task that could not be sent back keeps its old pin.
+- **Request changes** can replace a pin but cannot remove one. **Clear pin** is in the **Retry**
+  panel, which cards offer for tasks that can be retried (see
+  [08](08-rate-limits-and-retry.md#retry-with-a-different-model-or-effort)).
+- Whether Stoneforge honours the model and effort is **not confirmed**, and a Manual project
+  ignores them (see [02](02-projects-and-engines.md#model-and-effort-sent-to-the-engine)).
 
 Only the comments of the current round are in the new prompt; earlier rounds are not repeated.
 If an older point still matters, **Reopen** it before you press **Request changes**.

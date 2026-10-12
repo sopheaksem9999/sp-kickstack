@@ -71,6 +71,9 @@ People (or your own tools) do the work. The bridge does not poll anything for Ma
 - When the work is finished, press **Mark Done** on the task (see
   [Requirements and fan-out](03-requirements-and-fan-out.md#mark-a-task-done)).
 - A **Note** to a Manual task is accepted but goes nowhere: there is no agent to read it.
+- A model or effort you choose has no effect: no agent runs, so the bridge records none for the
+  task and its card shows no model (see
+  [Model and effort sent to the engine](#model-and-effort-sent-to-the-engine)).
 - Optional: a GitHub webhook can move tasks for you (see below).
 
 ### Stoneforge
@@ -108,6 +111,29 @@ The engine's status names are mapped to bridge statuses:
 | `needs_human`, `blocked`, and **any status not listed here** | NEEDS HUMAN |
 
 An unknown status shows as NEEDS HUMAN, so an unexpected engine status gets a person's attention.
+
+### Model and effort sent to the engine
+
+You can choose a model and an effort for the agents (see
+[Choose the agent model and effort](03-requirements-and-fan-out.md#choose-the-agent-model-and-effort)).
+The bridge decides what applies to a task each time it starts the task:
+
+1. It looks for a value in this order: the task's pin, the requirement, the workspace.
+   Model and effort are looked up separately.
+2. It adds `model` and `effort` to the JSON body of the create request (`POST /api/goals` for a
+   goal, `POST /api/tasks` for a ticket), next to the title and the prompt (`bodyMd`). A part that
+   has no value is left out, so an engine that knows nothing about them gets the same request as
+   before.
+3. It records what it sent on the task, and the task card shows it (for example `opus · high`).
+
+| Engine | What it does with `model` and `effort` |
+|---|---|
+| **Stoneforge** | **Not confirmed.** The bridge sends them; whether your Stoneforge version reads and honours them is unknown. Only the bridge's built-in fake engine was tested, and it just stores them. |
+| **Manual** | Ignored. No agent runs, so the task records no model and its card shows none. |
+
+Because of this, the model on a task card is what the bridge **sent**, not proof of what the agent
+used. If it matters to you, run one small requirement first and check in the engine which model
+the agent used.
 
 ## Engine health
 
@@ -169,11 +195,36 @@ defaults: `workspace_id: default`, `kind: other`, `base_branch: develop`, `enabl
 
 The header has a workspace selector (**All Workspaces** or one workspace). Projects and
 requirements belong to one workspace. The **Add New Workspace** button (the plus sign) next to it adds a workspace.
-**Shared Rules & Context** opens the selected workspace's shared rules and architecture notes.
-The new-requirement form mentions these rules, but the fan-out prompt does not include them
+**Shared Rules & Context** (it only appears when one workspace is selected, and on a narrow window
+only its book icon shows) opens the selected workspace's shared rules and architecture notes. The
+new-requirement form mentions these rules, but the fan-out prompt does not include them
 today. To give agents shared context, put it in the requirement text, in the repository's own
 `AGENTS.md` / `CLAUDE.md`, or in **Attachments Hub** (the names and notes of shared files are
 added to every goal prompt of the workspace).
+
+### Set the default agent model and effort for a workspace
+
+The same dialog holds the workspace's default model and effort for its agents. A requirement or
+a task can choose its own (see
+[Which setting wins](03-requirements-and-fan-out.md#which-setting-wins)).
+
+1. In the header, pick one workspace in the selector (not **All Workspaces**).
+2. Click **Shared Rules & Context**. The dialog **Shared Rules & Architecture Context** opens.
+3. Under **Default agent model & effort**, click the button. It reads `Engine default` while
+   nothing is set.
+4. Under **Model**, click **Default** (no choice) or a model (`opus`, `sonnet`, `haiku`, `fable`),
+   or type another id into **Other model id** and press Enter. Under **Effort**, click **Default**
+   or one of `low`, `medium`, `high`, `xhigh`, `max`.
+5. Click **Save Rules & Context**.
+
+Unlike the requirement's **Agent:** control, nothing here is saved until you click
+**Save Rules & Context**. A toast says `Workspace shared rules & context updated`.
+
+#### What happens next
+
+The default applies to tasks the bridge **starts after you save**, in every requirement of this
+workspace that has no choice of its own. Running agents are not changed. **Default** in the
+dialog clears the setting, and the engine decides again.
 
 ## Optional: GitHub webhook
 
@@ -198,5 +249,8 @@ For projects whose pull requests live on GitHub, point a repository webhook at
 - **Tasks fail with `Base branch "<base>" was not found in <repo>`**: create the branch, or fix
   **Base Branch**, then press **Retry** on the task.
 - **Your edits to a project disappear after a restart**: the project is in `projects.yaml`.
+- **The workspace's default model is not used by a task**: the requirement or the task has its own
+  choice, which wins (see [Which setting wins](03-requirements-and-fan-out.md#which-setting-wins)),
+  or the task was already running when you saved.
 - **A project stays Down and its failed tasks are not retried**: see
   [Troubleshooting](10-troubleshooting.md#an-engine-stays-down).

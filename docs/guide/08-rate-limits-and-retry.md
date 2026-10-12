@@ -1,7 +1,8 @@
 # 08 Rate limits and Retry
 
 This page explains how the bridge waits out engine rate limits on its own, how it retries
-failed engine calls, and when and how you retry a stopped task yourself.
+failed engine calls, and when and how you retry a stopped task yourself, also with another model
+or effort.
 
 ## When an engine is rate limited
 
@@ -108,6 +109,45 @@ The new agent starts with the commits on the branch but without the old agent's 
 To give it context, add it in a **Note** once it runs, or use the review comments (see
 [06](06-review-qa-and-merge.md)) when the work is finished.
 
+### Retry with a different model or effort
+
+A task that failed on a hard problem may do better with a stronger model, and an easy one may be
+cheaper with a smaller one. You can pin a model and effort on the task while you retry it. This is
+optional; the plain **Retry** button keeps the task's current setting.
+
+1. Next to **Retry** on the task card, click the small arrow. Its tooltip says
+   **Retry with a different model or effort**. A panel titled **Retry with** opens. If the task is
+   already pinned, it says `Pinned now: opus · high.`
+2. Under **Model**, click a model (`opus`, `sonnet`, `haiku`, `fable`), or type another id into
+   **Other model id** and press Enter. Under **Effort**, click `low`, `medium`, `high`, `xhigh` or
+   `max`. Leave **Default** where you do not want to change anything: **Default** keeps this
+   task's setting.
+3. Optional, only shown when the task has a pin: tick **Clear pin (use the requirement's setting
+   again)**. The model and effort choices are greyed out while it is ticked.
+4. Click **Retry** in the panel. The usual toast tells you the result (see the table above).
+
+#### What happens next
+
+- The bridge retries as described above, and the model and effort you picked are **pinned on the
+  task**: stored on it, used for this new run and for every later run of the task, including the
+  automatic retries after a failed start. A pin wins over the requirement's and the workspace's
+  settings (see [Which setting wins](03-requirements-and-fan-out.md#which-setting-wins)).
+- Model and effort are pinned separately. If you pick only an effort, the model still comes from the
+  requirement or the workspace, and a model you pinned earlier stays.
+- **Clear pin** removes both parts of the pin, so the requirement's and the workspace's settings
+  apply again. Without it, you cannot remove a pin, only replace it with another choice.
+- The task card shows a **pinned** marker next to the model line (for example `opus · high`). The
+  model line is blank until the new run has been sent, then it shows what the new run was sent
+  with.
+- If the old engine task cannot be stopped, nothing changes, and the old pin stays.
+
+A model id that does not start with a letter or digit, or that has characters other than letters,
+digits and `. _ : / -`, is not accepted: the panel shows a red hint, and what you typed is not
+used.
+
+Whether Stoneforge honours the model and effort is **not confirmed**, and a Manual project ignores
+them (see [02](02-projects-and-engines.md#model-and-effort-sent-to-the-engine)).
+
 ### When Retry is refused
 
 - `Task #<id> is waiting for an answer to question #<question id>; answer it (Let the agent decide is enough), then retry`:
@@ -156,6 +196,11 @@ It is not sent for rate limits. Open the requirement, read the error on the task
   engine is fine, press **Retry**.
 - **Many tasks wait for a start slot**: you started more work than the start limit allows. Wait,
   or raise `ENGINE_MAX_STARTS_PER_MINUTE`.
+- **A retried task shows no model line**: it fills in once the new run has been sent. If it stays
+  empty, the project is **Manual**, or the retry is parked by a rate limit and has not started
+  yet.
+- **The task runs with a model you did not pick**: a part you left on **Default** keeps the task's
+  own setting, so that part still comes from its earlier pin, the requirement or the workspace.
 - **FAILED tasks are not retried automatically**: they used up their 5 attempts, or the
   project's engine is marked Down (see
   [Troubleshooting](10-troubleshooting.md#an-engine-stays-down)). Press **Retry**.

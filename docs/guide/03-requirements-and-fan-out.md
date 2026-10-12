@@ -42,6 +42,72 @@ board, click the card and use **Edit Spec** in the side panel. Once fan-out has 
 panel shows **View Only** instead, and the server refuses edits with
 `Only ToDo and Ready for Dispatch stages can be edited.`
 
+## Choose the agent model and effort
+
+Optional. Without a choice, each engine runs its agents with the model and effort it is
+configured with. You can choose them for a whole workspace, for one requirement or for one task.
+
+- **Model**: the name the engine understands. The app suggests `opus`, `sonnet`, `haiku` and
+  `fable`; any other id works too (it starts with a letter or digit, then letters, digits and
+  `.` `_` `:` `/` `-`, up to 80 characters in all, for example `claude-opus-5-5`).
+- **Effort**: `low`, `medium`, `high`, `xhigh` or `max`.
+
+### Which setting wins
+
+Model and effort are worked out **separately**, every time the bridge sends a task to its engine.
+For each of them, the first line of this table that has a value is used:
+
+| Order | Where it is set | How you set it |
+|---|---|---|
+| 1 | The task (a **pin**) | **Retry** with a model ([08](08-rate-limits-and-retry.md#retry-with-a-different-model-or-effort)), or **Request changes** with **Model for this round (optional)** ([06](06-review-qa-and-merge.md#send-work-back-with-request-changes)) |
+| 2 | The requirement | **Agent:** on the requirement page (see below) |
+| 3 | The workspace | **Default agent model & effort** in **Shared Rules & Context** ([02](02-projects-and-engines.md#workspaces)) |
+| 4 | Nothing | The engine uses its own configuration |
+
+Example: the workspace says `sonnet` and `medium`, and the requirement sets only the effort
+`high`. Its tasks run as `sonnet · high`: the model comes from the workspace, the effort from the
+requirement. If you then retry one task with the model `opus`, that task runs as `opus · high`.
+
+What **Default** means depends on where you see it:
+
+- In the requirement's **Agent:** control and in the workspace dialog, **Default** means "do not
+  choose here": the next line of the table decides.
+- In the **Retry** panel and in **Request changes**, **Default** means "keep this task's setting":
+  its pin if it has one, otherwise the requirement's and the workspace's.
+- **Clear pin** (in the **Retry** panel only) removes the task's pin, so the requirement's and the
+  workspace's settings apply again.
+
+A pin stays on the task. Every later run of that task uses it, including the automatic retries
+after a failed start.
+
+### Set it on a requirement
+
+1. Open the requirement page (see [Start the fan-out](#start-the-fan-out)).
+2. In the header, next to **Merge:**, click the **Agent:** button. It reads `Engine default` when
+   nothing is set anywhere, or `Default: sonnet · high (workspace)` when the workspace has a
+   default, or your own choice such as `opus · high`.
+3. Under **Model**, click **Default**, a model (`opus`, `sonnet`, `haiku`, `fable`), or type
+   another id into **Other model id** and press Enter. A red hint means the id was not accepted
+   and it is not used.
+4. Under **Effort**, click **Default** or one of `low`, `medium`, `high`, `xhigh`, `max`.
+
+There is no Save button: every click is saved at once, and a toast says
+`Agent model saved; it applies to runs started from now on`.
+
+You can set it at any stage, including before **Start Fan-Out**. Set it first if the first run
+should already use it.
+
+### What happens next
+
+- The choice is read when a task is **started**, not before: fan-out, a ticket an agent files,
+  **Retry**, **Request changes**, and the automatic retries of a start that failed. An agent that
+  is already running is not changed.
+- The bridge puts the model and effort into the request that creates the goal or ticket in the
+  engine. A part with no value is left out. See [02](02-projects-and-engines.md#model-and-effort-sent-to-the-engine)
+  for what engines do with it: Manual projects ignore them, and whether Stoneforge honours them is
+  **not confirmed**.
+- The task card shows what was sent (see below).
+
 ## Start the fan-out
 
 1. Open the requirement page: click a card on the **Requirements** board, then the
@@ -84,11 +150,27 @@ The requirement page shows:
 - **Execution Views**: **Task Columns** (one column per project) or **Topology DAG** (tasks and
   their dependencies as a graph).
 - On each task card: the status badge, `Role: goal` or `Role: ticket`, the branch
-  (`⎇ req/REQ-007/task-12`, with `✓` and the merge commit once merged), and buttons:
-  **CLI Logs**, **Open Engine**, **Retry**, **Note**, **Mark Done** (each only when it applies).
+  (`⎇ req/REQ-007/task-12`, with `✓` and the merge commit once merged), the model and effort the
+  run was sent with, and buttons: **CLI Logs**, **Open Engine**, **Retry**, **Note**,
+  **Mark Done** (each only when it applies). **Retry** has a small arrow next to it for retrying
+  with another model (see [08](08-rate-limits-and-retry.md#retry-with-a-different-model-or-effort)).
 - **Cross-Repo Dependency Links & Contracts**: who waits for whom (see [04](04-agents-tickets-and-questions.md#dependency-links)).
 
 The page refreshes every few seconds, and toasts announce status changes.
+
+### The model line on a task card
+
+Under the `Role:` line, a card shows the model and effort its current run was sent with:
+`opus · high`, just `opus`, or `high effort` when only the effort is set. A small **pinned** marker
+next to it means a person pinned a model or effort on this task with **Retry** or
+**Request changes**.
+
+- It shows what the **bridge sent** to the engine. It is not proof that the agent used it: whether
+  Stoneforge honours the model and effort is not confirmed (see
+  [02](02-projects-and-engines.md#model-and-effort-sent-to-the-engine)).
+- The model and effort are blank while a task has not been sent yet, and right after **Retry** or
+  **Request changes** until the new run has been sent.
+- Tasks of **Manual** projects show no model: no agent runs for them.
 
 ## Task statuses
 
@@ -173,6 +255,12 @@ on the task branch is finished.
   **Edit Repos**, or enable the project.
 - **A goal shows FAILED right after fan-out**: read the error on the card (wrong Engine URL,
   missing base branch, engine down). Fix it, then press **Retry**.
+- **The task card shows no model although you chose one**: the choice only counts for runs started
+  after you made it, the task may not have been sent to its engine yet, or its project is
+  **Manual**. A running agent is not changed; **Retry** (when the card offers it) or
+  **Request changes** starts a new run that uses the choice.
+- **The card shows a model, but the agent seems to use another one**: the card shows what the
+  bridge sent. Check in the engine itself, because whether Stoneforge honours it is not confirmed.
 - **The requirement stays In Progress although agents seem finished**: one task is not
   IN REVIEW or COMPLETE yet (it may be WAITING / HELD, NEEDS HUMAN or FAILED). Check each card.
 - More messages: [Troubleshooting](10-troubleshooting.md).

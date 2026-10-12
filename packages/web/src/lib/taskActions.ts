@@ -9,6 +9,11 @@ export function canRetry(task: Pick<BridgeTask, 'role' | 'status'>, reqStatus?: 
   return RETRYABLE.includes(task.status);
 }
 
+/** "Mark Done" is offered until a task is finished or closed. */
+export function canMarkDone(task: Pick<BridgeTask, 'status'>): boolean {
+  return task.status !== 'done' && task.status !== 'cancelled';
+}
+
 const NOTE_TO = ['queued', 'running', 'needs_human', 'held', 'rate_limited'];
 
 /** "Note" is offered for goals/tickets whose agent is still working or waiting. */

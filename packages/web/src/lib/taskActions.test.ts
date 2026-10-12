@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canRetry, canSendNote, pausedLabel, retryOutcome } from './taskActions';
+import { canMarkDone, canRetry, canSendNote, pausedLabel, retryOutcome } from './taskActions';
 
 const t = (role: string, status: string, extra: Record<string, unknown> = {}) => ({ role, status, ...extra }) as any;
 
@@ -17,6 +17,19 @@ describe('canRetry', () => {
     expect(canRetry(t('waiting', 'failed'), 'in_progress')).toBe(false);
     expect(canRetry(t('goal', 'failed'), 'cancelled')).toBe(false);
     expect(canRetry(t('goal', 'failed'), 'done')).toBe(false);
+  });
+});
+
+describe('canMarkDone', () => {
+  it('is offered for work that is not finished or closed', () => {
+    for (const status of ['pending', 'queued', 'running', 'needs_human', 'held', 'in_review', 'qa', 'failed', 'rate_limited']) {
+      expect(canMarkDone(t('goal', status))).toBe(true);
+    }
+  });
+
+  it('is not offered for done or cancelled tasks', () => {
+    expect(canMarkDone(t('goal', 'done'))).toBe(false);
+    expect(canMarkDone(t('ticket', 'cancelled'))).toBe(false);
   });
 });
 

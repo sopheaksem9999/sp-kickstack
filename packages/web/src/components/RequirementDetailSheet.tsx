@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { RunSettingsDialog } from './RunSettingsDialog.js';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -7,7 +8,6 @@ import {
   fetchProjects,
   fetchSprints,
   assignRequirementSprint,
-  startRequirementFanOut,
   cancelRequirement,
   markTaskDone,
   releaseLink,
@@ -101,6 +101,7 @@ export function RequirementDetailSheet({
   const [editTitle, setEditTitle] = useState('');
   const [editBodyMd, setEditBodyMd] = useState('');
 
+  const [fanOutOpen, setFanOutOpen] = useState(false);
   const { data: req, isLoading: reqLoading } = useQuery({
     queryKey: ['requirement', requirementId],
     queryFn: () => fetchRequirement(requirementId!),
@@ -155,15 +156,6 @@ export function RequirementDetailSheet({
       queryClient.invalidateQueries({ queryKey: ['requirements'] });
     },
     onError: (err: any) => toast.error(err.message || 'Failed to update requirement'),
-  });
-
-  const fanOutMutation = useMutation({
-    mutationFn: () => startRequirementFanOut(requirementId!),
-    onSuccess: () => {
-      toast.success('Fan-out dispatched to affected engines');
-      queryClient.invalidateQueries();
-    },
-    onError: (err: any) => toast.error(err.message || 'Fan-out failed'),
   });
 
   const cancelMutation = useMutation({
@@ -565,13 +557,15 @@ export function RequirementDetailSheet({
 
                 {(req.status === 'draft' || req.status === 'ready') && (
                   <button
-                    onClick={() => fanOutMutation.mutate()}
-                    disabled={fanOutMutation.isPending}
+                    onClick={() => setFanOutOpen(true)}
                     className="flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-[#7b68ee] to-[#ec4899] hover:from-[#6c5ce7] hover:to-[#db2777] text-white rounded-lg text-xs font-bold shadow-xs active:scale-[0.98] transition-all disabled:opacity-50"
                   >
                     <Play className="w-3 h-3 fill-current" />
                     <span>Start Fan-Out</span>
                   </button>
+                )}
+                {(req.status === 'draft' || req.status === 'ready') && (
+                  <RunSettingsDialog req={req} mode="fan-out" open={fanOutOpen} onOpenChange={setFanOutOpen} />
                 )}
 
                 {/* Merge gate: merge every task branch, run the project tests, push, move to QA */}

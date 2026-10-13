@@ -34,11 +34,13 @@ interface FieldsProps {
   defaultTitle?: string;
   /** Text of the two default chips; "Keep" where leaving it alone keeps what is already set. */
   defaultChipLabel?: string;
+  /** Model chips; default the Claude names. */
+  suggestions?: string[];
 }
 
 /** The model and effort choices on their own, for a popover or a form that already has its own container. */
-export function AgentProfileFields({ value, onChange, disabled, defaultTitle, defaultChipLabel = 'Default' }: FieldsProps) {
-  const custom = value.model && !MODEL_SUGGESTIONS.includes(value.model) ? value.model : '';
+export function AgentProfileFields({ value, onChange, disabled, defaultTitle, defaultChipLabel = 'Default', suggestions = MODEL_SUGGESTIONS }: FieldsProps) {
+  const custom = value.model && !suggestions.includes(value.model) ? value.model : '';
   const [draft, setDraft] = useState(custom);
   const hintId = useId();
   useEffect(() => setDraft(custom), [custom]);
@@ -52,7 +54,7 @@ export function AgentProfileFields({ value, onChange, disabled, defaultTitle, de
   };
   const applyDraft = () => {
     if (!typed || invalid) return;
-    if (MODEL_SUGGESTIONS.includes(typed)) setDraft('');
+    if (suggestions.includes(typed)) setDraft('');
     if (typed !== value.model) onChange({ ...value, model: typed });
   };
   const pickEffort = (effort: ReasoningEffort | null) => {
@@ -67,7 +69,7 @@ export function AgentProfileFields({ value, onChange, disabled, defaultTitle, de
           <Chip pressed={value.model === null} disabled={disabled} title={defaultTitle} onClick={() => pickModel(null)}>
             {defaultChipLabel}
           </Chip>
-          {MODEL_SUGGESTIONS.map((m) => (
+          {suggestions.map((m) => (
             <Chip key={m} pressed={value.model === m} disabled={disabled} onClick={() => pickModel(m)}>
               {m}
             </Chip>

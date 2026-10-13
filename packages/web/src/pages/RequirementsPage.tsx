@@ -37,7 +37,8 @@ import {
   Play,
   ExternalLink,
 } from 'lucide-react';
-import { Priority, RequirementStatus } from '@sp-kickstack/shared';
+import { Priority, Requirement, RequirementStatus } from '@sp-kickstack/shared';
+import { RunSettingsDialog } from '../components/RunSettingsDialog.js';
 
 const priorityConfig: Record<Priority, { color: string; label: string }> = {
   urgent: { color: 'text-rose-500 fill-rose-500', label: 'Urgent' },
@@ -90,6 +91,7 @@ export function RequirementsPage() {
   const [viewMode, setViewMode] = useState<'list' | 'board'>('board');
   const [selectedRequirementId, setSelectedRequirementId] = useState<string | null>(null);
   const [draggedReqId, setDraggedReqId] = useState<string | null>(null);
+  const [fanOutReq, setFanOutReq] = useState<Requirement | null>(null);
   const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null);
   const isDraggingJustEndedRef = useRef(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -205,7 +207,10 @@ export function RequirementsPage() {
 
     if (groupBy === 'status' || groupBy === 'none') {
       const targetStatus = targetGroupId as RequirementStatus;
-      if (req.status !== targetStatus) {
+      if (targetStatus === 'in_progress' && (req.status === 'draft' || req.status === 'ready')) {
+        // Starting work is a fan-out: confirm the run settings first; the card moves once it succeeded.
+        setFanOutReq(req);
+      } else if (req.status !== targetStatus) {
         updateStatusMutation.mutate({ id: req.id, status: targetStatus });
       }
     }
@@ -1573,6 +1578,16 @@ export function RequirementsPage() {
         isOpen={Boolean(selectedRequirementId)}
         onClose={() => setSelectedRequirementId(null)}
       />
+      {fanOutReq && (
+        <RunSettingsDialog
+          req={fanOutReq}
+          mode="fan-out"
+          open
+          onOpenChange={(next) => {
+            if (!next) setFanOutReq(null);
+          }}
+        />
+      )}
     </div>
   );
 }

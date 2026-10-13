@@ -24,6 +24,7 @@ import { canRetry, retryOutcome } from '../lib/taskActions.js';
 import { mergeCopy, mergeGateAction } from '../lib/mergeReady.js';
 import { useDemoMode } from '../lib/useDemoMode.js';
 import { StatusBadge } from './StatusBadge.js';
+import { ReviewPanel } from './ReviewPanel.js';
 import { BridgeTask, RequirementStatus, BranchMergePolicy, Priority, UpdateRequirementInput } from '@sp-kickstack/shared';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { toast } from 'sonner';
@@ -686,6 +687,9 @@ export function RequirementDetailSheet({
                   </div>
                 )}
               </div>
+
+              {/* Review comments and Request changes (In Review / QA), as on the full page */}
+              <ReviewPanel req={req} tasks={graph?.tasks ?? []} />
 
               {/* Requirement Document & Spec Preview or Editor */}
               <div className="border border-slate-200 dark:border-[#2d2d2d] rounded-xl overflow-hidden bg-white dark:bg-[#242424] shadow-2xs space-y-0">

@@ -27,11 +27,7 @@ export class SettingsService {
         // Fallback to default
       }
     }
-    return {
-      default_base_branch: 'develop',
-      merge_policy: 'manual_review_merge',
-      auto_delete_branch: false,
-    };
+    return BranchMergeSettingsSchema.parse({});
   }
 
   public updateBranchMergeSettings(updates: Partial<BranchMergeSettings>): BranchMergeSettings {

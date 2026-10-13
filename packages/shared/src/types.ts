@@ -34,6 +34,7 @@ export type LinkState = 'waiting' | 'ready' | 'released' | 'error' | 'cancelled'
 export type TicketType = 'api_request' | 'bug' | 'question';
 
 export type EventType =
+  | 'target_branch_created'
   | 'plan_ready'
   | 'task_blocked'
   | 'task_unblocked'
@@ -80,6 +81,10 @@ export interface BranchMergeSettings {
   default_base_branch: string;
   merge_policy: BranchMergePolicy;
   auto_delete_branch?: boolean;
+  /** Task branch names: {req}, {task}, {project}; tickets add -ticket-{task}. */
+  task_branch_pattern: string;
+  /** The bridge pushes new task/target branches and agents' new commits to origin. */
+  push_branches: boolean;
 }
 
 export interface AttachmentItem {
@@ -155,6 +160,10 @@ export interface Requirement {
   /** Default agent model / effort for agent runs (null = inherit; at the end the engine decides). */
   agent_model?: string | null;
   agent_effort?: ReasoningEffort | null;
+  /** CLI for this requirement's Local AI CLI runs (null = Settings default). */
+  agent_cli?: AgentCliId | null;
+  /** Branch its tasks start from and merge into (null = each repository's base branch). */
+  target_branch?: string | null;
   created_at: string;
   updated_at: string;
 }

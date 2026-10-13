@@ -1,4 +1,14 @@
 import { z } from 'zod';
+import { DEFAULT_TASK_BRANCH_PATTERN, branchNameProblem, taskBranchPatternProblem } from './branchNames.js';
+
+/** A zod refinement from a "why not" check. */
+const refineWith = (check: (value: string) => string | null) => (value: string, ctx: z.RefinementCtx) => {
+  const problem = check(value);
+  if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
+};
+
+/** A requirement's target branch (letters, digits and . _ / -). */
+export const TargetBranchSchema = z.string().trim().superRefine(refineWith(branchNameProblem));
 
 export const NormStatusSchema = z.enum([
   'pending',
@@ -75,6 +85,10 @@ export const BranchMergeSettingsSchema = z.object({
   default_base_branch: z.string().default('develop'),
   merge_policy: BranchMergePolicySchema.default('manual_review_merge'),
   auto_delete_branch: z.boolean().default(false),
+  /** Task branch names: {req}, {task}, {project}; tickets add -ticket-{task}. */
+  task_branch_pattern: z.string().trim().superRefine(refineWith(taskBranchPatternProblem)).default(DEFAULT_TASK_BRANCH_PATTERN),
+  /** The bridge pushes new task/target branches and agents' new commits to origin. */
+  push_branches: z.boolean().default(true),
 });
 
 export const AttachmentItemSchema = z.object({
@@ -562,3 +576,16 @@ export const UpdateNotificationSettingsInputSchema = z
   });
 
 export type UpdateNotificationSettingsInput = z.input<typeof UpdateNotificationSettingsInputSchema>;
+
+/** A requirement's run settings: undefined keeps a value, null clears it (null target = each repository's base branch). */
+export const UpdateRunSettingsInputSchema = z
+  .object({
+    agent_cli: z.enum(AGENT_CLI_IDS).nullable().optional(),
+    agent_model: AgentModelSchema.nullable().optional(),
+    agent_effort: ReasoningEffortSchema.nullable().optional(),
+    target_branch: TargetBranchSchema.nullable().optional(),
+    merge_policy: BranchMergePolicySchema.nullable().optional(),
+  })
+  .strict();
+
+export type UpdateRunSettingsInput = z.input<typeof UpdateRunSettingsInputSchema>;

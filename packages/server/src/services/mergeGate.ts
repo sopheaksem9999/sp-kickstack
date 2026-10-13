@@ -27,6 +27,8 @@ export interface MergeGateOptions {
   gitTimeoutMs?: number;
   /** Where temporary merge worktrees are created (default: the OS temp dir). */
   tmpRoot?: string;
+  /** The requirement entered QA: each merged repository's result commit (AI QA checks it). */
+  onEnteredQa?: (reqId: string, commits: Record<string, string>) => void;
 }
 
 /** Temp folder prefix that can never contain a path separator, whatever the names are. */
@@ -383,6 +385,13 @@ export class MergeGateService {
       projects: prepared.map((p) => p.project.name),
       warnings,
     });
+    if (movedToQa) {
+      try {
+        this.options.onEnteredQa?.(reqId, Object.fromEntries(prepared.map((p) => [p.project.name, p.resultSha])));
+      } catch (err: any) {
+        console.warn(`[merge] ${reqId}: AI QA did not start: ${err?.message || err}`);
+      }
+    }
     // Last: "not running" must mean every side effect above has happened.
     this.db.prepare("UPDATE requirements SET merge_state = 'idle', merge_error = NULL WHERE id = ?").run(reqId);
   }

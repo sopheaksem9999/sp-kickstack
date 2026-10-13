@@ -56,6 +56,7 @@ import { DEDUPE_NOTE } from '../db/migrations.js';
 import { QuestionService } from '../services/questionService.js';
 import { ReviewService } from '../services/reviewService.js';
 import { registerHumanLoopRoutes } from './humanLoopRoutes.js';
+import { QaService } from '../services/qaService.js';
 import { registerLocalEngineRoutes } from './localEngineRoutes.js';
 import { BranchService } from '../services/branchService.js';
 import { handOverManualTasks } from '../localEngine/handover.js';
@@ -91,6 +92,8 @@ export interface AppDependencies {
   getAdapter?: AdapterFactory;
   questionService?: QuestionService;
   reviewService?: ReviewService;
+  /** AI QA; built from localEngine when absent (without an engine it cannot start runs). */
+  qaService?: QaService;
   notificationService?: NotificationService;
   branchService?: BranchService;
   /** The in-server Local AI CLI engine (settings nudges it; Settings shows its status). */
@@ -129,8 +132,19 @@ export function createApp(deps: AppDependencies): Express {
     deps.reactor ||
     new TaskReactor(deps.db, deps.requirementService, deps.linkService, (evt) => deps.broadcaster.broadcast(evt));
 
+  const qaService =
+    deps.qaService ||
+    new QaService({
+      db: deps.db, projectService: deps.projectService, requirementService: deps.requirementService, settingsService, branchService,
+      engine: deps.localEngine, emit: (evt) => deps.broadcaster.broadcast(evt),
+    });
+
   const mergeGate =
-    deps.mergeGate || new MergeGateService(deps.db, deps.projectService, deps.requirementService, reactor, { settingsService });
+    deps.mergeGate ||
+    new MergeGateService(deps.db, deps.projectService, deps.requirementService, reactor, {
+      settingsService,
+      onEnteredQa: (reqId, commits) => qaService.onEnteredQa(reqId, commits),
+    });
   if (!deps.reactor) {
     // createApp built the reactor, so it also wires the auto-merge policy to it.
     reactor.setHooks({ onRequirementInReview: (id) => mergeGate.autoStart(id) });
@@ -495,14 +509,14 @@ export function createApp(deps: AppDependencies): Express {
 
   app.get('/api/requirements/:id/graph', (req, res) => {
     const tasks = deps.db
-      .prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND role <> 'question' AND (last_error IS NULL OR last_error <> ?)")
+      .prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND role NOT IN ('question', 'qa') AND (last_error IS NULL OR last_error <> ?)")
       .all(req.params.id, DEDUPE_NOTE);
     const links = deps.db
       .prepare(`
         SELECT l.* FROM links l
         JOIN bridge_tasks t ON l.task_id = t.id
         JOIN bridge_tasks d ON l.depends_on_id = d.id
-        WHERE t.req_id = ? AND d.role <> 'question'
+        WHERE t.req_id = ? AND d.role NOT IN ('question', 'qa')
       `)
       .all(req.params.id);
     res.json({ tasks, links });
@@ -929,7 +943,7 @@ export function createApp(deps: AppDependencies): Express {
 
   app.post('/api/tickets', requireAgentToken, handleCreateTicket);
   app.post('/api/agent/tickets', requireAgentToken, handleCreateTicket);
-  registerHumanLoopRoutes(app, { questionService, reviewService, requirementService: deps.requirementService, settingsService, notificationService, broadcaster: deps.broadcaster, requireAgentToken });
+  registerHumanLoopRoutes(app, { questionService, qaService, reviewService, requirementService: deps.requirementService, settingsService, notificationService, broadcaster: deps.broadcaster, requireAgentToken });
   registerLocalEngineRoutes(app, { settingsService, broadcaster: deps.broadcaster, localEngine: deps.localEngine });
 
   // VCS Webhooks Sync

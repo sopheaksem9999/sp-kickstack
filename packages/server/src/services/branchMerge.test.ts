@@ -274,6 +274,27 @@ describe('Merge gate', () => {
     expect(reqRow(req.id)).toMatchObject({ status: 'qa', merge_state: 'idle' });
   });
 
+  it('hands each merged commit to AI QA once the requirement is in QA, and nothing when the merge fails', async () => {
+    h = makeGitHarness();
+    const calls: Array<{ reqId: string; commits: Record<string, string> }> = [];
+    const gate = new MergeGateService(h.db, h.projectService, h.requirementService, h.reactor, {
+      getAdapter: (name: string) => h.adapters[name] ?? h.adapters.backend,
+      testTimeoutMs: 20_000,
+      tmpRoot: path.join(h.ws, 'tmp'),
+      onEnteredQa: (reqId, commits) => calls.push({ reqId, commits }),
+    });
+    const { req } = await readyForGate();
+    expect((await gate.start(req.id, 'manual').done).ok).toBe(true);
+    expect(calls).toEqual([
+      { reqId: req.id, commits: { backend: headOf(h.backendRepo.repo, 'develop'), mobile: headOf(h.mobileRepo.repo, 'develop') } },
+    ]);
+
+    const failing = await readyForGate(['backend']);
+    h.projectService.updateProject('backend', { test_command: 'exit 3' });
+    expect((await gate.start(failing.req.id, 'manual').done).ok).toBe(false);
+    expect(calls).toHaveLength(1);
+  });
+
   it('changes nothing anywhere when one project conflicts, and tells that task to rebase', async () => {
     h = makeGitHarness();
     const { req, goals } = await readyForGate(['backend', 'mobile'], { mobile: { file: 'README.md', content: 'task change\n' } });

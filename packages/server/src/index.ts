@@ -19,6 +19,7 @@ import { createApp } from './api/app.js';
 import { TaskReactor } from './services/taskReactor.js';
 import { BranchService } from './services/branchService.js';
 import { MergeGateService } from './services/mergeGate.js';
+import { QaService } from './services/qaService.js';
 import { EngineThrottle } from './lib/engineThrottle.js';
 import { RetrySweeper } from './services/retrySweeper.js';
 import { QuestionService } from './services/questionService.js';
@@ -85,9 +86,14 @@ const questionService = new QuestionService(db, linkService, getAdapter, (evt) =
 const notifier = new Notifier();
 const notificationService = new NotificationService(db, settingsService, notifier);
 const reactor = new TaskReactor(db, requirementService, linkService, (evt) => broadcaster.broadcast(evt));
+const qaService = new QaService({
+  db, projectService, requirementService, settingsService, branchService, engine: localEngine, emit: (evt) => broadcaster.broadcast(evt),
+});
 const mergeGate = new MergeGateService(db, projectService, requirementService, reactor, {
   getAdapter,
   releaseWorktree: (taskId) => localEngine.releaseWorktree(taskId),
+  // Entering QA after a merge starts AI QA (Settings → AI & Local Engines → AI QA → Run automatically).
+  onEnteredQa: (reqId, commits) => qaService.onEnteredQa(reqId, commits),
 });
 // Auto-merge policy: start the merge gate when all of a requirement's work is in review.
 reactor.setHooks({ onRequirementInReview: (id) => mergeGate.autoStart(id) });
@@ -112,7 +118,7 @@ const watcher = new EngineWatcher(
   reactor
 );
 
-const outboxScanner = new OutboxScanner(projectService, ticketService, questionService, path.join(WORKSPACE_DIR, 'agent-outbox'));
+const outboxScanner = new OutboxScanner(projectService, ticketService, questionService, path.join(WORKSPACE_DIR, 'agent-outbox'), qaService);
 const retrySweeper = new RetrySweeper(db, fanOutService, ticketService, linkService, { throttle: engineThrottle });
 const TICK_MS = Number(process.env.WATCH_INTERVAL_MS) || 5000;
 
@@ -140,6 +146,7 @@ const app = createApp({
   mergeGate,
   getAdapter,
   questionService,
+  qaService,
   settingsService,
   notificationService,
   neuronService,

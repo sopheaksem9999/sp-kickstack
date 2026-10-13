@@ -4,6 +4,7 @@ import type { Express, RequestHandler } from 'express';
 import { AskQuestionInputSchema, QuestionStatus } from '@sp-kickstack/shared';
 import { badRequest } from '../lib/httpError.js';
 import type { QuestionService } from '../services/questionService.js';
+import type { QaService } from '../services/qaService.js';
 import type { RequirementService } from '../services/requirementService.js';
 import type { ReviewService } from '../services/reviewService.js';
 import { attachmentType } from '../services/reviewAttachments.js';
@@ -13,6 +14,7 @@ import type { SseBroadcaster } from '../sse/broadcaster.js';
 
 export interface HumanLoopRouteDeps {
   questionService: QuestionService;
+  qaService: QaService;
   reviewService: ReviewService;
   requirementService: RequirementService;
   settingsService: SettingsService;
@@ -33,6 +35,47 @@ export function registerHumanLoopRoutes(app: Express, deps: HumanLoopRouteDeps) 
       const project = typeof req.body.project === 'string' && req.body.project ? req.body.project : 'unknown';
       const engineTaskId = typeof req.body.engineTaskId === 'string' ? req.body.engineTaskId : undefined;
       res.status(201).json(await questionService.ask(input, project, engineTaskId));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /** An agent's identity in a report: its repository and run (XTICKET_PROJECT / XTICKET_TASK). */
+  const agentOf = (body: any) => ({
+    project: typeof body?.project === 'string' && body.project ? body.project : 'unknown',
+    runId: typeof body?.engineTaskId === 'string' ? body.engineTaskId : undefined,
+  });
+
+  app.post('/api/agent/qa/comments', deps.requireAgentToken, (req, res, next) => {
+    try {
+      const { project, runId } = agentOf(req.body);
+      res.status(201).json(deps.qaService.addFinding(req.body, project, runId));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post('/api/agent/qa/result', deps.requireAgentToken, (req, res, next) => {
+    try {
+      const { project, runId } = agentOf(req.body);
+      res.json(deps.qaService.recordResult(req.body, project, runId));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.get('/api/requirements/:id/qa', (req, res, next) => {
+    try {
+      res.json(deps.qaService.status(req.params.id));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // "Run AI QA": every git repository of the requirement, at the tip of the branch it merged into.
+  app.post('/api/requirements/:id/qa', (req, res, next) => {
+    try {
+      res.status(202).json(deps.qaService.start(req.params.id, 'manual'));
     } catch (err) {
       next(err);
     }

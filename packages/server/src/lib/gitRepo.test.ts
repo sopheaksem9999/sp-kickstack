@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import fs from 'node:fs';
+import http from 'node:http';
+import os from 'node:os';
+import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeRepo, commitOnBranch, headOf, sh } from '../testing/gitFixture.js';
@@ -16,6 +19,7 @@ import {
   checkoutPathOf,
   fastForwardBranch,
   runShell,
+  runGitAsync,
 } from './gitRepo.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -139,5 +143,31 @@ describe('gitRepo helpers', () => {
     expect(ok.output).toContain('oops');
     expect((await runShell(root, 'exit 3', 5000)).code).toBe(3);
     expect((await runShell(root, 'sleep 5', 100)).code).not.toBe(0);
+  });
+});
+
+describe('git never asks for a password', () => {
+  it('ignores a password helper inherited from an IDE terminal (GIT_ASKPASS), so a missing password fails at once', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-askpass-'));
+    const asked = path.join(dir, 'asked');
+    const helper = path.join(dir, 'askpass.sh');
+    fs.writeFileSync(helper, `#!/bin/sh\ntouch "${asked}"\necho secret\n`, { mode: 0o755 });
+    const server = http.createServer((_req, res) => {
+      res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="origin"' });
+      res.end();
+    });
+    await new Promise<void>((ready) => server.listen(0, '127.0.0.1', ready));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/repo.git`;
+    const saved = process.env.GIT_ASKPASS;
+    process.env.GIT_ASKPASS = helper;
+    try {
+      await expect(runGitAsync(dir, ['-c', 'credential.helper=', 'ls-remote', url], { timeoutMs: 20_000 })).rejects.toThrow('terminal prompts disabled');
+      expect(fs.existsSync(asked)).toBe(false);
+    } finally {
+      if (saved === undefined) delete process.env.GIT_ASKPASS;
+      else process.env.GIT_ASKPASS = saved;
+      server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

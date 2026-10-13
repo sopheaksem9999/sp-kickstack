@@ -14,11 +14,17 @@ export const BRIDGE_GIT_ENV: Record<string, string> = {
 /** Default limit for network and merge operations. */
 export const DEFAULT_GIT_TIMEOUT_MS = 120_000;
 
-/** git must never stop to ask for a password or host-key confirmation: it would hang forever. */
+/**
+ * git must never stop to ask for a password or host-key confirmation: it would hang forever. An
+ * empty GIT_ASKPASS also stops git from running a password helper inherited from an IDE terminal
+ * (VS Code, Antigravity), whose prompt nobody answers; credentials come from the credential helper.
+ */
 function gitEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   return {
     ...process.env,
     GIT_TERMINAL_PROMPT: '0',
+    GIT_ASKPASS: '',
+    SSH_ASKPASS: '',
     ...(process.env.GIT_SSH_COMMAND || process.env.GIT_SSH ? {} : { GIT_SSH_COMMAND: 'ssh -o BatchMode=yes' }),
     ...extra,
   };

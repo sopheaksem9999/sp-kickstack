@@ -37746,6 +37746,51 @@ function createBranch(repo, name, startSha) {
 function changedFiles(repo, base, branch, limit = 60) {
   return (tryGit(repo, ["diff", "--name-only", `${base}...${branch}`]) ?? "").split("\n").map((name) => name.trim()).filter(Boolean).slice(0, limit);
 }
+function baseRef(repo, base) {
+  if (resolveCommit(repo, `refs/heads/${base}`)) return base;
+  return resolveCommit(repo, `refs/remotes/origin/${base}`) ? `origin/${base}` : null;
+}
+function compareRef(repo, base, branch, startSha) {
+  const from = baseRef(repo, base);
+  const tip = resolveCommit(repo, `refs/heads/${branch}`);
+  if (!from || !tip) return null;
+  if (!isAncestor(repo, tip, from)) return from;
+  const merges = (tryGit(repo, ["rev-list", "--merges", "--ancestry-path", "--reverse", `${tip}..${from}`]) ?? "").split("\n").filter(Boolean).slice(0, 50);
+  const merge = merges.find((sha) => tryGit(repo, ["rev-parse", "--verify", "--quiet", `${sha}^2`])?.trim() === tip);
+  return merge ? `${merge}^1` : startSha || from;
+}
+function diffSummary(repo, from, to) {
+  const range = `${from}...${to}`;
+  const names = (tryGit(repo, ["diff", "--name-status", "-z", "-M", range]) ?? "").split("\0");
+  const files = [];
+  for (let i2 = 0; i2 < names.length; ) {
+    const code = names[i2++];
+    if (!code) continue;
+    if (code.startsWith("R") || code.startsWith("C")) {
+      const oldPath = names[i2++];
+      files.push({ path: names[i2++], oldPath, status: "R" });
+    } else {
+      files.push({ path: names[i2++], status: code[0] === "A" ? "A" : code[0] === "D" ? "D" : "M" });
+    }
+  }
+  const counts = /* @__PURE__ */ new Map();
+  const nums = (tryGit(repo, ["diff", "--numstat", "-z", "-M", range]) ?? "").split("\0");
+  for (let i2 = 0; i2 < nums.length; ) {
+    const head = nums[i2++];
+    if (!head) continue;
+    const [adds, dels, file] = head.split("	");
+    let key = file;
+    if (file === "") {
+      i2++;
+      key = nums[i2++];
+    }
+    counts.set(key, { additions: adds === "-" ? 0 : Number(adds), deletions: dels === "-" ? 0 : Number(dels), binary: adds === "-" });
+  }
+  return files.map((f) => ({ ...f, ...counts.get(f.path) ?? { additions: 0, deletions: 0, binary: false } }));
+}
+function diffFile(repo, from, to, paths) {
+  return tryGit(repo, ["diff", "--no-color", "-M", `${from}...${to}`, "--", ...paths]);
+}
 function readFileAt(repo, ref, file) {
   return tryGit(repo, ["show", `${ref}:${file}`]);
 }
@@ -52705,10 +52750,6 @@ var SNIPPET_RADIUS = 20;
 var MAX_SNIPPETS = 2;
 var MAX_FILE_CANDIDATES = 12;
 var ATTACHMENT_TEXT_MAX = 5e4;
-function baseRef(repo, base) {
-  if (resolveCommit(repo, `refs/heads/${base}`)) return base;
-  return resolveCommit(repo, `refs/remotes/origin/${base}`) ? `origin/${base}` : null;
-}
 function isSafeRelativePath(p) {
   return !path19.isAbsolute(p) && !p.startsWith("\\") && !p.split(/[\\/]/).includes("..");
 }
@@ -52902,7 +52943,7 @@ var ReviewAssistService = class {
     if (!repo || !task.branch || !base || !isGitWorkTree(repo) || !resolveCommit(repo, `refs/heads/${task.branch}`)) {
       return { branch: task.branch ?? null, base, files: [] };
     }
-    const from = baseRef(repo, base);
+    const from = compareRef(repo, base, task.branch, task.base_sha);
     return { branch: task.branch, base, files: from ? changedFiles(repo, from, task.branch, 200) : [] };
   }
   /** Settings' default AI CLI when it can answer text, else the first enabled and installed one. */
@@ -52922,7 +52963,7 @@ var ReviewAssistService = class {
     let changed = [];
     let snippets = [];
     if (repo && task.branch && isGitWorkTree(repo) && resolveCommit(repo, `refs/heads/${task.branch}`)) {
-      const from = base ? baseRef(repo, base) : null;
+      const from = base ? compareRef(repo, base, task.branch, task.base_sha) : null;
       if (from) changed = changedFiles(repo, from, task.branch);
       snippets = codeSnippets(repo, task.branch, mentionedFiles(repo, draft));
     }
@@ -52946,6 +52987,78 @@ var ReviewAssistService = class {
       line: draft.line,
       attachments: { texts, others }
     });
+  }
+};
+
+// packages/server/src/services/taskChanges.ts
+var MAX_FILES = 300;
+var MAX_DIFF_LINES = 4e3;
+function parseUnifiedDiff(text, max = MAX_DIFF_LINES) {
+  if (/^Binary files .* differ$/m.test(text)) return { binary: true, lines: [], truncated: false };
+  const lines2 = [];
+  let oldLine = 0;
+  let newLine = 0;
+  let inHunk = false;
+  for (const raw of text.split("\n")) {
+    if (lines2.length >= max) return { binary: false, lines: lines2, truncated: true };
+    if (raw.startsWith("@@")) {
+      const m = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
+      oldLine = Number(m?.[1] ?? 0);
+      newLine = Number(m?.[2] ?? 0);
+      inHunk = true;
+      lines2.push({ type: "hunk", text: raw });
+    } else if (!inHunk) {
+      continue;
+    } else if (raw.startsWith("+")) {
+      lines2.push({ type: "add", text: raw.slice(1), newLine: newLine++ });
+    } else if (raw.startsWith("-")) {
+      lines2.push({ type: "del", text: raw.slice(1), oldLine: oldLine++ });
+    } else if (raw.startsWith(" ")) {
+      lines2.push({ type: "context", text: raw.slice(1), oldLine: oldLine++, newLine: newLine++ });
+    }
+  }
+  return { binary: false, lines: lines2, truncated: false };
+}
+var TaskChangesService = class {
+  constructor(db2) {
+    this.db = db2;
+    this.projects = new ProjectService(db2);
+    this.branches = new BranchService(db2, this.projects);
+  }
+  projects;
+  branches;
+  changes(taskId) {
+    const at = this.locate(taskId);
+    if (!at.from) return { branch: at.branch, base: at.base, files: [], additions: 0, deletions: 0, truncated: false };
+    const all = diffSummary(at.repo, at.from, at.branch).sort((a2, b) => a2.path.localeCompare(b.path));
+    return {
+      branch: at.branch,
+      base: at.base,
+      files: all.slice(0, MAX_FILES),
+      additions: all.reduce((sum, f) => sum + f.additions, 0),
+      deletions: all.reduce((sum, f) => sum + f.deletions, 0),
+      truncated: all.length > MAX_FILES
+    };
+  }
+  fileDiff(taskId, file) {
+    if (!file || !isSafeRelativePath(file)) throw badRequest("The file path must be relative to the repository (no leading / and no ..)");
+    const at = this.locate(taskId);
+    if (!at.from) throw new HttpError(404, `Task #${taskId} has no branch to compare`);
+    const entry = diffSummary(at.repo, at.from, at.branch).find((f) => f.path === file);
+    if (!entry) throw new HttpError(404, `${file} is not changed on ${at.branch}`);
+    const text = diffFile(at.repo, at.from, at.branch, entry.oldPath ? [entry.oldPath, entry.path] : [entry.path]) ?? "";
+    return { path: file, ...parseUnifiedDiff(text) };
+  }
+  /** The task's repository, branch, base branch and the ref to compare with (null when there is nothing to compare). */
+  locate(taskId) {
+    const task = this.db.prepare("SELECT * FROM bridge_tasks WHERE id = ?").get(taskId);
+    if (!task) throw new HttpError(404, `Task #${taskId} not found`);
+    const project = this.projects.getProject(task.project);
+    const base = project ? this.branches.baseBranchFor(project, task.req_id) : null;
+    const repo = project?.repo_path ?? "";
+    const branch = task.branch ?? null;
+    const usable = Boolean(repo && branch && base && isGitWorkTree(repo));
+    return { repo, branch, base, from: usable ? compareRef(repo, base, branch, task.base_sha) : null };
   }
 };
 
@@ -52994,8 +53107,17 @@ var ReviewService = class {
     this.getAdapter = getAdapter2;
     this.emit = emit;
     this.assist = assist ?? new ReviewAssistService(db2, requirementService2);
+    this.taskChanges = new TaskChangesService(db2);
   }
   assist;
+  taskChanges;
+  /** Files a task changed on its branch: the review card's "Changed files". */
+  changes(taskId) {
+    return this.taskChanges.changes(taskId);
+  }
+  fileDiff(taskId, file) {
+    return this.taskChanges.fileDiff(taskId, file);
+  }
   /** "Improve with AI": the reviewer's draft rewritten for the agent; nothing is saved. */
   improveComment(reqId, input) {
     return this.assist.improve(reqId, input);
@@ -53222,6 +53344,20 @@ function registerHumanLoopRoutes(app2, deps) {
   app2.post("/api/requirements/:id/comments/improve", async (req, res, next) => {
     try {
       res.json(await reviewService.improveComment(req.params.id, req.body ?? {}));
+    } catch (err) {
+      next(err);
+    }
+  });
+  app2.get("/api/tasks/:id/changes", (req, res, next) => {
+    try {
+      res.json(reviewService.changes(Number(req.params.id)));
+    } catch (err) {
+      next(err);
+    }
+  });
+  app2.get("/api/tasks/:id/changes/diff", (req, res, next) => {
+    try {
+      res.json(reviewService.fileDiff(Number(req.params.id), typeof req.query.file === "string" ? req.query.file : ""));
     } catch (err) {
       next(err);
     }

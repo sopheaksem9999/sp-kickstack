@@ -1,20 +1,20 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CheckCircle2, MessageSquare, RotateCcw, Send, Sparkles, Trash2, Undo2 } from 'lucide-react';
+import { CheckCircle2, MessageSquare, Paperclip, RotateCcw, Send, Sparkles, Trash2, Undo2 } from 'lucide-react';
 import type { BridgeTask, Requirement, ReviewComment } from '@sp-kickstack/shared';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog.js';
 import {
-  addReviewComment, deleteReviewComment, fetchBranchFiles, fetchReviewComments, improveReviewComment, requestChanges, updateReviewComment,
+  addReviewComment, attachmentUrl, deleteReviewComment, fetchBranchFiles, fetchReviewComments, improveReviewComment, requestChanges, updateReviewComment,
 } from '../lib/humanLoopApi.js';
 import { fetchAssets, fetchProjects, fetchRequirements } from '../lib/api.js';
-import { commentLocation, requestChangesOutcome, requestChangesState, reviewableTasks, taskReviewView } from '../lib/reviewActions.js';
+import { commentLocation, fileSize, requestChangesOutcome, requestChangesState, reviewableTasks, taskReviewView } from '../lib/reviewActions.js';
 import type { MentionSources } from '../lib/mentions.js';
 import { hasPin, requestChangesProfile } from '../lib/agentProfile.js';
 import type { ProfileValue } from '../lib/agentProfile.js';
 import { AgentProfilePicker } from './AgentProfilePicker.js';
 import { MarkdownMessage } from './MarkdownMessage.js';
-import { MentionTextarea } from './MentionTextarea.js';
+import { RichCommentEditor, type PendingFile } from './RichCommentEditor.js';
 
 const STATE_STYLE: Record<ReviewComment['state'], string> = {
   open: 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300',
@@ -54,12 +54,14 @@ export function TaskReviewComments({ req, task }: { req: Requirement; task: Brid
   const view = taskReviewView(req, task, comments);
   const sources = useMentionSources(req, task, view.canAdd);
   const [body, setBody] = useState('');
+  const [files, setFiles] = useState<PendingFile[]>([]);
+  const uploads = () => files.map(({ name, type, data_url }) => ({ name, type, data_url }));
   // The text before "Improve with AI", for Undo; and which AI rewrote it.
   const [undo, setUndo] = useState<string | null>(null);
   const [aiNote, setAiNote] = useState<string | null>(null);
 
   const improve = useMutation({
-    mutationFn: () => improveReviewComment(req.id, { task_id: task.id, body: body.trim() }),
+    mutationFn: () => improveReviewComment(req.id, { task_id: task.id, body: body.trim(), attachments: uploads() }),
     onSuccess: (result) => {
       setUndo(body);
       setBody(result.body);
@@ -69,9 +71,10 @@ export function TaskReviewComments({ req, task }: { req: Requirement; task: Brid
   });
 
   const add = useMutation({
-    mutationFn: () => addReviewComment(req.id, { task_id: task.id, body: body.trim() }),
+    mutationFn: () => addReviewComment(req.id, { task_id: task.id, body: body.trim(), attachments: uploads() }),
     onSuccess: () => {
       setBody('');
+      setFiles([]);
       setUndo(null);
       setAiNote(null);
       refresh();
@@ -139,21 +142,43 @@ export function TaskReviewComments({ req, task }: { req: Requirement; task: Brid
           <div className="text-slate-700 dark:text-slate-300">
             <MarkdownMessage content={c.body} />
           </div>
+          {(c.attachments ?? []).length > 0 && (
+            <div className="flex flex-wrap items-end gap-1.5 pt-1">
+              {(c.attachments ?? []).map((a) =>
+                /^image\/(png|jpeg|gif|webp)$/.test(a.type) ? (
+                  <a key={a.name} href={attachmentUrl(c.id, a.name)} target="_blank" rel="noreferrer" title={`${a.name} (${fileSize(a.size)})`}>
+                    <img src={attachmentUrl(c.id, a.name)} alt={a.name} className="h-16 max-w-[8rem] object-cover rounded border border-slate-200 dark:border-[#262732]" />
+                  </a>
+                ) : (
+                  <a
+                    key={a.name}
+                    href={attachmentUrl(c.id, a.name)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-[#242424] text-[11px] text-slate-700 dark:text-slate-300 hover:underline"
+                  >
+                    <Paperclip className="w-3 h-3 text-slate-400" />
+                    <span className="font-mono">{a.name}</span>
+                    <span className="text-slate-400">{fileSize(a.size)}</span>
+                  </a>
+                )
+              )}
+            </div>
+          )}
         </div>
       ))}
 
       {view.canAdd && (
         <div className="space-y-1.5">
-          <MentionTextarea
+          <RichCommentEditor
             value={body}
             onChange={setBody}
+            files={files}
+            onFilesChange={setFiles}
             sources={sources}
-            rows={Math.min(12, Math.max(3, body.split('\n').length))}
-            maxLength={20000}
-            disabled={improve.isPending}
+            disabled={improve.isPending || add.isPending}
             ariaLabel={`Comment for ${task.project}`}
             placeholder="What should the agent change? # a file, repository or requirement · @ a shared asset · paste an error and use Improve with AI"
-            className="w-full rounded-lg border border-slate-200 dark:border-[#2e303d] bg-white dark:bg-[#1a1b23] px-2 py-1.5 text-xs disabled:opacity-60"
           />
           <div className="flex items-center gap-2 flex-wrap">
             <button

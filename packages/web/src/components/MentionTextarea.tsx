@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { Fragment, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { Popover, PopoverAnchor, PopoverContent } from './ui/popover.js';
 import { cn } from './ui/sheet.js';
 import { findTrigger, insertMention, mentionItems, type MentionMatch, type MentionSources } from '../lib/mentions.js';
@@ -13,11 +13,16 @@ interface MentionTextareaProps {
   maxLength?: number;
   rows?: number;
   className?: string;
+  /** For a toolbar that formats the selection. */
+  textareaRef?: RefObject<HTMLTextAreaElement>;
 }
 
 /** A textarea where # and @ open a picker, as in AI chat: files on the branch, repositories, requirements, shared assets. */
-export function MentionTextarea({ value, onChange, sources, ariaLabel, placeholder, disabled, maxLength, rows = 2, className }: MentionTextareaProps) {
-  const ref = useRef<HTMLTextAreaElement>(null);
+export function MentionTextarea({
+  value, onChange, sources, ariaLabel, placeholder, disabled, maxLength, rows = 2, className, textareaRef,
+}: MentionTextareaProps) {
+  const ownRef = useRef<HTMLTextAreaElement>(null);
+  const ref = textareaRef ?? ownRef;
   const [match, setMatch] = useState<MentionMatch | null>(null);
   const [active, setActive] = useState(0);
   const items = useMemo(() => (match ? mentionItems(match.trigger, match.query, sources) : []), [match, sources]);

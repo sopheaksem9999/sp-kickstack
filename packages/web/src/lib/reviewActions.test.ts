@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { commentLocation, requestChangesOutcome, requestChangesState, reviewableTasks, taskReviewView } from './reviewActions';
+import { commentLocation, fileSize, requestChangesOutcome, requestChangesState, reviewableTasks, taskReviewView } from './reviewActions';
 
 const c = (task_id: number, state: string) => ({ task_id, state }) as any;
 
@@ -48,5 +48,11 @@ describe('review actions', () => {
     expect(taskReviewView({ status: 'in_progress' }, goal, comments)).toEqual({ show: true, canAdd: false, comments: [comments[0]] });
     expect(taskReviewView({ status: 'in_progress' }, goal, [])).toMatchObject({ show: false });
     expect(taskReviewView({ status: 'in_review' }, { id: 7, role: 'waiting', status: 'held' } as any, [])).toMatchObject({ show: false });
+  });
+
+  it('shows attachment sizes', () => {
+    expect(fileSize(900)).toBe('900 B');
+    expect(fileSize(2048)).toBe('2 KB');
+    expect(fileSize(3.5 * 1024 * 1024)).toBe('3.5 MB');
   });
 });

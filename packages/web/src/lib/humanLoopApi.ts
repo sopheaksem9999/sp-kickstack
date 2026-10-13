@@ -55,6 +55,11 @@ export function addReviewComment(reqId: string, input: CreateReviewCommentInput)
   return request(`${BASE}/requirements/${encodeURIComponent(reqId)}/comments`, send('POST', input));
 }
 
+/** Where a review comment's attached file is served. */
+export function attachmentUrl(commentId: number, name: string): string {
+  return `${BASE}/comments/${commentId}/attachments/${encodeURIComponent(name)}`;
+}
+
 /** Files changed on a task's branch: what # offers in the comment box. */
 export function fetchBranchFiles(taskId: number): Promise<{ branch: string | null; base: string | null; files: string[] }> {
   return request(`${BASE}/tasks/${taskId}/branch-files`);

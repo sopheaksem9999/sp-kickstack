@@ -112,6 +112,21 @@ describe('Improve a review comment with AI', () => {
     expect(() => assist().branchFiles(999999)).toThrow('Task #999999 not found');
   });
 
+  it('puts the text of attached logs into the prompt, and names the other files', async () => {
+    const b64 = (text: string) => Buffer.from(text).toString('base64');
+    await assist().improve(reqId, {
+      task_id: goalId,
+      body: 'see the log',
+      attachments: [
+        { name: 'build.log', type: 'text/plain', data_url: `data:text/plain;base64,${b64('Error: npx not found')}` },
+        { name: 'shot.png', type: 'image/png', data_url: `data:image/png;base64,${b64('PNG')}` },
+      ],
+    });
+    const [{ prompt }] = calls;
+    expect(prompt).toContain('<untrusted_input name="attachment build.log">\nError: npx not found\n</untrusted_input>');
+    expect(prompt).toContain('Also attached (not shown): shot.png');
+  });
+
   it('keeps the file and line the reviewer gave when the AI names none', async () => {
     answer = 'FILE: none\nLINE: none\n---\nClearer text';
     expect(await assist().improve(reqId, { task_id: goalId, body: 'x', file_path: 'src/hooks.sh', line: 3 })).toMatchObject({

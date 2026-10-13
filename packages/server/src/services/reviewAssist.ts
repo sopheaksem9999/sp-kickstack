@@ -15,6 +15,7 @@ import { CLI_LABELS, cliBinary, cliEnabled, runEffort, runModel, type FindBinary
 import { changedFiles, isGitWorkTree, readFileAt, resolveCommit } from '../lib/gitRepo.js';
 import { HttpError, badRequest } from '../lib/httpError.js';
 import { oneLine, wrapUntrusted } from '../lib/promptSafety.js';
+import { decodeDataUrl, isTextAttachment, safeAttachmentName } from './reviewAttachments.js';
 
 /** CLIs that can answer a plain-text prompt, in the order tried after Settings' default. */
 const TEXT_CLIS: AgentCliId[] = ['claude-cli', 'agy-cli', 'codex-cli'];
@@ -24,6 +25,8 @@ const COMMENT_MAX = 4000;
 const SNIPPET_RADIUS = 20;
 const MAX_SNIPPETS = 2;
 const MAX_FILE_CANDIDATES = 12;
+/** Characters of one attached text file put into the prompt. */
+const ATTACHMENT_TEXT_MAX = 50_000;
 
 export type TextRunner = (
   cli: AgentCliId,
@@ -119,6 +122,7 @@ export function buildImprovePrompt(ctx: {
   draft: string;
   filePath?: string;
   line?: number;
+  attachments?: { texts: Array<{ name: string; text: string }>; others: string[] };
 }): string {
   const repository = ctx.branch
     ? `${ctx.project} · task branch \`${ctx.branch}\`${ctx.base ? `, merged into \`${ctx.base}\`` : ''}`
@@ -128,6 +132,14 @@ export function buildImprovePrompt(ctx: {
         .map((s) => `### ${s.file} (lines ${s.from}-${s.to})\n${wrapUntrusted('code', s.text)}`)
         .join('\n\n')}\n`
     : '';
+  const texts = ctx.attachments?.texts ?? [];
+  const others = ctx.attachments?.others ?? [];
+  const attached =
+    texts.length || others.length
+      ? `\n## Attached files\n${texts.map((t) => wrapUntrusted(`attachment ${t.name}`, t.text)).join('\n')}${
+          others.length ? `${texts.length ? '\n' : ''}Also attached (not shown): ${others.join(', ')}` : ''
+        }\n`
+      : '';
   return `You turn a reviewer's rough note into one clear review comment for the AI coding agent that built this branch. The agent receives it as review feedback and must act on it.
 
 Rules:
@@ -153,7 +165,7 @@ ${repository}
 ${ctx.changed.length ? `Changed on the branch: ${ctx.changed.join(', ')}\n` : ''}${code}
 ## Reviewer's draft
 ${ctx.filePath ? `Reviewer points at: ${ctx.filePath}${ctx.line ? `:${ctx.line}` : ''}\n` : ''}${wrapUntrusted('reviewer_draft', ctx.draft)}
-`;
+${attached}`;
 }
 
 /** Run an AI CLI on a plain-text prompt (no tools, no file edits) in a temporary folder; its answer. */
@@ -289,7 +301,11 @@ export class ReviewAssistService {
     return null;
   }
 
-  private prompt(req: Requirement, task: BridgeTask, draft: { body: string; file_path?: string; line?: number }): string {
+  private prompt(
+    req: Requirement,
+    task: BridgeTask,
+    draft: { body: string; file_path?: string; line?: number; attachments?: Array<{ name: string; type?: string; data_url: string }> }
+  ): string {
     const project = this.projects.getProject(task.project);
     const base = project ? this.branches.baseBranchFor(project, req.id) : null;
     const repo = project?.repo_path;
@@ -300,9 +316,18 @@ export class ReviewAssistService {
       if (from) changed = changedFiles(repo, from, task.branch);
       snippets = codeSnippets(repo, task.branch, mentionedFiles(repo, draft));
     }
+    // Attached logs and other text go in (cut to a size); other files by name only.
+    const texts: Array<{ name: string; text: string }> = [];
+    const others: string[] = [];
+    for (const file of draft.attachments ?? []) {
+      const name = safeAttachmentName(file.name);
+      const data = isTextAttachment(name, file.type) ? decodeDataUrl(file.data_url) : null;
+      if (data) texts.push({ name, text: data.toString('utf8').slice(0, ATTACHMENT_TEXT_MAX) });
+      else others.push(name);
+    }
     return buildImprovePrompt({
       req, project: task.project, branch: task.branch ?? null, base, changed, snippets,
-      draft: draft.body, filePath: draft.file_path, line: draft.line,
+      draft: draft.body, filePath: draft.file_path, line: draft.line, attachments: { texts, others },
     });
   }
 }

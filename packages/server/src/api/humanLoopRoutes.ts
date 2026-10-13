@@ -1,9 +1,12 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import type { Express, RequestHandler } from 'express';
 import { AskQuestionInputSchema, QuestionStatus } from '@sp-kickstack/shared';
 import { badRequest } from '../lib/httpError.js';
 import type { QuestionService } from '../services/questionService.js';
 import type { RequirementService } from '../services/requirementService.js';
 import type { ReviewService } from '../services/reviewService.js';
+import { attachmentType } from '../services/reviewAttachments.js';
 import type { SettingsService } from '../services/settingsService.js';
 import type { NotificationService } from '../notify/notificationService.js';
 import type { SseBroadcaster } from '../sse/broadcaster.js';
@@ -94,6 +97,21 @@ export function registerHumanLoopRoutes(app: Express, deps: HumanLoopRouteDeps) 
   app.get('/api/tasks/:id/branch-files', (req, res, next) => {
     try {
       res.json(reviewService.branchFiles(Number(req.params.id)));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // A file attached to a review comment: photos and PDFs open in the browser, other files download.
+  app.get('/api/comments/:id/attachments/:name', (req, res, next) => {
+    try {
+      const file = reviewService.attachmentFile(Number(req.params.id), req.params.name);
+      const type = attachmentType(file);
+      const inline = /^image\/(png|jpeg|gif|webp)$/.test(type) || type === 'application/pdf';
+      res.type(type);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(path.basename(file))}`);
+      res.send(fs.readFileSync(file));
     } catch (err) {
       next(err);
     }

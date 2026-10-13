@@ -23,7 +23,7 @@ const TERMINAL_TASK_STATUSES: NormStatus[] = ['done', 'cancelled', 'failed'];
 export class RequirementService {
   constructor(
     private db: AppDatabase,
-    private workspaceDir: string = './workspace'
+    public readonly workspaceDir: string = './workspace'
   ) {}
 
   public getNextSeq(): number {

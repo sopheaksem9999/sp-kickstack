@@ -22,6 +22,13 @@ export function taskReviewView(
   return { show: canAdd || own.length > 0, canAdd, comments: own };
 }
 
+/** "900 B", "2 KB", "3.5 MB". */
+export function fileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`;
+}
+
 /** "src/a.ts:4", "src/a.ts" or "General". */
 export function commentLocation(c: Pick<ReviewComment, 'file_path' | 'line'>): string {
   if (!c.file_path) return 'General';

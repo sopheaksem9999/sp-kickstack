@@ -42,25 +42,34 @@ section: in the side panel under **Per-Repo Agent Engines**, and on the full pag
 **Task Columns**. A card keeps showing its comments afterwards.
 
 1. Go to the card of the repository you tested (for example **BACKEND**).
-2. Write the comment in the box ("What should the agent change?"). A comment can be up to 4000
-   characters, and Markdown is shown formatted. You can paste an error or log lines as they are.
+2. Write the comment in the box ("What should the agent change?"), as in the requirement form:
+   the toolbar adds **Bold**, *Italic*, `Code`, a code block (for errors and logs), bullet and
+   numbered lists and links, and **Preview** shows the comment formatted (**Write** goes back).
+   A comment can be up to 4000 characters. You can paste an error or log lines as they are.
    As in AI chat:
    - type `#` to pick a file changed on this task's branch, a repository or a requirement (add
      `:42` after a file for a line, for example `#src/api/users.ts:42`);
    - type `@` to pick a shared workspace asset (for example `@openapi.yaml`).
 
    ↑/↓ and Enter (or Tab) pick from the list; Escape closes it.
+
+   The paperclip attaches files (screenshots, PDF, logs, txt, md, json, yaml, csv, xlsx); each
+   shows as a chip you can remove before you add the comment.
 3. Optional: click **Improve with AI**. It rewrites your text into one clear point for the agent:
    the problem, the key error lines as **Evidence**, what you **Expected**, and **Where**
    (as `#path:line`). It keeps your `#` and `@` references. It reads the requirement, the files
    changed on the task branch, and the code of the files you pointed at with `#` or that a pasted
-   stack trace names. It uses the AI CLI from Settings → AI & Local Engines (Claude Code, AGY or
+   stack trace names, and the text of attached logs and text files (other files by name). It uses the AI CLI from Settings → AI & Local Engines (Claude Code, AGY or
    Codex), as text only: it changes no files. It can take up to 2 minutes. Check the result;
    **Undo** brings your text back. Nothing is saved yet.
 4. Click **Add comment**. Repeat in other cards as needed.
 
-Each comment shows its state (comments made before 2026-10-13 also show their file, for example
-`src/api/users.ts:42`):
+Each comment shows its attached files (pictures as thumbnails; click to open or download) and its
+state (comments made before 2026-10-13 also show their file, for example `src/api/users.ts:42`).
+Attached files are kept in the bridge's workspace folder, under
+`review-attachments/<REQ-ID>/<comment id>/`; deleting an open comment deletes them.
+
+
 
 | State | Meaning | What you can do |
 |---|---|---|
@@ -108,6 +117,11 @@ For each task that has open comments (it must be IN REVIEW or COMPLETE):
    1. `src/api/users.ts:42` — Return 404, not 500, for an unknown id
    2. General — Add a test for the empty list
    ```
+
+   A comment's attached files follow it as
+   ``Attached: `/…/review-attachments/REQ-007/14/screenshot.png` (image/png)``:
+   the agent opens them by path. This works for Local AI CLI agents on this computer; a Stoneforge
+   engine on another machine sees only the paths.
 
 3. Its comments become `sent · round N`. Rounds count per requirement.
 4. The task's earlier merge, if any, is forgotten: its new commits must go through the merge

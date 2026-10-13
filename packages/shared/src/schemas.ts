@@ -296,11 +296,19 @@ export const AnswerQuestionInputSchema = z
     path: ['answer'],
   });
 
+/** A file attached to a review comment, sent as a data URL. */
+export const ReviewAttachmentUploadSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  type: z.string().max(200).optional(),
+  data_url: z.string().min(1),
+});
+
 export const CreateReviewCommentInputSchema = z.object({
   task_id: z.number().int().positive(),
   body: z.string().trim().min(1).max(4000),
   file_path: z.string().trim().min(1).max(300).optional(),
   line: z.number().int().positive().optional(),
+  attachments: z.array(ReviewAttachmentUploadSchema).max(20).optional(),
 });
 
 /** A reviewer's draft (often a pasted error) for "Improve with AI"; nothing is saved. */
@@ -309,6 +317,7 @@ export const ImproveReviewCommentInputSchema = z.object({
   body: z.string().trim().min(1).max(20000),
   file_path: z.string().trim().min(1).max(300).optional(),
   line: z.number().int().positive().optional(),
+  attachments: z.array(ReviewAttachmentUploadSchema).max(20).optional(),
 });
 
 export const UpdateReviewCommentInputSchema = z
@@ -345,6 +354,7 @@ export type AnswerQuestionInput = z.input<typeof AnswerQuestionInputSchema>;
 export type CreateReviewCommentInput = z.input<typeof CreateReviewCommentInputSchema>;
 export type UpdateReviewCommentInput = z.input<typeof UpdateReviewCommentInputSchema>;
 export type ImproveReviewCommentInput = z.input<typeof ImproveReviewCommentInputSchema>;
+export type ReviewAttachmentUpload = z.input<typeof ReviewAttachmentUploadSchema>;
 export type RequestChangesInput = z.input<typeof RequestChangesInputSchema>;
 export type SendTaskNoteInput = z.input<typeof SendTaskNoteInputSchema>;
 export type AgentProfileInput = z.input<typeof AgentProfileInputSchema>;

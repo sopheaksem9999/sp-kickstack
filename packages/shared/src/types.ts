@@ -506,6 +506,13 @@ export interface AskQuestionResponse {
 export type ReviewCommentState = 'open' | 'sent' | 'resolved';
 
 /** A reviewer's comment on a task; sent to the agent with "Request changes". */
+/** A file kept with a review comment (served at /api/comments/:id/attachments/:name). */
+export interface ReviewCommentAttachment {
+  name: string;
+  size: number;
+  type: string;
+}
+
 export interface ReviewComment {
   id: number;
   req_id: string;
@@ -520,6 +527,7 @@ export interface ReviewComment {
   created_at: string;
   updated_at: string;
   sent_at: string | null;
+  attachments: ReviewCommentAttachment[];
 }
 
 /** "Improve with AI": the rewritten comment, and the file/line it names (null = keep the reviewer's). */

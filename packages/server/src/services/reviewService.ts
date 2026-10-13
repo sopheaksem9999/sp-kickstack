@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { AppDatabase } from '../db/index.js';
 import {
   CreateReviewCommentInput,
@@ -21,6 +23,7 @@ import type { TicketService } from './ticketService.js';
 import type { RequirementService } from './requirementService.js';
 import { rerunTask, TaskRow } from './taskRetry.js';
 import { ReviewAssistService, isSafeRelativePath } from './reviewAssist.js';
+import { attachmentPath, decodeUploads, listAttachments, writeAttachments } from './reviewAttachments.js';
 
 /** Task states that can be sent back to their agent. */
 const REVIEWABLE = ['in_review', 'done'];
@@ -36,22 +39,25 @@ type CommentRow = {
   body_md: string; state: ReviewComment['state']; round: number | null; created_at: string; updated_at: string; sent_at: string | null;
 };
 
-function toComment(row: CommentRow): ReviewComment {
+function toComment(row: CommentRow, attachments: ReviewComment['attachments'] = []): ReviewComment {
   return {
     id: row.id, req_id: row.req_id, task_id: row.task_id, project: row.project, file_path: row.file_path, line: row.line,
     body: row.body_md, state: row.state, round: row.round, created_at: row.created_at, updated_at: row.updated_at, sent_at: row.sent_at,
+    attachments,
   };
 }
 
-/** The prompt note for one review round. */
-export function reviewNote(round: number, branch: string | null | undefined, comments: ReviewComment[]): string {
+/** The prompt note for one review round; `filesDir` gives the folder of a comment's attached files. */
+export function reviewNote(round: number, branch: string | null | undefined, comments: ReviewComment[], filesDir?: (c: ReviewComment) => string): string {
   const where = branch ? `Keep working on \`${branch}\`` : 'Keep working on the same code';
   const items = comments.map((c, i) => {
     const location = c.file_path ? `\`${neutralize(c.file_path)}${c.line ? `:${c.line}` : ''}\`` : 'General';
     const [first, ...rest] = neutralize(c.body).split('\n');
-    return [`${i + 1}. ${location} — ${first}`, ...rest.map((line) => `   ${line}`)].join('\n');
+    const files = filesDir ? (c.attachments ?? []).map((a) => `   Attached: \`${neutralize(path.join(filesDir(c), a.name))}\` (${a.type})`) : [];
+    return [`${i + 1}. ${location} — ${first}`, ...rest.map((line) => `   ${line}`), ...files].join('\n');
   });
-  return `## Review feedback (round ${round})\nA reviewer asked for changes. ${where}: address every point below, commit, and report back for review.\n\n${items.join('\n')}\n`;
+  const attached = filesDir && comments.some((c) => c.attachments?.length) ? ' Files the reviewer attached are listed under their point; open them by path.' : '';
+  return `## Review feedback (round ${round})\nA reviewer asked for changes. ${where}: address every point below, commit, and report back for review.${attached}\n\n${items.join('\n')}\n`;
 }
 
 /** Reviewer comments, "Request changes" (a new run on the same branch) and notes to running agents. */
@@ -84,7 +90,20 @@ export class ReviewService {
     const rows = this.db
       .prepare('SELECT c.*, t.project FROM review_comments c JOIN bridge_tasks t ON t.id = c.task_id WHERE c.req_id = ? ORDER BY c.id')
       .all(reqId) as CommentRow[];
-    return rows.map(toComment);
+    return rows.map((row) => toComment(row, listAttachments(this.filesDir(row.req_id, row.id))));
+  }
+
+  /** The folder a comment's attached files are kept in. */
+  private filesDir(reqId: string, commentId: number): string {
+    return path.resolve(this.requirementService.workspaceDir, 'review-attachments', reqId, String(commentId));
+  }
+
+  /** The path of one of a comment's attached files (404 when it has no such file). */
+  public attachmentFile(commentId: number, name: string): string {
+    const comment = this.comment(commentId);
+    const file = comment ? attachmentPath(this.filesDir(comment.req_id, comment.id), name) : null;
+    if (!file) throw new HttpError(404, `Attachment ${name} not found`);
+    return file;
   }
 
   public addComment(reqId: string, input: CreateReviewCommentInput): ReviewComment {
@@ -96,6 +115,8 @@ export class ReviewService {
     if (parsed.file_path && !isSafeRelativePath(parsed.file_path)) {
       throw badRequest('File path must be relative to the repository (no leading / and no ..)');
     }
+    // Every file is decoded before anything is saved, so a broken one leaves no comment behind.
+    const files = decodeUploads(parsed.attachments ?? []);
     const now = new Date().toISOString();
     const info = this.db
       .prepare(`
@@ -103,7 +124,15 @@ export class ReviewService {
         VALUES (?, ?, ?, ?, ?, 'open', ?, ?)
       `)
       .run(reqId, task.id, parsed.file_path ?? null, parsed.line ?? null, parsed.body, now, now);
-    return this.comment(Number(info.lastInsertRowid))!;
+    const id = Number(info.lastInsertRowid);
+    try {
+      writeAttachments(this.filesDir(reqId, id), files);
+    } catch (err: any) {
+      this.db.prepare('DELETE FROM review_comments WHERE id = ?').run(id);
+      fs.rmSync(this.filesDir(reqId, id), { recursive: true, force: true });
+      throw new HttpError(500, `Could not save the attached files: ${err?.message || err}`);
+    }
+    return this.comment(id)!;
   }
 
   public updateComment(id: number, input: UpdateReviewCommentInput): ReviewComment {
@@ -122,6 +151,7 @@ export class ReviewService {
     if (!current) throw new HttpError(404, `Comment #${id} not found`);
     if (current.state !== 'open') throw conflict('Comments already sent to an agent are kept; resolve them instead');
     this.db.prepare('DELETE FROM review_comments WHERE id = ?').run(id);
+    fs.rmSync(this.filesDir(current.req_id, id), { recursive: true, force: true });
   }
 
   /**
@@ -162,7 +192,7 @@ export class ReviewService {
       const comments = byTask.get(task.id)!;
       try {
         await rerunTask(this.db, task, this.getAdapter, {
-          from: REVIEWABLE, noteKind: 'review', note: reviewNote(round, task.branch, comments), stopped: FINISHED, clearMerge: true,
+          from: REVIEWABLE, noteKind: 'review', note: reviewNote(round, task.branch, comments, (c) => this.filesDir(c.req_id, c.id)), stopped: FINISHED, clearMerge: true,
           profile: { model: parsed.model, effort: parsed.effort },
         });
       } catch (err: any) {
@@ -226,7 +256,7 @@ export class ReviewService {
     const row = this.db
       .prepare('SELECT c.*, t.project FROM review_comments c JOIN bridge_tasks t ON t.id = c.task_id WHERE c.id = ?')
       .get(id) as CommentRow | undefined;
-    return row ? toComment(row) : undefined;
+    return row ? toComment(row, listAttachments(this.filesDir(row.req_id, row.id))) : undefined;
   }
 
   private recordEvent(type: string, reqId: string, taskId: number | undefined, payload: Record<string, unknown>) {

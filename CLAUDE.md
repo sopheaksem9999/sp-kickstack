@@ -69,3 +69,8 @@ npm run desktop:dev
 - All screens and views with tabs, sub-views, or segmented filters must synchronize the active tab state with the URL query parameter (`?tab=<id>`).
 - Must support initial URL parsing, browser Back/Forward history navigation, reload persistence, and direct deep-linking.
 - Follow `.agents/rules/ui-tab-url-governance.md`.
+
+### Rule G: Git Branch Governance
+- Task branch names, base/target branches and pushes go only through `BranchService` (`packages/server/src/services/branchService.ts`): `nameTaskBranch` (Settings pattern, default `{req}` → `REQ-008`; tickets `-ticket-<id>`), `baseBranchFor(project, reqId)` (requirement target branch first).
+- Only the bridge pushes (never forced, failures logged to the task); agents never push; only the merge gate merges.
+- Follow `.agents/rules/git-branch-governance.md`.

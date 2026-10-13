@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -8,6 +8,10 @@ import {
   startRequirementFanOut,
   fetchAiProviders,
   draftRequirementAi,
+  fetchSettings,
+  sendAiChatMessage,
+  fetchAssets,
+  fetchRequirements,
 } from '../lib/api.js';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { useCreateRequirement } from '../lib/CreateRequirementContext.js';
@@ -46,6 +50,18 @@ import {
   Lock,
   Check,
   ChevronDown,
+  AtSign,
+  Hash,
+  CheckSquare,
+  Terminal,
+  Loader2,
+  Search,
+  Code2,
+  MessageSquare,
+  Copy,
+  PlusCircle,
+  Zap,
+  Gauge,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import {
@@ -70,12 +86,87 @@ import {
   BranchMergePolicy,
   AiChatMessage,
   DraftRequirementResult,
+  formatRequirementTitle,
+  ChatAttachmentItem,
+  SharedAsset,
+  Requirement,
+  Project,
+  ReasoningEffort,
 } from '@sp-kickstack/shared';
-import { fetchSettings, sendAiChatMessage } from '../lib/api.js';
+import { MarkdownMessage } from './MarkdownMessage.js';
+
 import { fetchBranches } from '../lib/runSettingsApi.js';
 import { BranchPicker } from './BranchPicker.js';
 import { baseBranchLabel, createTargetBranch } from '../lib/runSettings.js';
 import { Sheet, SheetContent } from './ui/sheet.js';
+
+interface ProviderOption {
+  id: string;
+  name: string;
+  desc: string;
+  badge?: string;
+}
+
+const EFFORT_OPTIONS: { id: ReasoningEffort; name: string; desc: string }[] = [
+  { id: 'low', name: 'Low', desc: 'Fastest generation, concise responses' },
+  { id: 'medium', name: 'Med', desc: 'Balanced reasoning and speed (default)' },
+  { id: 'high', name: 'High', desc: 'Deeper architectural reasoning' },
+  { id: 'max', name: 'Max', desc: 'Exhaustive verification and edge cases' },
+];
+
+const PROVIDER_OPTIONS: ProviderOption[] = [
+  { id: 'auto', name: 'Auto (Best Local Engine)', desc: 'Detects installed local CLI' },
+  { id: 'claude-cli', name: 'Claude Code CLI', desc: 'Anthropic agentic CLI' },
+  { id: 'agy-cli', name: 'Antigravity CLI (Agy)', desc: 'Google DeepMind agentic CLI' },
+  { id: 'codex-cli', name: 'Codex CLI', desc: 'OpenAI local developer CLI' },
+  { id: 'ollama', name: 'Ollama (Local LLM)', desc: '100% offline local model inference' },
+  { id: 'heuristic', name: 'Heuristic Architect', desc: 'Offline requirement generator' },
+];
+
+interface ModelOptionItem {
+  id: string;
+  name: string;
+  desc?: string;
+  isConfigured?: boolean;
+}
+
+const MODEL_OPTIONS_MAP: Record<string, ModelOptionItem[]> = {
+  'claude-cli': [
+    { id: 'default', name: 'Default (recommended)', desc: 'Opus 5.5 · Best for everyday, complex tasks' },
+    { id: 'opus', name: 'Opus', desc: 'Opus 5.5 · Best for everyday, complex tasks' },
+    { id: 'fable', name: 'Fable', desc: 'Fable 5.1 · Most capable for hardest and longest-running tasks' },
+    { id: 'sonnet', name: 'Sonnet', desc: 'Sonnet 5.5 · Efficient for routine and complex tasks' },
+    { id: 'haiku', name: 'Haiku', desc: 'Haiku 5.5 · Fastest for quick answers' },
+    { id: 'sonnet-5', name: 'Sonnet 5', desc: 'Sonnet 5 preset' },
+  ],
+  'agy-cli': [
+    { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', desc: 'Ultra-fast low-latency Google DeepMind model' },
+    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (Deep)', desc: 'Advanced code reasoning and large context' },
+    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', desc: 'Fast multimodal reasoning' },
+    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', desc: 'Reliable general performance' },
+    { id: 'default', name: 'Default Model', desc: 'Preset from local Antigravity CLI' },
+  ],
+  'codex-cli': [
+    { id: 'default', name: 'Default Codex Model', desc: 'OpenAI developer CLI default' },
+    { id: 'o3-mini', name: 'o3-mini (High reasoning)', desc: 'Fast STEM and complex coding model' },
+    { id: 'gpt-4o', name: 'GPT-4o (Omni)', desc: 'High-capability flagship model' },
+  ],
+  'ollama': [
+    { id: 'default', name: 'Default Local Model', desc: 'Default configured model on port 11434' },
+    { id: 'qwen2.5-coder:14b', name: 'Qwen 2.5 Coder 14B', desc: 'Offline code specialized LLM' },
+    { id: 'deepseek-r1:14b', name: 'DeepSeek R1 14B', desc: 'Offline distilled reasoning model' },
+    { id: 'llama3.3:70b', name: 'Llama 3.3 70B', desc: 'High parameter local open weights model' },
+  ],
+  'auto': [{ id: 'default', name: 'Auto Default', desc: 'Inherits selected engine preset' }],
+  'heuristic': [{ id: 'default', name: 'Built-in Spec Engine', desc: 'Local rule-based generator' }],
+};
+
+const CHAT_COMMANDS = [
+  { id: 'create', command: '/create', title: 'Synthesize & Create Requirement', description: 'Formulates a complete requirement ticket from this chat' },
+  { id: 'clear', command: '/clear', title: 'Clear Chat Messages', description: 'Clears message history in the current session' },
+  { id: 'help', command: '/help', title: 'Architect Guidance & Syntax', description: 'Shows supported syntax, shortcuts and agent commands' },
+];
+
 
 export function CreateRequirementSheet() {
   const { isOpen, closeSheet } = useCreateRequirement();
@@ -129,6 +220,9 @@ export function CreateRequirementSheet() {
   const [isAiDrafting, setIsAiDrafting] = useState(false);
   const [showAiBar, setShowAiBar] = useState(false);
   const [selectedAiProvider, setSelectedAiProvider] = useState<string>('auto');
+  const [selectedAiModel, setSelectedAiModel] = useState<string>('default');
+  const [selectedEffort, setSelectedEffort] = useState<ReasoningEffort>('medium');
+  const [isEngineOpen, setIsEngineOpen] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [projectsPopoverOpen, setProjectsPopoverOpen] = useState(false);
 
@@ -138,12 +232,497 @@ export function CreateRequirementSheet() {
     staleTime: 30000,
   });
 
+  // Option 2: AI Co-Architect Chat Mode
+  const [activeMode, setActiveMode] = useState<'form' | 'chat'>('form');
+  const chatFileInputRef = useRef<HTMLInputElement | null>(null);
+  const chatTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [chatAttachedFiles, setChatAttachedFiles] = useState<ChatAttachmentItem[]>([]);
+  const [showMentionMenu, setShowMentionMenu] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
+  const [showHashSlashMenu, setShowHashSlashMenu] = useState(false);
+  const [hashSlashTrigger, setHashSlashTrigger] = useState<'#' | '/'>('#');
+  const [hashSlashQuery, setHashSlashQuery] = useState('');
+  const [hashSlashSelectedIndex, setHashSlashSelectedIndex] = useState(0);
 
+  // Helper to determine model for provider based on Settings > AI CLI
+  const getModelForProvider = (provider: string): string => {
+    if (provider === 'claude-cli') return settingsData?.ai_cli?.claude?.model || 'sonnet';
+    if (provider === 'agy-cli') return settingsData?.ai_cli?.agy?.model || 'gemini-3.8-flash';
+    if (provider === 'codex-cli') return settingsData?.ai_cli?.codex?.model || 'default';
+    if (provider === 'ollama') return settingsData?.ai_cli?.ollama?.model || 'default';
+    return 'default';
+  };
 
-  // Auto-select all projects in workspace by default
+  const getEffortForProvider = (provider: string): ReasoningEffort => {
+    if (provider === 'claude-cli') return settingsData?.ai_cli?.claude?.effort || 'medium';
+    if (provider === 'agy-cli') return settingsData?.ai_cli?.agy?.effort || 'medium';
+    if (provider === 'codex-cli') return settingsData?.ai_cli?.codex?.effort || 'medium';
+    return 'medium';
+  };
+
+  // Auto-sync default engine, model, and effort from settings on sheet open
   useEffect(() => {
-    if (projects.length > 0 && selectedProjects.length === 0) {
-      setSelectedProjects(projects.map((p) => p.name));
+    if (isOpen && settingsData?.ai_cli) {
+      const defaultProvider = settingsData.ai_cli.defaultProvider || 'auto';
+      setSelectedAiProvider(defaultProvider);
+      setSelectedAiModel(getModelForProvider(defaultProvider));
+      setSelectedEffort(getEffortForProvider(defaultProvider));
+    }
+  }, [isOpen, settingsData]);
+
+  const handleAiProviderChange = (newProvider: string) => {
+    setSelectedAiProvider(newProvider);
+    setSelectedAiModel(getModelForProvider(newProvider));
+    setSelectedEffort(getEffortForProvider(newProvider));
+  };
+
+  const handleSummarizeTool = () => {
+    handleSendChatMessage(`Summarize the architectural scope, connected hub repositories (${projects.map(p => p.name).join(', ') || 'backend, frontend'}), and key technical takeaways.`);
+  };
+
+  const handleExtractSpecTool = () => {
+    handleSendChatMessage('/create Extract and formulate an actionable multi-repo development specification with clear acceptance criteria.');
+  };
+
+  const handleInspectTool = () => {
+    handleSendChatMessage(`Inspect the API contracts, shared models in @sp-kickstack/shared, and integration patterns for ${projects.map(p => p.name).join(', ') || 'backend, frontend'}.`);
+  };
+
+  const handleAskSpecTool = () => {
+    setChatInput('What are the recommended endpoints and contract changes for this requirement?');
+    if (chatTextareaRef.current) {
+      chatTextareaRef.current.focus();
+    }
+  };
+
+  const availableAiModels = useMemo(() => {
+    const providerList = [...(MODEL_OPTIONS_MAP[selectedAiProvider] || [{ id: 'default', name: 'Default Model' }])];
+    const configuredModel = getModelForProvider(selectedAiProvider);
+
+    const list = providerList.map((m) => {
+      if (m.id === configuredModel) {
+        return {
+          ...m,
+          isConfigured: true,
+        };
+      }
+      return m;
+    });
+
+    if (configuredModel && configuredModel !== 'default' && !list.some((m) => m.id === configuredModel)) {
+      list.unshift({
+        id: configuredModel,
+        name: configuredModel,
+        desc: 'Configured in Settings > AI CLI',
+        isConfigured: true,
+      });
+    }
+
+    return list;
+  }, [selectedAiProvider, settingsData]);
+
+  const currentAiProviderName = PROVIDER_OPTIONS.find((p) => p.id === selectedAiProvider)?.name || selectedAiProvider;
+  const currentAiModelName = useMemo(() => {
+    const found = availableAiModels.find((m) => m.id === selectedAiModel);
+    if (found) return found.name;
+    return selectedAiModel;
+  }, [availableAiModels, selectedAiModel]);
+
+  // Queries for mentions in Option 2
+  const { data: assetsData } = useQuery({
+    queryKey: ['assets', workspaceId],
+    queryFn: () => fetchAssets(workspaceId),
+    enabled: isOpen && activeMode === 'chat',
+    staleTime: 15000,
+  });
+  const sharedAssets = assetsData?.shared_assets || [];
+
+  const filteredMentionAssets = useMemo(() => {
+    return sharedAssets.filter((a) =>
+      mentionQuery ? a.name.toLowerCase().includes(mentionQuery.toLowerCase()) : true
+    );
+  }, [sharedAssets, mentionQuery]);
+
+  const { data: allRequirements = [] } = useQuery({
+    queryKey: ['requirements', workspaceId],
+    queryFn: () => fetchRequirements(workspaceId),
+    enabled: isOpen && activeMode === 'chat',
+    staleTime: 15000,
+  });
+
+  const filteredMentionProjects = useMemo(() => {
+    if (!hashSlashQuery) return projects;
+    const q = hashSlashQuery.toLowerCase();
+    return projects.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.kind.toLowerCase().includes(q) ||
+        (p.repo_path && p.repo_path.toLowerCase().includes(q))
+    );
+  }, [projects, hashSlashQuery]);
+
+  const filteredMentionRequirements = useMemo(() => {
+    if (hashSlashTrigger !== '#') return [];
+    if (!hashSlashQuery) return allRequirements;
+    const q = hashSlashQuery.toLowerCase();
+    return allRequirements.filter(
+      (r) => r.id.toLowerCase().includes(q) || r.title.toLowerCase().includes(q)
+    );
+  }, [allRequirements, hashSlashQuery, hashSlashTrigger]);
+
+  const availableMentionCommands = useMemo(() => {
+    if (hashSlashTrigger !== '/') return [];
+    if (!hashSlashQuery) return CHAT_COMMANDS;
+    const q = hashSlashQuery.toLowerCase();
+    return CHAT_COMMANDS.filter(
+      (c) =>
+        c.command.toLowerCase().includes(q) ||
+        c.title.toLowerCase().includes(q) ||
+        c.description.toLowerCase().includes(q)
+    );
+  }, [hashSlashTrigger, hashSlashQuery]);
+
+  const activeMentionMenuItems = useMemo<
+    Array<{
+      key: string;
+      type: 'project' | 'ticket' | 'command';
+      project?: Project;
+      ticket?: Requirement;
+      command?: { id: string; command: string; title: string; description: string };
+    }>
+  >(() => {
+    const items: Array<{
+      key: string;
+      type: 'project' | 'ticket' | 'command';
+      project?: Project;
+      ticket?: Requirement;
+      command?: { id: string; command: string; title: string; description: string };
+    }> = [];
+
+    for (const proj of filteredMentionProjects) {
+      items.push({
+        key: `proj-${proj.name}`,
+        type: 'project',
+        project: proj,
+      });
+    }
+
+    if (hashSlashTrigger === '#') {
+      for (const req of filteredMentionRequirements) {
+        items.push({
+          key: `ticket-${req.id}`,
+          type: 'ticket',
+          ticket: req,
+        });
+      }
+    }
+
+    if (hashSlashTrigger === '/') {
+      for (const cmd of availableMentionCommands) {
+        items.push({
+          key: `cmd-${cmd.id}`,
+          type: 'command',
+          command: cmd,
+        });
+      }
+    }
+
+    return items;
+  }, [filteredMentionProjects, filteredMentionRequirements, availableMentionCommands, hashSlashTrigger]);
+
+  // File attachments and paste handlers for Option 2
+  const handleChatFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const newItem: ChatAttachmentItem = {
+          id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          name: file.name,
+          type: file.type || 'application/octet-stream',
+          size: file.size,
+          data_url: dataUrl,
+        };
+        setChatAttachedFiles((prev) => [...prev, newItem]);
+      };
+      reader.readAsDataURL(file);
+    });
+    if (chatFileInputRef.current) chatFileInputRef.current.value = '';
+  };
+
+  const handleChatPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const dataUrl = reader.result as string;
+            const newItem: ChatAttachmentItem = {
+              id: `att_paste_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+              name: file.name && file.name !== 'image.png' ? file.name : `clipboard-image-${Date.now().toString().slice(-4)}.png`,
+              type: file.type || 'image/png',
+              size: file.size,
+              data_url: dataUrl,
+            };
+            setChatAttachedFiles((prev) => [...prev, newItem]);
+            toast.success(`Pasted image from clipboard (${Math.round(file.size / 1024)} KB)`);
+          };
+          reader.readAsDataURL(file);
+        }
+      }
+    }
+  };
+
+  const removeChatAttachedFile = (index: number) => {
+    setChatAttachedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const selectMentionAsset = (asset: SharedAsset) => {
+    const alreadyAttached = chatAttachedFiles.some(
+      (f) => (f.asset_id && f.asset_id === asset.id) || f.name === asset.name
+    );
+    if (!alreadyAttached) {
+      setChatAttachedFiles((prev) => [
+        ...prev,
+        {
+          id: `att_asset_${asset.id}`,
+          name: asset.name,
+          type: asset.type || 'application/octet-stream',
+          size: asset.size || 0,
+          data_url: asset.data_url,
+          asset_id: asset.id,
+        },
+      ]);
+    }
+
+    const atIndex = chatInput.lastIndexOf('@');
+    if (atIndex !== -1) {
+      const beforeAt = chatInput.slice(0, atIndex);
+      const afterAt = chatInput.slice(atIndex);
+      const queryEnd = afterAt.indexOf(' ');
+      const remainder = queryEnd !== -1 ? afterAt.slice(queryEnd) : '';
+      setChatInput(`${beforeAt}@${asset.name} ${remainder}`);
+    } else {
+      setChatInput((prev) => (prev ? `${prev} @${asset.name} ` : `@${asset.name} `));
+    }
+
+    setShowMentionMenu(false);
+    setMentionQuery('');
+    toast.success(`Attached "${asset.name}" from Shared Workspace Assets`);
+    if (chatTextareaRef.current) {
+      chatTextareaRef.current.focus();
+    }
+  };
+
+  const selectMentionProject = (proj: Project) => {
+    const trig = hashSlashTrigger || '#';
+    const trigIndex = chatInput.lastIndexOf(trig);
+    const mentionTag = `#${proj.name} `;
+
+    if (trigIndex !== -1) {
+      const before = chatInput.slice(0, trigIndex);
+      const after = chatInput.slice(trigIndex);
+      const queryEnd = after.indexOf(' ');
+      const remainder = queryEnd !== -1 ? after.slice(queryEnd) : '';
+      setChatInput(`${before}${mentionTag}${remainder}`);
+    } else {
+      setChatInput((prev) => (prev ? `${prev} ${mentionTag}` : mentionTag));
+    }
+
+    setShowHashSlashMenu(false);
+    setHashSlashQuery('');
+    toast.success(`Mentioned project #${proj.name}`);
+    if (chatTextareaRef.current) {
+      chatTextareaRef.current.focus();
+    }
+  };
+
+  const selectMentionTicket = (req: Requirement) => {
+    const trig = hashSlashTrigger || '#';
+    const trigIndex = chatInput.lastIndexOf(trig);
+    const mentionTag = `#${req.id} `;
+
+    if (trigIndex !== -1) {
+      const before = chatInput.slice(0, trigIndex);
+      const after = chatInput.slice(trigIndex);
+      const queryEnd = after.indexOf(' ');
+      const remainder = queryEnd !== -1 ? after.slice(queryEnd) : '';
+      setChatInput(`${before}${mentionTag}${remainder}`);
+    } else {
+      setChatInput((prev) => (prev ? `${prev} ${mentionTag}` : mentionTag));
+    }
+
+    setShowHashSlashMenu(false);
+    setHashSlashQuery('');
+    toast.success(`Mentioned ticket #${req.id}: ${req.title}`);
+    if (chatTextareaRef.current) {
+      chatTextareaRef.current.focus();
+    }
+  };
+
+  const selectMentionCommand = (cmd: { command: string }) => {
+    const slashIndex = chatInput.lastIndexOf('/');
+    const commandTag = `${cmd.command} `;
+
+    if (slashIndex !== -1) {
+      const before = chatInput.slice(0, slashIndex);
+      const after = chatInput.slice(slashIndex);
+      const queryEnd = after.indexOf(' ');
+      const remainder = queryEnd !== -1 ? after.slice(queryEnd) : '';
+      setChatInput(`${before}${commandTag}${remainder}`);
+    } else {
+      setChatInput((prev) => (prev ? `${prev} ${commandTag}` : commandTag));
+    }
+
+    setShowHashSlashMenu(false);
+    setHashSlashQuery('');
+    if (chatTextareaRef.current) {
+      chatTextareaRef.current.focus();
+    }
+  };
+
+  const handleChatInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setChatInput(val);
+
+    const cursor = e.target.selectionStart;
+    const textBeforeCursor = val.slice(0, cursor);
+
+    // 1. Check for @ mention (shared workspace assets)
+    const lastAt = textBeforeCursor.lastIndexOf('@');
+    if (lastAt !== -1) {
+      const charBeforeAt = lastAt > 0 ? textBeforeCursor[lastAt - 1] : ' ';
+      if (charBeforeAt === ' ' || charBeforeAt === '\n' || lastAt === 0) {
+        const query = textBeforeCursor.slice(lastAt + 1);
+        if (!/\s/.test(query)) {
+          setShowMentionMenu(true);
+          setMentionQuery(query);
+          setMentionSelectedIndex(0);
+          setShowHashSlashMenu(false);
+          return;
+        }
+      }
+    }
+    setShowMentionMenu(false);
+    setMentionQuery('');
+
+    // 2. Check for # or / (project / ticket / command mentions)
+    const lastHash = textBeforeCursor.lastIndexOf('#');
+    const lastSlash = textBeforeCursor.lastIndexOf('/');
+    const lastTrigger = Math.max(lastHash, lastSlash);
+
+    if (lastTrigger !== -1) {
+      const triggerChar = textBeforeCursor[lastTrigger] as '#' | '/';
+      const charBefore = lastTrigger > 0 ? textBeforeCursor[lastTrigger - 1] : ' ';
+      if (charBefore === ' ' || charBefore === '\n' || lastTrigger === 0) {
+        const query = textBeforeCursor.slice(lastTrigger + 1);
+        if (!/\s/.test(query)) {
+          setShowHashSlashMenu(true);
+          setHashSlashTrigger(triggerChar);
+          setHashSlashQuery(query);
+          setHashSlashSelectedIndex(0);
+          setShowMentionMenu(false);
+          return;
+        }
+      }
+    }
+    setShowHashSlashMenu(false);
+    setHashSlashQuery('');
+  };
+
+  const handleChatInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Navigate @ asset menu
+    if (showMentionMenu) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setMentionSelectedIndex((prev) => (prev + 1) % Math.max(1, filteredMentionAssets.length));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMentionSelectedIndex((prev) => (prev - 1 + filteredMentionAssets.length) % Math.max(1, filteredMentionAssets.length));
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        if (filteredMentionAssets.length > 0) {
+          e.preventDefault();
+          selectMentionAsset(filteredMentionAssets[mentionSelectedIndex]);
+          return;
+        }
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowMentionMenu(false);
+        return;
+      }
+    }
+
+    // Navigate # or / menu
+    if (showHashSlashMenu) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setHashSlashSelectedIndex((prev) => (prev + 1) % Math.max(1, activeMentionMenuItems.length));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setHashSlashSelectedIndex(
+          (prev) => (prev - 1 + activeMentionMenuItems.length) % Math.max(1, activeMentionMenuItems.length)
+        );
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        if (activeMentionMenuItems.length > 0) {
+          e.preventDefault();
+          const item = activeMentionMenuItems[hashSlashSelectedIndex];
+          if (item) {
+            if (item.type === 'project' && item.project) {
+              selectMentionProject(item.project);
+              return;
+            }
+            if (item.type === 'ticket' && item.ticket) {
+              selectMentionTicket(item.ticket);
+              return;
+            }
+            if (item.type === 'command' && item.command) {
+              selectMentionCommand(item.command);
+              return;
+            }
+          }
+        }
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowHashSlashMenu(false);
+        return;
+      }
+    }
+
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendChatMessage();
+    }
+  };
+
+
+
+  // Auto-select all projects in workspace by default, or prune invalid projects when workspace changes
+  useEffect(() => {
+    if (projects.length > 0) {
+      setSelectedProjects((prev) => {
+        const valid = prev.filter((name) => projects.some((p) => p.name === name));
+        return valid.length > 0 ? valid : projects.map((p) => p.name);
+      });
+    } else {
+      setSelectedProjects([]);
     }
   }, [workspaceId, projects]);
 
@@ -199,14 +778,16 @@ export function CreateRequirementSheet() {
         workspace_id: workspaceId,
         provider: selectedAiProvider !== 'auto' ? selectedAiProvider : undefined,
       });
-      if (data.title) setTitle(data.title);
+      if (data.title) setTitle(formatRequirementTitle(data.title, data.goal || aiPrompt));
+
       if (data.goal) setGoal(data.goal);
       if (data.user_story) setUserStory(data.user_story);
       if (Array.isArray(data.acceptance_criteria) && data.acceptance_criteria.length > 0) {
         setCriteria(data.acceptance_criteria);
       }
       if (Array.isArray(data.affected_projects) && data.affected_projects.length > 0) {
-        setSelectedProjects(data.affected_projects);
+        const valid = data.affected_projects.filter((p: string) => projects.some((proj) => proj.name === p));
+        setSelectedProjects(valid.length > 0 ? valid : projects.map((p) => p.name));
       }
       toast.success(`Generated by ${data.provider_used || 'AI Drafter'}!`);
       setShowAiBar(false);
@@ -217,8 +798,6 @@ export function CreateRequirementSheet() {
     }
   };
 
-  // Option 2: AI Co-Architect Chat Mode
-  const [activeMode, setActiveMode] = useState<'form' | 'chat'>('form');
   const [chatMessages, setChatMessages] = useState<AiChatMessage[]>([
     {
       id: 'welcome-1',
@@ -246,26 +825,71 @@ What feature, solution, or refactoring would you like to design today? You can s
   }, [chatMessages, activeMode]);
 
   const handleSendChatMessage = async (textToSend?: string) => {
-    const content = (textToSend || chatInput).trim();
-    if (!content || isChatSending) return;
+    const rawContent = (textToSend || chatInput).trim();
+    if (!rawContent && chatAttachedFiles.length === 0) return;
+    if (isChatSending) return;
 
+    // Check for /create command
+    if (
+      rawContent.toLowerCase().startsWith('/create') ||
+      rawContent.toLowerCase() === 'create requirement' ||
+      rawContent.toLowerCase() === 'dispatch requirement'
+    ) {
+      setChatInput('');
+      const lastSpec = [...chatMessages].reverse().find((m) => m.suggested_spec)?.suggested_spec;
+      if (lastSpec) {
+        applySpecToForm(lastSpec);
+        return;
+      } else {
+        toast.info('No architectural spec formulated yet. Ask local AI to design architecture first.');
+      }
+    }
+
+    if (rawContent.toLowerCase() === '/clear') {
+      setChatMessages([]);
+      setChatInput('');
+      toast.success('Chat messages cleared');
+      return;
+    }
+
+    if (rawContent.toLowerCase() === '/help') {
+      setChatInput('');
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: `help-${Date.now()}`,
+          role: 'assistant',
+          content: `💡 **Option 2 Architect Guidance & Shortcuts:**\n- **@**: Mention and attach files from Shared Workspace Assets\n- **#**: Mention connected hub repositories or tickets\n- **/**: Access chat commands (/create, /clear, /help)\n- **📎**: Attach local images, specs, or code files\n- **Clipboard Paste**: Paste screenshots directly with Ctrl+V / Cmd+V\n- Click **"Transfer to Requirement Form"** on any formulated spec to populate the requirement form!`,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+      return;
+    }
+
+    const sendingFiles = [...chatAttachedFiles];
     const userMsg: AiChatMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content,
+      content: rawContent || '(Attached files)',
       timestamp: new Date().toISOString(),
+      attachments: sendingFiles.length > 0 ? sendingFiles : undefined,
     };
 
     const newHistory = [...chatMessages, userMsg];
     setChatMessages(newHistory);
     setChatInput('');
+    setChatAttachedFiles([]);
+    setShowMentionMenu(false);
+    setShowHashSlashMenu(false);
     setIsChatSending(true);
 
     try {
       const res = await sendAiChatMessage({
         messages: newHistory,
         workspace_id: workspaceId,
-        provider: selectedAiProvider !== 'auto' ? selectedAiProvider as any : undefined,
+        provider: selectedAiProvider !== 'auto' ? (selectedAiProvider as any) : undefined,
+        model: selectedAiModel !== 'default' ? selectedAiModel : undefined,
+        effort: selectedEffort,
       });
 
       setChatMessages((prev) => [...prev, res.message]);
@@ -286,17 +910,32 @@ What feature, solution, or refactoring would you like to design today? You can s
   };
 
   const applySpecToForm = (spec: DraftRequirementResult) => {
-    if (spec.title) setTitle(spec.title);
+    if (spec.title) setTitle(formatRequirementTitle(spec.title, spec.goal || spec.notes));
     if (spec.goal) setGoal(spec.goal);
+
     if (spec.user_story) setUserStory(spec.user_story);
     if (Array.isArray(spec.acceptance_criteria) && spec.acceptance_criteria.length > 0) {
       setCriteria(spec.acceptance_criteria);
     }
     if (Array.isArray(spec.affected_projects) && spec.affected_projects.length > 0) {
-      setSelectedProjects(spec.affected_projects);
+      const valid = spec.affected_projects.filter((p: string) => projects.some((proj) => proj.name === p));
+      setSelectedProjects(valid.length > 0 ? valid : projects.map((p) => p.name));
     }
     setActiveMode('form');
     toast.success('✨ Transferred AI Architect spec to requirement form! Review and click Create & Dispatch.');
+  };
+
+  const handleCreateRequirementFromMessage = (msg: AiChatMessage) => {
+    if (msg.suggested_spec) {
+      applySpecToForm(msg.suggested_spec);
+      return;
+    }
+    const lines = msg.content.split('\n').filter((l) => l.trim().length > 0);
+    const firstLine = lines[0]?.replace(/^[#*\s]+/, '').replace(/^Technical Inspection & APIs:\s*/i, '').trim() || 'New AI Requirement';
+    setTitle(formatRequirementTitle(firstLine, msg.content));
+    setGoal(msg.content);
+    setActiveMode('form');
+    toast.success('✨ Transferred to Requirement Form! Review and dispatch.');
   };
 
   const toggleProject = (name: string) => {
@@ -615,16 +1254,17 @@ What feature, solution, or refactoring would you like to design today? You can s
             <div className="space-y-1">
               <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center justify-between">
                 <span>Requirement Title *</span>
-                <span className="text-[10px] font-normal text-slate-400">Clear, unambiguous feature goal</span>
+                <span className="text-[10px] font-normal text-slate-400">[Module] &lt;Action Verb&gt; &lt;Feature Scope&gt;</span>
               </label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Rider can see nearby drivers on live map"
+                placeholder="e.g. [Realtime] Track Nearby Drivers on Live Map"
                 autoFocus
                 className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424] text-sm font-semibold text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] focus:border-transparent transition-all"
               />
+
             </div>
 
             {/* Input State, Priority, Sprint & Merge Policy Select Controls (2 columns per row) */}
@@ -1146,71 +1786,283 @@ What feature, solution, or refactoring would you like to design today? You can s
             </div>
           ) : (
             <div className="flex-1 flex flex-col overflow-hidden bg-slate-50/50 dark:bg-[#13141a]">
-              {/* Context Bar */}
-              <div className="px-6 py-2.5 border-b border-slate-200 dark:border-[#262732] bg-white dark:bg-[#1a1b23] flex flex-wrap items-center justify-between gap-3 text-xs">
-                <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
-                  <FolderGit2 className="w-4 h-4 text-purple-500" />
-                  <span className="font-semibold text-slate-700 dark:text-slate-200">Connected Hub Repos:</span>
-                  <div className="flex items-center gap-1 flex-wrap">
-                    {projects.map((p) => (
-                      <span
-                        key={p.name}
-                        className="px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 font-mono text-[10px] font-semibold border border-purple-200 dark:border-purple-900/50"
-                      >
-                        {p.name}
+              {/* 1. TOP HEADER: Connected Repos Pill + Engine/Model/Effort Pill */}
+              <div className="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-[#2d2f3d] bg-white dark:bg-[#1b1c26] gap-2">
+                {/* Left Pill: Connected Hub Repos Popover */}
+                <Popover open={projectsPopoverOpen} onOpenChange={setProjectsPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-200 dark:border-[#2d2f3d] bg-slate-50 dark:bg-[#14151e] hover:bg-slate-100 dark:hover:bg-[#20212d] text-slate-800 dark:text-slate-100 transition-colors shadow-2xs max-w-[210px] cursor-pointer"
+                      title="Connected Repositories"
+                    >
+                      <FolderGit2 className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                      <span className="truncate">
+                        {projects.length > 0 ? `Repos: ${projects.map((p) => p.name).join(', ')}` : 'Workspace Repos'}
                       </span>
-                    ))}
-                    {projects.length === 0 && (
-                      <span className="text-[10px] text-slate-400 italic">No repos registered</span>
-                    )}
-                  </div>
-                </div>
+                      <ChevronDown className="w-3 h-3 text-slate-400 shrink-0 ml-0.5" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-80 p-2 space-y-2">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        Connected Hub Repos ({projects.length})
+                      </span>
+                    </div>
+                    <div className="max-h-56 overflow-y-auto space-y-1 pr-0.5">
+                      {projects.length === 0 ? (
+                        <div className="text-center py-4 text-xs text-slate-400">No repos registered.</div>
+                      ) : (
+                        projects.map((p) => (
+                          <div
+                            key={p.name}
+                            className="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs bg-slate-50 dark:bg-[#20212d] text-slate-700 dark:text-slate-200"
+                          >
+                            <div className="flex items-center gap-2 min-w-0 pr-2">
+                              <FolderGit2 className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                              <span className="font-semibold truncate text-[11px]">{p.name}</span>
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 font-mono uppercase font-bold">
+                                {p.kind}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                              {p.base_branch || 'develop'}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
 
-                <div className="flex items-center gap-2">
-                  <Cpu className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  <RadixSelect
-                    value={selectedAiProvider}
-                    onChange={setSelectedAiProvider}
-                    options={[
-                      { value: 'auto', label: 'Auto (Best Local Engine)' },
-                      { value: 'claude-cli', label: 'Claude Code CLI' },
-                      { value: 'agy-cli', label: 'Antigravity CLI (agy)' },
-                      { value: 'codex-cli', label: 'Codex CLI' },
-                      { value: 'ollama', label: 'Local Ollama' },
-                      { value: 'heuristic', label: 'Offline Heuristic' },
-                    ]}
-                    className="w-48 py-1 px-2.5 text-[11px] h-7 bg-slate-100 dark:bg-[#23242e] border-slate-200 dark:border-[#2d2f3d]"
-                  />
-                </div>
+                {/* Right Pill: Engine / Model / Effort Config Popover */}
+                <Popover open={isEngineOpen} onOpenChange={setIsEngineOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5 px-2 py-1 text-xs font-semibold rounded-lg border border-slate-200 dark:border-[#2d2f3d] bg-slate-50 dark:bg-[#14151e] hover:bg-slate-100 dark:hover:bg-[#20212d] text-slate-800 dark:text-slate-200 transition-colors shadow-2xs truncate cursor-pointer"
+                      title="AI Engine & Model Configuration"
+                    >
+                      <Zap className="w-3 h-3 text-indigo-500 shrink-0" />
+                      <span className="truncate max-w-[120px]">
+                        {currentAiProviderName.split(' ')[0]} · {currentAiModelName.split(' ')[0]}
+                      </span>
+                      <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-76 p-2.5 space-y-3">
+                    {/* Section 1: AI Engine */}
+                    <div>
+                      <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 px-1">
+                        <Cpu className="w-3 h-3 text-purple-500" />
+                        AI Engine
+                      </div>
+                      <div className="space-y-0.5">
+                        {PROVIDER_OPTIONS.filter((p) => {
+                          if (p.id === 'auto') return true;
+                          const enabledList = settingsData?.ai_cli?.enabledEngines;
+                          if (!enabledList || enabledList.length === 0) return true;
+                          return enabledList.includes(p.id as any);
+                        }).map((opt) => {
+                          const isSelected = selectedAiProvider === opt.id;
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => handleAiProviderChange(opt.id)}
+                              className={`w-full flex items-start justify-between p-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                                isSelected
+                                  ? 'bg-purple-50 dark:bg-purple-950/50 text-purple-900 dark:text-purple-200 font-medium'
+                                  : 'hover:bg-slate-100 dark:hover:bg-[#20212d] text-slate-700 dark:text-slate-300'
+                              }`}
+                            >
+                              <div className="min-w-0 pr-1">
+                                <div className="flex items-center gap-1">
+                                  <span className="truncate">{opt.name}</span>
+                                  {opt.badge && (
+                                    <span className="px-1 py-0.2 text-[8px] font-mono rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300">
+                                      {opt.badge}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-slate-400 font-normal">{opt.desc}</div>
+                              </div>
+                              {isSelected && (
+                                <Check className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0 mt-0.5" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Section 2: Model Preset */}
+                    <div className="border-t border-slate-100 dark:border-[#2d2f3d] pt-2">
+                      <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 px-1">
+                        <Layers className="w-3 h-3 text-indigo-500" />
+                        Model Preset ({selectedAiProvider})
+                      </div>
+                      <div className="max-h-36 overflow-y-auto space-y-0.5 pr-0.5">
+                        {availableAiModels.map((m) => {
+                          const isSelected = selectedAiModel === m.id;
+                          return (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => setSelectedAiModel(m.id)}
+                              className={`w-full flex items-start justify-between p-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                                isSelected
+                                  ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-900 dark:text-indigo-200 font-medium'
+                                  : 'hover:bg-slate-100 dark:hover:bg-[#20212d] text-slate-700 dark:text-slate-300'
+                              }`}
+                            >
+                              <div className="min-w-0 pr-1">
+                                <div className="font-mono text-[11px] truncate">{m.name}</div>
+                                {m.desc && <div className="text-[9px] text-slate-400 leading-tight">{m.desc}</div>}
+                              </div>
+                              {isSelected && (
+                                <Check className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Section 3: Reasoning Effort */}
+                    <div className="border-t border-slate-100 dark:border-[#2d2f3d] pt-2">
+                      <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 px-1">
+                        <Gauge className="w-3 h-3 text-emerald-500" />
+                        Reasoning Effort
+                      </div>
+                      <div className="grid grid-cols-4 gap-1">
+                        {EFFORT_OPTIONS.map((eff) => {
+                          const isSelected = selectedEffort === eff.id;
+                          return (
+                            <button
+                              key={eff.id}
+                              type="button"
+                              onClick={() => setSelectedEffort(eff.id)}
+                              className={`py-1 text-center rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                                isSelected
+                                  ? 'bg-indigo-600 text-white shadow-2xs'
+                                  : 'bg-slate-100 dark:bg-[#20212d] text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-[#282a39]'
+                              }`}
+                              title={eff.desc}
+                            >
+                              {eff.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
 
-              {/* Messages Feed */}
-              <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              {/* 2. HEADER ACTION ROW: AI Tools */}
+              <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-slate-200 dark:border-[#2d2f3d] bg-slate-50/80 dark:bg-[#181923] overflow-x-auto no-scrollbar">
+                <div className="flex items-center gap-1 text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 shrink-0 mr-1">
+                  <Wand2 className="w-3 h-3 text-indigo-500" />
+                  Tools
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSummarizeTool}
+                  disabled={isChatSending}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-[#2d2f3d] bg-white dark:bg-[#1e1f2b] text-slate-700 dark:text-slate-200 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all text-xs font-medium shrink-0 disabled:opacity-50 shadow-2xs cursor-pointer"
+                  title="Summarize page architecture, technical stack and key takeaways"
+                >
+                  <Search className="w-3 h-3 text-blue-500 shrink-0" />
+                  <span>Summarize</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExtractSpecTool}
+                  disabled={isChatSending}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-[#2d2f3d] bg-white dark:bg-[#1e1f2b] text-slate-700 dark:text-slate-200 hover:border-purple-400 hover:text-purple-600 dark:hover:text-purple-400 transition-all text-xs font-medium shrink-0 disabled:opacity-50 shadow-2xs cursor-pointer"
+                  title="Extract actionable development requirement specification"
+                >
+                  <FileText className="w-3 h-3 text-purple-500 shrink-0" />
+                  <span>Extract Spec</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleInspectTool}
+                  disabled={isChatSending}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-[#2d2f3d] bg-white dark:bg-[#1e1f2b] text-slate-700 dark:text-slate-200 hover:border-emerald-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-all text-xs font-medium shrink-0 disabled:opacity-50 shadow-2xs cursor-pointer"
+                  title="Inspect APIs, contracts, code snippets and technical details"
+                >
+                  <Code2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                  <span>Inspect APIs</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleAskSpecTool}
+                  disabled={isChatSending}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-[#2d2f3d] bg-white dark:bg-[#1e1f2b] text-slate-700 dark:text-slate-200 hover:border-amber-400 hover:text-amber-600 dark:hover:text-amber-400 transition-all text-xs font-medium shrink-0 disabled:opacity-50 shadow-2xs cursor-pointer"
+                  title="Ask Architect questions"
+                >
+                  <MessageSquare className="w-3 h-3 text-amber-500 shrink-0" />
+                  <span>Ask Architect</span>
+                </button>
+              </div>
+
+              {/* 3. MESSAGES SCROLL AREA */}
+              <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3.5 space-y-3.5">
                 {chatMessages.map((msg) => (
                   <div
                     key={msg.id}
-                    className={clsx(
-                      'flex gap-3 text-xs',
-                      msg.role === 'user' ? 'justify-end' : 'justify-start'
-                    )}
+                    className={`flex flex-col ${
+                      msg.role === 'user' ? 'items-end' : 'items-start'
+                    }`}
                   >
-                    {msg.role === 'assistant' && (
-                      <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-[#7b68ee] to-[#6366f1] flex items-center justify-center text-white shrink-0 shadow-sm mt-0.5">
-                        <Bot className="w-4 h-4" />
-                      </div>
-                    )}
+                    <div className="flex items-center gap-1.5 mb-1 px-1">
+                      {msg.role === 'user' ? (
+                        <>
+                          <span className="text-[10px] text-slate-400 font-medium">You</span>
+                          <div className="p-1 rounded-full bg-slate-200 dark:bg-[#2d2f3d] text-slate-600 dark:text-slate-300">
+                            <User className="w-2.5 h-2.5" />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="p-1 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
+                            <Bot className="w-2.5 h-2.5" />
+                          </div>
+                          <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
+                            AI Assistant
+                          </span>
+                        </>
+                      )}
+                    </div>
 
                     <div
-                      className={clsx(
-                        'max-w-[85%] rounded-2xl px-4 py-3 space-y-2.5 leading-relaxed shadow-sm',
+                      className={`max-w-[94%] rounded-2xl p-3 text-xs shadow-xs ${
                         msg.role === 'user'
-                          ? 'bg-gradient-to-r from-[#7b68ee] to-[#6c5ce7] text-white rounded-tr-none'
-                          : 'bg-white dark:bg-[#1e1f2a] border border-slate-200 dark:border-[#2d2f3d] text-slate-800 dark:text-slate-200 rounded-tl-none'
-                      )}
+                          ? 'bg-indigo-600 text-white rounded-tr-xs'
+                          : 'bg-white dark:bg-[#1c1d29] border border-slate-200 dark:border-[#2d2f3d] text-slate-800 dark:text-slate-100 rounded-tl-xs'
+                      }`}
                     >
-                      <div className="whitespace-pre-wrap font-sans text-xs">
-                        {msg.content}
-                      </div>
+                      {msg.attachments && msg.attachments.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                          {msg.attachments.map((att, i) => (
+                            <div
+                              key={i}
+                              className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/20 text-white text-[10px] font-mono"
+                            >
+                              <FileText className="w-2.5 h-2.5" />
+                              <span className="truncate max-w-[120px]">{att.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <MarkdownMessage content={msg.content?.trim() || '*(No response recorded)*'} />
 
                       {/* Spec Proposal Card */}
                       {msg.suggested_spec && (
@@ -1248,7 +2100,7 @@ What feature, solution, or refactoring would you like to design today? You can s
                           <button
                             type="button"
                             onClick={() => applySpecToForm(msg.suggested_spec!)}
-                            className="w-full mt-2 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-gradient-to-r from-[#7b68ee] to-[#6366f1] hover:from-[#6c5ce7] hover:to-[#4f46e5] text-white font-bold text-xs shadow transition-all active:scale-[0.98]"
+                            className="w-full mt-2 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-gradient-to-r from-[#7b68ee] to-[#6366f1] hover:from-[#6c5ce7] hover:to-[#4f46e5] text-white font-bold text-xs shadow transition-all active:scale-[0.98] cursor-pointer"
                           >
                             <Wand2 className="w-3.5 h-3.5" />
                             <span>Transfer to Requirement Form</span>
@@ -1256,69 +2108,366 @@ What feature, solution, or refactoring would you like to design today? You can s
                           </button>
                         </div>
                       )}
-                    </div>
 
-                    {msg.role === 'user' && (
-                      <div className="w-7 h-7 rounded-lg bg-slate-200 dark:bg-[#2d2f3d] flex items-center justify-center text-slate-700 dark:text-slate-200 shrink-0 mt-0.5">
-                        <User className="w-4 h-4" />
-                      </div>
-                    )}
+                      {/* Action buttons on Assistant responses */}
+                      {msg.role === 'assistant' && msg.id !== 'welcome' && (
+                        <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-[#2d2f3d] flex items-center justify-between text-[11px]">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(msg.content);
+                              toast.success('Copied to clipboard');
+                            }}
+                            className="flex items-center gap-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                          >
+                            <Copy className="w-3 h-3" />
+                            Copy
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleCreateRequirementFromMessage(msg)}
+                            className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 font-medium transition-colors cursor-pointer"
+                          >
+                            <PlusCircle className="w-3 h-3" />
+                            Create Requirement
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
 
                 {isChatSending && (
-                  <div className="flex gap-3 text-xs justify-start items-center text-slate-500 dark:text-slate-400 italic">
-                    <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-[#7b68ee] to-[#6366f1] flex items-center justify-center text-white shrink-0 animate-pulse">
-                      <Bot className="w-4 h-4" />
+                  <div className="flex flex-col items-start">
+                    <div className="flex items-center gap-1.5 mb-1 px-1">
+                      <div className="p-1 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 animate-pulse">
+                        <Bot className="w-2.5 h-2.5" />
+                      </div>
+                      <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
+                        AI is thinking...
+                      </span>
                     </div>
-                    <span>Local AI Architect is analyzing workspace contracts and formulating architecture...</span>
+                    <div className="p-3 rounded-2xl rounded-tl-xs bg-white dark:bg-[#1c1d29] border border-slate-200 dark:border-[#2d2f3d] flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        Generating response...
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
 
-              {/* Suggestion Chips */}
-              <div className="px-6 py-2 border-t border-slate-200 dark:border-[#262732] bg-white/50 dark:bg-[#1a1b23]/50 flex items-center gap-2 overflow-x-auto">
-                <span className="text-[10px] text-slate-400 shrink-0 font-medium">Quick Starters:</span>
-                {[
-                  'Design user profile avatar upload & crop',
-                  'Add JWT authentication with refresh token',
-                  'Optimize metrics feed with virtual scrolling',
-                ].map((chip) => (
-                  <button
-                    key={chip}
-                    type="button"
-                    onClick={() => handleSendChatMessage(chip)}
-                    disabled={isChatSending}
-                    className="shrink-0 px-2.5 py-1 rounded-full border border-slate-200 dark:border-[#2d2f3d] bg-white dark:bg-[#23242e] text-[11px] text-slate-700 dark:text-slate-300 hover:border-purple-400 dark:hover:border-purple-600 transition-colors disabled:opacity-50"
-                  >
-                    {chip}
-                  </button>
-                ))}
-              </div>
+              {/* 4. ATTACHED FILES PREVIEW TRAY */}
+              {chatAttachedFiles.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 px-3 py-1.5 bg-slate-50 dark:bg-[#161722] border-t border-slate-200 dark:border-[#2d2f3d]">
+                  {chatAttachedFiles.map((att, idx) => {
+                    const isImg =
+                      att.type?.startsWith('image/') ||
+                      att.name.match(/\.(png|jpg|jpeg|gif|webp|svg)$/i);
+                    return (
+                      <div
+                        key={att.id || idx}
+                        className="flex items-center gap-1.5 pl-2 pr-1 py-0.5 rounded-lg border border-purple-200 dark:border-purple-800/50 bg-white dark:bg-[#1e1f2b] text-purple-900 dark:text-purple-200 text-xs shadow-2xs"
+                      >
+                        {isImg && att.data_url ? (
+                          <img
+                            src={att.data_url}
+                            alt={att.name}
+                            className="w-4 h-4 object-cover rounded shrink-0"
+                          />
+                        ) : (
+                          <FileText className="w-3 h-3 text-purple-600 dark:text-purple-400 shrink-0" />
+                        )}
+                        <span className="font-medium truncate max-w-[130px] text-[10px]" title={att.name}>
+                          {att.name}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeChatAttachedFile(idx)}
+                          className="p-0.5 rounded hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-600 dark:text-purple-300 cursor-pointer"
+                          title="Remove attachment"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
-              {/* Input Box */}
-              <div className="p-4 border-t border-slate-200 dark:border-[#262732] bg-white dark:bg-[#1a1b23] flex items-center gap-2">
-                <textarea
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSendChatMessage();
-                    }
-                  }}
-                  placeholder="Discuss architecture, endpoints, or features with your local AI (Enter to send)..."
-                  rows={2}
-                  className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424] text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] resize-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => handleSendChatMessage()}
-                  disabled={isChatSending || !chatInput.trim()}
-                  className="p-3 rounded-xl bg-gradient-to-r from-[#7b68ee] to-[#6366f1] text-white hover:from-[#6c5ce7] hover:to-[#4f46e5] disabled:opacity-40 transition-all shadow-md shadow-purple-500/20"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
+              {/* 5. MESSAGE INPUT BOX */}
+              <div className="relative p-2.5 border-t border-slate-200 dark:border-[#2d2f3d] bg-white dark:bg-[#1b1c26]">
+                {/* Floating Mention Autocomplete Popup (@ Shared Assets) */}
+                {showMentionMenu && (
+                  <div className="absolute bottom-full left-2 right-2 mb-1.5 max-h-56 overflow-y-auto rounded-xl border border-purple-200 dark:border-purple-800/60 bg-white dark:bg-[#1f202b] shadow-xl z-50 p-1.5">
+                    <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between border-b border-slate-100 dark:border-[#2a2b38] mb-1">
+                      <span className="flex items-center gap-1 text-purple-600 dark:text-purple-400 font-bold">
+                        <AtSign className="w-3 h-3" />
+                        Shared Workspace Assets
+                      </span>
+                      <span className="text-[9px] text-purple-500 font-mono">
+                        {filteredMentionAssets.length} found
+                      </span>
+                    </div>
+                    {filteredMentionAssets.length === 0 ? (
+                      <div className="p-3 text-center text-xs text-slate-400">
+                        {sharedAssets.length === 0
+                          ? 'No files in Shared Workspace Assets yet'
+                          : 'No matching files'}
+                      </div>
+                    ) : (
+                      filteredMentionAssets.map((asset, idx) => {
+                        const isSelected = idx === mentionSelectedIndex;
+                        const isImg =
+                          asset.type?.startsWith('image/') ||
+                          asset.name.match(/\.(png|jpg|jpeg|gif|webp|svg)$/i);
+                        return (
+                          <button
+                            key={asset.id}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              selectMentionAsset(asset);
+                            }}
+                            className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                              isSelected
+                                ? 'bg-purple-100 dark:bg-purple-950/80 text-purple-900 dark:text-purple-200'
+                                : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#282937]'
+                            }`}
+                          >
+                            {isImg && asset.data_url ? (
+                              <img
+                                src={asset.data_url}
+                                alt={asset.name}
+                                className="w-4 h-4 object-cover rounded shrink-0"
+                              />
+                            ) : (
+                              <FileText className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold truncate text-[11px]">{asset.name}</div>
+                              <div className="text-[9px] text-slate-400 truncate">
+                                {asset.size ? `${Math.round(asset.size / 1024)} KB · ` : ''}
+                                {asset.notes || 'Shared Asset'}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+
+                {/* Floating Autocomplete Popup (# or / for Projects, Tickets, Commands) */}
+                {showHashSlashMenu && (
+                  <div className="absolute bottom-full left-2 right-2 mb-1.5 max-h-60 overflow-y-auto rounded-xl border border-purple-200 dark:border-purple-800/60 bg-white dark:bg-[#1f202b] shadow-2xl z-50 p-1.5 scrollbar-thin">
+                    <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between border-b border-slate-100 dark:border-[#2a2b38] mb-1">
+                      <span className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400 font-bold">
+                        {hashSlashTrigger === '#' ? (
+                          <Hash className="w-3 h-3" />
+                        ) : (
+                          <span className="font-mono text-xs font-black">/</span>
+                        )}
+                        {hashSlashTrigger === '#' ? 'Mention Projects & Tickets' : 'Mention Projects & Commands'}
+                      </span>
+                      <span className="text-[9px] text-purple-500 font-mono">
+                        {filteredMentionProjects.length} proj{hashSlashTrigger === '#' ? ` · ${filteredMentionRequirements.length} tickets` : ''}
+                      </span>
+                    </div>
+
+                    {activeMentionMenuItems.length === 0 ? (
+                      <div className="p-3 text-center text-xs text-slate-400">
+                        {hashSlashQuery
+                          ? `No matching items for "${hashSlashQuery}"`
+                          : 'No items found'}
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        {/* Projects Section */}
+                        {filteredMentionProjects.length > 0 && (
+                          <div>
+                            <div className="px-2 py-0.5 text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                              <FolderGit2 className="w-2.5 h-2.5 text-purple-500" />
+                              Projects
+                            </div>
+                            {filteredMentionProjects.map((proj) => {
+                              const itemIdx = activeMentionMenuItems.findIndex(
+                                (it) => it.type === 'project' && it.project?.name === proj.name
+                              );
+                              const isSelected = itemIdx === hashSlashSelectedIndex;
+                              return (
+                                <button
+                                  key={`proj-${proj.name}`}
+                                  type="button"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    selectMentionProject(proj);
+                                  }}
+                                  onMouseEnter={() => setHashSlashSelectedIndex(itemIdx)}
+                                  className={`w-full flex items-center gap-1.5 px-2 py-1 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                                    isSelected
+                                      ? 'bg-purple-100 dark:bg-purple-950/80 text-purple-900 dark:text-purple-200 ring-1 ring-purple-400/40'
+                                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#282937]'
+                                  }`}
+                                >
+                                  <FolderGit2 className="w-3 h-3 text-purple-500 shrink-0" />
+                                  <span className="px-1 py-0.2 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 font-mono text-[9px] font-bold shrink-0">
+                                    #{proj.name}
+                                  </span>
+                                  <div className="flex-1 min-w-0">
+                                    <span className="font-semibold truncate text-[11px] block">{proj.name}</span>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Requirements / Tickets Section (when triggered by #) */}
+                        {hashSlashTrigger === '#' && filteredMentionRequirements.length > 0 && (
+                          <div className="pt-1 border-t border-slate-100 dark:border-[#2a2b38]/60">
+                            <div className="px-2 py-0.5 text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                              <CheckSquare className="w-2.5 h-2.5 text-purple-500" />
+                              Workspace Tickets
+                            </div>
+                            {filteredMentionRequirements.map((req) => {
+                              const itemIdx = activeMentionMenuItems.findIndex(
+                                (it) => it.type === 'ticket' && it.ticket?.id === req.id
+                              );
+                              const isSelected = itemIdx === hashSlashSelectedIndex;
+                              return (
+                                <button
+                                  key={`ticket-${req.id}`}
+                                  type="button"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    selectMentionTicket(req);
+                                  }}
+                                  onMouseEnter={() => setHashSlashSelectedIndex(itemIdx)}
+                                  className={`w-full flex items-center gap-1.5 px-2 py-1 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                                    isSelected
+                                      ? 'bg-purple-100 dark:bg-purple-950/80 text-purple-900 dark:text-purple-200 ring-1 ring-purple-400/40'
+                                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#282937]'
+                                  }`}
+                                >
+                                  <span className="px-1 py-0.2 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 font-mono text-[9px] font-bold shrink-0">
+                                    #{req.id}
+                                  </span>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-semibold truncate text-[11px]">{req.title}</div>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Commands Section (when triggered by /) */}
+                        {hashSlashTrigger === '/' && availableMentionCommands.length > 0 && (
+                          <div className="pt-1 border-t border-slate-100 dark:border-[#2a2b38]/60">
+                            <div className="px-2 py-0.5 text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                              <Terminal className="w-2.5 h-2.5 text-purple-500" />
+                              Commands
+                            </div>
+                            {availableMentionCommands.map((cmd) => {
+                              const itemIdx = activeMentionMenuItems.findIndex(
+                                (it) => it.type === 'command' && it.command?.id === cmd.id
+                              );
+                              const isSelected = itemIdx === hashSlashSelectedIndex;
+                              return (
+                                <button
+                                  key={`cmd-${cmd.id}`}
+                                  type="button"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    selectMentionCommand(cmd);
+                                  }}
+                                  onMouseEnter={() => setHashSlashSelectedIndex(itemIdx)}
+                                  className={`w-full flex items-center gap-1.5 px-2 py-1 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                                    isSelected
+                                      ? 'bg-purple-100 dark:bg-purple-950/80 text-purple-900 dark:text-purple-200 ring-1 ring-purple-400/40'
+                                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#282937]'
+                                  }`}
+                                >
+                                  <span className="px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 font-mono text-[10px] font-bold shrink-0">
+                                    {cmd.command}
+                                  </span>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-semibold truncate text-[11px]">{cmd.title}</div>
+                                    <div className="text-[9px] text-slate-400 truncate">{cmd.description}</div>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="relative">
+                  <textarea
+                    ref={chatTextareaRef}
+                    rows={2}
+                    value={chatInput}
+                    onChange={handleChatInputChange}
+                    onKeyDown={handleChatInputKeyDown}
+                    onPaste={handleChatPaste}
+                    placeholder="Type @ for assets, # for projects/tickets, / for commands..."
+                    disabled={isChatSending}
+                    className="w-full resize-none p-2.5 pr-16 text-xs rounded-xl bg-slate-50 dark:bg-[#14151e] border border-slate-200 dark:border-[#2d2f3d] text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 transition-all"
+                  />
+
+                  <input
+                    type="file"
+                    ref={chatFileInputRef}
+                    className="hidden"
+                    multiple
+                    onChange={handleChatFileUpload}
+                  />
+
+                  <div className="absolute right-2 bottom-2.5 flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => chatFileInputRef.current?.click()}
+                      disabled={isChatSending}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#222432] transition-colors cursor-pointer"
+                      title="Attach File"
+                    >
+                      <Paperclip className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSendChatMessage()}
+                      disabled={(!chatInput.trim() && chatAttachedFiles.length === 0) || isChatSending}
+                      className="p-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-40 transition-colors shadow-2xs cursor-pointer"
+                      title="Send Message"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between mt-2 text-[10px] text-slate-400 dark:text-slate-500">
+                  <span>Enter to send · Shift+Enter for newline</span>
+                  {chatMessages.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setChatMessages([]);
+                        setChatAttachedFiles([]);
+                        toast.success('Chat history cleared');
+                      }}
+                      className="flex items-center gap-1 hover:text-red-500 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      Clear Chat
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           )}

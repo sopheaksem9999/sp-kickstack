@@ -1100,7 +1100,8 @@ export function createApp(deps: AppDependencies): Express {
   app.post('/api/ai/chat/sessions/:id/create-requirement', async (req, res, next) => {
     try {
       const extraInstructions = typeof req.body?.instructions === 'string' ? req.body.instructions : undefined;
-      const result = await aiChatService.createRequirementFromSession(req.params.id, extraInstructions);
+      const workspaceId = typeof req.body?.workspace_id === 'string' ? req.body.workspace_id : undefined;
+      const result = await aiChatService.createRequirementFromSession(req.params.id, extraInstructions, workspaceId);
       res.json(result);
     } catch (err: any) {
       if (err.message?.includes('not found')) {

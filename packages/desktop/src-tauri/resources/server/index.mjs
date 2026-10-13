@@ -37240,6 +37240,201 @@ var BrowserPageSchema = external_exports.object({
   error: external_exports.string().optional()
 });
 
+// packages/shared/dist/requirementTitles.js
+var ACRONYMS = /* @__PURE__ */ new Set([
+  "JWT",
+  "API",
+  "REST",
+  "SQL",
+  "UI",
+  "OAuth",
+  "OAuth2",
+  "GraphQL",
+  "gRPC",
+  "WebSocket",
+  "WebSockets",
+  "CI",
+  "CD",
+  "PR",
+  "CMS",
+  "DB",
+  "SDK",
+  "CORS",
+  "HTTP",
+  "HTTPS",
+  "URL",
+  "ID",
+  "HTML",
+  "CSS",
+  "QA",
+  "LLM",
+  "AI",
+  "JSON",
+  "RFC",
+  "SMS",
+  "2FA",
+  "MFA",
+  "WSS",
+  "GPS",
+  "SSE"
+]);
+var MINOR_WORDS = /* @__PURE__ */ new Set([
+  "a",
+  "an",
+  "and",
+  "as",
+  "at",
+  "but",
+  "by",
+  "for",
+  "from",
+  "in",
+  "into",
+  "nor",
+  "of",
+  "on",
+  "or",
+  "so",
+  "the",
+  "to",
+  "via",
+  "with",
+  "over"
+]);
+var ACTION_VERBS = [
+  "Implement",
+  "Build",
+  "Add",
+  "Integrate",
+  "Design",
+  "Optimize",
+  "Refactor",
+  "Support",
+  "Enable",
+  "Migrate",
+  "Configure",
+  "Secure",
+  "Automate",
+  "Deploy",
+  "Update"
+];
+function formatRequirementTitle(rawTitle, contextText) {
+  const trimmed = (rawTitle || "").trim();
+  if (trimmed.length > 0 && trimmed.length <= 3 && !trimmed.includes(" ") && !contextText) {
+    return trimmed;
+  }
+  if (!trimmed && !contextText) {
+    return "[Core] Implement Architectural Feature";
+  }
+  let text = trimmed;
+  text = text.replace(/[`*#_]/g, "");
+  text = text.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, "");
+  text = text.replace(/^(\d+\.|\d+\)|\#+)\s*/, "");
+  const boilerplatePrefixes = [
+    /^(?:requirement\s+created|ticket\s+created|extracted\s+requirement|requirement\s+candidate|ticket\s+draft|architectural\s+specification|architectural\s+assessment|architectural\s+design|feature\s+proposal|proposal)[:\s]+/i,
+    /^(?:what\s+is\s+your\s+recommend(?:ation)?(?:\s+on|\s+for)?|what\s+is\s+recommended(?:\s+for)?|recommend(?:ation)?(?:\s+on)?|how\s+to|let's|can\s+you\s+please|could\s+you\s+please|please|help\s+me(?:\s+to)?|i\s+want\s+to|we\s+need\s+to|i\s+need\s+to|we\s+want\s+to|we\s+would\s+like\s+to|create(?:\s+a|\s+the)?|make(?:\s+a|\s+the)?|draft(?:\s+a|\s+the)?)\s+/i
+  ];
+  for (const prefix of boilerplatePrefixes) {
+    text = text.replace(prefix, "").trim();
+  }
+  text = text.replace(/(\.{3}|…|[.!?:;]+)$/g, "").trim();
+  let moduleTag = "";
+  const existingModuleMatch = text.match(/^\[([a-zA-Z0-9_\-\s]+)\]\s*/);
+  if (existingModuleMatch) {
+    moduleTag = existingModuleMatch[1].trim();
+    text = text.slice(existingModuleMatch[0].length).trim();
+  }
+  const isGeneric = (str) => !str || str.length < 4 || /^(?:title\s+here|untitled\s+requirement|architectural\s+requirement|architectural\s+feature\s+requirement|new\s+architecture\s+discussion|discussion|overview|summary|hi|hello|test|as\s+a\s+user|step\s+\d+|executive\s+summary)$/i.test(str);
+  if (isGeneric(text) && contextText) {
+    let candidate = contextText.trim().replace(/[`*#_]/g, "");
+    for (const prefix of boilerplatePrefixes) {
+      candidate = candidate.replace(prefix, "").trim();
+    }
+    candidate = candidate.replace(/(\.{3}|…|[.!?:;]+)$/g, "").trim();
+    const firstLine = candidate.split("\n")[0].trim();
+    if (firstLine.length > 5 && !isGeneric(firstLine)) {
+      text = firstLine;
+    }
+  }
+  if (!text || text.length < 3) {
+    text = "Architectural Feature Specification";
+  }
+  const combinedContext = `${rawTitle} ${text} ${contextText || ""}`.toLowerCase();
+  if (!moduleTag) {
+    if (/\b(?:jwt|token|tokens|auth|authentication|login|logout|oauth|session|sessions|credential|credentials|password|rbac|permission|permissions|2fa|mfa)\b/.test(combinedContext)) {
+      moduleTag = "Auth";
+    } else if (/\b(?:payment|payments|stripe|checkout|invoice|invoices|billing|subscription|subscriptions|refund|card)\b/.test(combinedContext)) {
+      moduleTag = "Billing";
+    } else if (/\b(?:avatar|avatars|upload|uploads|cropping|crop|image|images|media|photo|video|attachment|attachments)\b/.test(combinedContext)) {
+      moduleTag = "Media";
+    } else if (/\b(?:search|searches|elasticsearch|indexing|autocomplete|full-text)\b/.test(combinedContext)) {
+      moduleTag = "Search";
+    } else if (/\b(?:schema|schemas|migration|migrations|table|tables|translation\s+table|postgres|sqlite|database|foreign\s+key|compound\s+index)\b/.test(combinedContext)) {
+      moduleTag = "Database";
+    } else if (/\b(?:notification|notifications|email|emails|sms|push|alert|alerts|messaging)\b/.test(combinedContext)) {
+      moduleTag = "Notification";
+    } else if (/\b(?:virtual\s+scrolling|cache|caching|redis|optimize|optimization|latency|performance|speed)\b/.test(combinedContext)) {
+      moduleTag = "Perf";
+    } else if (/\b(?:websocket|wss|socket|real-time|realtime|driver\s+location|location\s+tracking|gps|stream|streaming)\b/.test(combinedContext)) {
+      moduleTag = "Realtime";
+    } else if (/\b(?:component|modal|view|screen|page|drawer|feed|ui|frontend|theme|dark\s+mode|responsive)\b/.test(combinedContext)) {
+      moduleTag = "UI";
+    } else if (/\b(?:user\s+profile|user\s+account|user|users|profile|profiles|account|member)\b/.test(combinedContext)) {
+      moduleTag = "User";
+    } else if (/\b(?:api|apis|endpoint|endpoints|controller|controllers|gateway|rest|graphql|route|routes|webhook|webhooks)\b/.test(combinedContext)) {
+      moduleTag = "API";
+    } else {
+      moduleTag = "Core";
+    }
+  } else {
+    const upper = moduleTag.toUpperCase();
+    if (ACRONYMS.has(upper)) {
+      moduleTag = upper;
+    } else {
+      moduleTag = moduleTag.charAt(0).toUpperCase() + moduleTag.slice(1).toLowerCase();
+    }
+  }
+  const firstWord = text.split(/\s+/)[0] || "";
+  const matchedVerb = ACTION_VERBS.find((v) => v.toLowerCase() === firstWord.toLowerCase());
+  let body = text;
+  if (!matchedVerb) {
+    let defVerb = "Implement";
+    if (["UI", "Media"].includes(moduleTag))
+      defVerb = "Build";
+    else if (["Billing", "Notification", "Realtime"].includes(moduleTag))
+      defVerb = "Integrate";
+    else if (moduleTag === "Perf")
+      defVerb = "Optimize";
+    else if (moduleTag === "Database")
+      defVerb = "Design";
+    body = `${defVerb} ${text}`;
+  } else {
+    let rest = text.slice(firstWord.length).trim();
+    rest = rest.replace(/^(?:a|an|the)\s+/i, "");
+    body = `${matchedVerb} ${rest}`;
+  }
+  const words = body.split(/\s+/).filter(Boolean);
+  const formattedWords = words.map((w, idx) => {
+    const clean = w.replace(/[^a-zA-Z0-9]/g, "");
+    const upper = clean.toUpperCase();
+    const acro = Array.from(ACRONYMS).find((a2) => a2.toUpperCase() === upper);
+    if (acro)
+      return w.replace(new RegExp(clean, "i"), acro);
+    if (idx === 0 || idx === words.length - 1)
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    if (MINOR_WORDS.has(w.toLowerCase()))
+      return w.toLowerCase();
+    return w.charAt(0).toUpperCase() + w.slice(1);
+  });
+  let title = `[${moduleTag}] ${formattedWords.join(" ")}`;
+  if (title.length > 95) {
+    const cut3 = title.slice(0, 92);
+    const lastSp = cut3.lastIndexOf(" ");
+    title = lastSp > 50 ? cut3.slice(0, lastSp) : cut3;
+  }
+  return title;
+}
+
 // packages/server/src/services/workspaceService.ts
 var WorkspaceService = class {
   constructor(db2) {
@@ -49846,13 +50041,18 @@ ${apiHints ? `### \u{1F50C} API & Contract Hints
       suggested_spec: response.suggested_spec
     };
   }
-  async createRequirementFromSession(sessionId, extraInstructions) {
+  async createRequirementFromSession(sessionId, extraInstructions, targetWorkspaceId) {
     const session = this.getSession(sessionId);
     if (!session) {
       throw new Error(`Chat session ${sessionId} not found`);
     }
     if (!session.messages || session.messages.length === 0) {
       throw new Error("Cannot create requirement from empty chat session. Please discuss your feature requirements first.");
+    }
+    const effectiveWorkspaceId = targetWorkspaceId || session.workspace_id || "default";
+    if (targetWorkspaceId && session.workspace_id !== targetWorkspaceId) {
+      session.workspace_id = targetWorkspaceId;
+      this.db.prepare("UPDATE ai_chat_sessions SET workspace_id = ?, updated_at = ? WHERE id = ?").run(targetWorkspaceId, (/* @__PURE__ */ new Date()).toISOString(), sessionId);
     }
     const sessionAttachments = [];
     for (const msg of session.messages) {
@@ -49869,18 +50069,19 @@ ${apiHints ? `### \u{1F50C} API & Contract Hints
         }
       }
     }
+    const availableProjects = this.projectService.listProjects(effectiveWorkspaceId).map((p) => p.name);
     const synthesisPrompt = `You are the Principal Software Architect for this multi-project workspace.
 Analyze the ENTIRE conversation history below between Developer and Architect.
 Synthesize all user requests, architectural designs, contracts, acceptance criteria, constraints, and edge cases discussed into a comprehensive, production-ready Requirement Ticket Specification.
 
-${this.compileWorkspaceContext(session.workspace_id)}
+${this.compileWorkspaceContext(effectiveWorkspaceId)}
 
 Guidelines:
-1. Title: Concise, clear architectural feature title.
+1. Title: Standardized format "[Module] <Action Verb> <Feature Scope>" (e.g. "[Auth] Add JWT Authentication with Refresh Token Rotation", "[Billing] Integrate Stripe Webhook and Payment Verification", "[API] Design REST Endpoints with Admin Dashboard Controllers"). Must be clear, professional, and specify the exact module and action. Do NOT use conversational phrasing or vague labels.
 2. Goal: Comprehensive business and technical goal synthesized from all discussion points.
 3. User Story: "As a [role], I want [capability], so that [business value]."
 4. Acceptance Criteria: An exhaustive list of ALL criteria, verification checks, edge cases, test requirements, and contracts agreed upon in this chat.
-5. Affected Projects: List all workspace project repositories that need code changes.
+5. Affected Projects: List all workspace project repositories that need code changes. MUST be chosen ONLY from the registered workspace projects: [${availableProjects.join(", ")}]. Do NOT invent or select other repositories.
 6. API Hints: Document all API paths, payload schemas, query parameters, or contract definitions discussed.
 7. Notes: Detailed architectural summary and record of key decisions made in this discussion.
 ${extraInstructions ? `8. Additional Developer Instructions: "${extraInstructions}"` : ""}
@@ -49888,14 +50089,14 @@ ${extraInstructions ? `8. Additional Developer Instructions: "${extraInstruction
 You MUST return your specification strictly in a \`\`\`json:spec block:
 \`\`\`json:spec
 {
-  "title": "Title here",
+  "title": "[Module] <Action Verb> <Feature Scope>",
   "goal": "Detailed goal here",
   "user_story": "As a ...",
   "acceptance_criteria": [
     "Criterion 1",
     "Criterion 2"
   ],
-  "affected_projects": ["backend", "frontend"],
+  "affected_projects": [${availableProjects.slice(0, 2).map((p) => JSON.stringify(p)).join(", ") || '"backend"'}],
   "api_hints": "POST /api/v1/...",
   "notes": "Architectural summary and decisions..."
 }
@@ -49914,7 +50115,7 @@ You MUST return your specification strictly in a \`\`\`json:spec block:
       provider: session.provider,
       model: session.model,
       effort: "high",
-      workspace_id: session.workspace_id
+      workspace_id: effectiveWorkspaceId
     };
     const aiResponse = await this.chat(chatReq, sessionId);
     let spec = aiResponse.suggested_spec;
@@ -49927,7 +50128,6 @@ You MUST return your specification strictly in a \`\`\`json:spec block:
         spec = latestWithSpec;
       }
     }
-    const availableProjects = this.projectService.listProjects(session.workspace_id).map((p) => p.name);
     const extractedArchitecture = this.extractRichArchitectureFromMessages(
       session.messages,
       session.title,
@@ -49977,16 +50177,19 @@ ${synthesisText}` : ""
       spec.api_hints ? `* **API & Contract Hints**: \`${spec.api_hints}\`` : ""
     ].filter(Boolean).join("\n");
     const createdRequirement = this.requirementService.createRequirement({
-      workspace_id: session.workspace_id,
+      workspace_id: effectiveWorkspaceId,
       session_id: session.id,
-      title: spec.title || session.title || "Architectural Requirement",
+      title: formatRequirementTitle(
+        spec.title || extractedArchitecture.title || session.title || "Architectural Requirement",
+        detailedArchitecture
+      ),
       goal: spec.goal || `Implement architecture discussed in session "${session.title}"`,
       user_story: spec.user_story,
       acceptance_criteria: spec.acceptance_criteria && spec.acceptance_criteria.length > 0 ? spec.acceptance_criteria : ["Implementation complete and verified with tests"],
       // Only this workspace's repositories, whatever the AI suggested.
       affected_projects: (() => {
         const chosen = (spec.affected_projects || []).filter((p) => availableProjects.includes(p));
-        return chosen.length > 0 ? chosen : availableProjects.slice(0, 2);
+        return chosen.length > 0 ? chosen : availableProjects.length > 0 ? availableProjects.slice(0, 2) : [];
       })(),
       api_hints: spec.api_hints,
       notes: discussionNotes,
@@ -50101,11 +50304,11 @@ ${reqLines.join("\n")}` : ""}
     }
     const rawContent = bestMsg?.content || "";
     let title = "";
-    const headingMatch = rawContent.match(/^#{1,3}\s*(?:Architectural\s*(?:Assessment|Specification|Design|Proposal)[:\s]+)?([^\n]+)/im);
+    const headingMatch = rawContent.match(/^#{1,3}[ \t]*(?:Architectural[ \t]*(?:Assessment|Specification|Design|Proposal)[: \t]+)?([^\r\n]+)/im);
     if (headingMatch && headingMatch[1].trim()) {
-      title = headingMatch[1].replace(/[`*#]/g, "").replace(/^Architectural\s*(?:Assessment|Specification|Design|Proposal)[:\s]+/i, "").trim();
+      title = headingMatch[1].replace(/[`*#]/g, "").replace(/^Architectural[ \t]*(?:Assessment|Specification|Design|Proposal)[: \t]*/i, "").trim();
     }
-    const isGenericTitle = !title || title.toLowerCase().startsWith("requirement created:") || title.toLowerCase().startsWith("what is your recommend") || title.toLowerCase() === "new architecture discussion" || title.length < 4;
+    const isGenericTitle = !title || title.toLowerCase() === "architectural assessment" || title.toLowerCase() === "architectural specification" || title.toLowerCase() === "architectural design" || title.toLowerCase() === "architectural proposal" || title.toLowerCase().startsWith("requirement created:") || title.toLowerCase().startsWith("what is your recommend") || title.toLowerCase() === "new architecture discussion" || title.length < 4;
     if (isGenericTitle) {
       if (sessionTitle && !sessionTitle.toLowerCase().startsWith("requirement created:") && sessionTitle !== "New Architecture Discussion" && sessionTitle !== "hi" && sessionTitle.length > 3) {
         title = sessionTitle;
@@ -50179,12 +50382,8 @@ ${reqLines.join("\n")}` : ""}
         affectedProjects.push(proj);
       }
     }
-    if (affectedProjects.length === 0) {
-      if (lowerContent.includes("api")) affectedProjects.push("api");
-      if (lowerContent.includes("admin") || lowerContent.includes("dashboard")) affectedProjects.push("admin dashboard");
-      if (affectedProjects.length === 0) {
-        affectedProjects.push(...availableProjects.slice(0, 2));
-      }
+    if (affectedProjects.length === 0 && availableProjects.length > 0) {
+      affectedProjects.push(...availableProjects.slice(0, 2));
     }
     let apiHints;
     const apiMatch = rawContent.match(/(?:Accept-Language[^\n]*|GET\s+\/[^\n]*|POST\s+\/[^\n]*|\?locale=[^\n]*)/i);
@@ -50512,8 +50711,8 @@ ${paragraphs2.slice(1, 3).map((p) => `- ${p.slice(0, 200)}...`).join("\n") || "-
       };
     }
     if (lower.includes("extract requirement") || lower.includes("requirement candidate") || lower.includes("extract req") || lower.includes("ticket draft") || lower.includes("create ticket candidate")) {
-      const projects = this.projectService.listProjects().map((p) => p.name);
-      const affected = projects.length > 0 ? projects.slice(0, 2) : ["frontend"];
+      const projects = this.projectService.listProjects(req.workspace_id).map((p) => p.name);
+      const affected = projects.length > 0 ? projects.slice(0, 2) : [];
       const criteria = headings.length >= 3 ? headings.slice(0, 4).map((h2) => `[Module: ${h2}] Implement specifications and verification for ${h2}`) : [
         `[Module: Core] Implement integration contracts for ${title}`,
         `[Module: UI / View] Surface page components in responsive web view`,
@@ -50632,17 +50831,38 @@ ${headings.slice(0, 5).map((h2) => `- ${h2}`).join("\n") || "- None"}
   chatWithHeuristic(req) {
     const rawLastUser = [...req.messages].reverse().find((m) => m.role === "user")?.content || "";
     const lastUserMessage = rawLastUser.startsWith("> Replying to ") && rawLastUser.includes("\n\n") ? rawLastUser.slice(rawLastUser.indexOf("\n\n") + 2).trim() : rawLastUser;
+    const projects = this.projectService.listProjects(req.workspace_id).map((p) => p.name);
+    if (rawLastUser.startsWith("You are the Principal Software Architect")) {
+      const priorMessages = req.messages.filter(
+        (m) => !m.content.startsWith("You are the Principal Software Architect")
+      );
+      const spec2 = this.extractRichArchitectureFromMessages(priorMessages, void 0, projects);
+      return {
+        message: {
+          id: `msg-${Date.now()}`,
+          role: "assistant",
+          content: `### Synthesized Architecture Specification
+
+\`\`\`json:spec
+${JSON.stringify(spec2, null, 2)}
+\`\`\``,
+          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+          suggested_spec: spec2
+        },
+        suggested_spec: spec2,
+        provider_used: "Local Heuristic Spec Synthesizer"
+      };
+    }
     const parsedWeb = this.parseWebpageContext(lastUserMessage);
     if (parsedWeb.hasContext) {
       return this.handleWebpageChat(req, parsedWeb);
     }
     const attachmentTexts = req.messages.flatMap((m) => this.extractAttachmentTexts(m.attachments));
     const attachedMd = attachmentTexts.find((a2) => a2.name.match(/\.(md|markdown|txt)$/i)) || attachmentTexts[0];
-    const projects = this.projectService.listProjects().map((p) => p.name);
     const affected = projects.length > 0 ? projects.filter(
       (p) => lastUserMessage.toLowerCase().includes(p.toLowerCase()) || attachedMd && attachedMd.content.toLowerCase().includes(p.toLowerCase())
-    ) : ["backend"];
-    const resolvedAffected = affected.length > 0 ? affected : projects.length > 0 ? projects.slice(0, 2) : ["backend"];
+    ) : [];
+    const resolvedAffected = affected.length > 0 ? affected : projects.length > 0 ? projects.slice(0, 2) : [];
     if (attachedMd && attachedMd.content.trim().length > 20) {
       const specContent = attachedMd.content;
       const titleMatch = specContent.match(/^#{1,2}\s+(.+)$/m);
@@ -50704,7 +50924,7 @@ ${criteria.map((c3) => `- [ ] ${c3}`).join("\n")}
         provider_used: "Local Heuristic Spec Analyzer (Offline)"
       };
     }
-    const title = lastUserMessage.length > 40 ? lastUserMessage.slice(0, 37) + "..." : lastUserMessage || "Proposed Feature Architecture";
+    const title = formatRequirementTitle(lastUserMessage, lastUserMessage);
     const spec = {
       title,
       goal: `Implement ${lastUserMessage} across affected services with automated test coverage.`,
@@ -50718,7 +50938,7 @@ ${criteria.map((c3) => `- [ ] ${c3}`).join("\n")}
       api_hints: lastUserMessage.toLowerCase().includes("api") || lastUserMessage.toLowerCase().includes("upload") ? "POST /api/v1/resource" : void 0,
       provider_used: "Local Heuristic Architect (Offline)"
     };
-    const replyContent = `### Architectural Assessment
+    const replyContent = `### Architectural Assessment: ${spec.title}
 
 **Proposed Multi-Repo Scope:**
 - **Affected Projects**: \`${resolvedAffected.join(", ")}\`
@@ -54992,7 +55212,8 @@ function createApp(deps) {
   app2.post("/api/ai/chat/sessions/:id/create-requirement", async (req, res, next) => {
     try {
       const extraInstructions = typeof req.body?.instructions === "string" ? req.body.instructions : void 0;
-      const result = await aiChatService.createRequirementFromSession(req.params.id, extraInstructions);
+      const workspaceId = typeof req.body?.workspace_id === "string" ? req.body.workspace_id : void 0;
+      const result = await aiChatService.createRequirementFromSession(req.params.id, extraInstructions, workspaceId);
       res.json(result);
     } catch (err) {
       if (err.message?.includes("not found")) {
@@ -56539,14 +56760,10 @@ ${out.tail.join("\n")}`.trim() });
     const status = toEngineTask(run).status;
     this.opts.db.prepare("UPDATE bridge_tasks SET status = ?, last_error = ?, updated_at = ? WHERE id = ? AND role = 'qa' AND status <> 'cancelled'").run(status, status === "failed" ? run.error : null, (/* @__PURE__ */ new Date()).toISOString(), run.bridge_task_id);
   }
-  /** Remove an AI QA checkout; whatever the agent left in it is thrown away. Never throws: it must not stop a run's finish or the engine. */
+  /** Remove an AI QA checkout; whatever the agent left in it is thrown away. */
   dropQaCheckout(taskId, repo, worktree) {
     if (!worktree) return;
-    try {
-      removeWorktree(repo, worktree);
-    } catch (err) {
-      this.log(taskId, "system", `\u26A0 Could not delete the AI QA checkout ${worktree} (${err?.message || err}); delete it yourself`);
-    }
+    removeWorktree(repo, worktree);
     this.opts.db.prepare("UPDATE local_runs SET worktree = NULL, updated_at = ? WHERE bridge_task_id = ?").run((/* @__PURE__ */ new Date()).toISOString(), taskId);
   }
   qaSettings() {

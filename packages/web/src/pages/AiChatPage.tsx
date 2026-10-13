@@ -33,8 +33,6 @@ import {
   Reply,
   Copy,
   Info,
-  Eye,
-  EyeOff,
   Upload,
   Globe,
   AlertCircle,
@@ -176,7 +174,6 @@ export function AiChatPage() {
 
   // Right sidebar inspector drawer (tickets created + attachments)
   const [showInspector, setShowInspector] = useState(false);
-  const [showQuickStarters, setShowQuickStarters] = useState(true);
   const [sessionToDelete, setSessionToDelete] = useState<AiChatSession | null>(null);
   const [replyingToMessage, setReplyingToMessage] = useState<AiChatMessage | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
@@ -575,7 +572,7 @@ export function AiChatPage() {
     const loadingToastId = toast.loading('Synthesizing full discussion context with AI into requirement ticket...');
 
     try {
-      const result = await createRequirementFromSession(activeSessionId, extraInstructions);
+      const result = await createRequirementFromSession(activeSessionId, extraInstructions, activeWorkspaceId);
       queryClient.setQueryData(['ai-chat-session', activeSessionId], result.session);
       queryClient.invalidateQueries({ queryKey: ['ai-chat-sessions', activeWorkspaceId] });
       queryClient.invalidateQueries({ queryKey: ['requirements'] });
@@ -1689,66 +1686,6 @@ export function AiChatPage() {
             </div>
           )}
         </div>
-
-        {/* Quick Starters Bar (Collapsible with hide icon) */}
-        {showQuickStarters ? (
-          <div className="px-5 py-1.5 border-t border-slate-200 dark:border-[#23242e] bg-white/70 dark:bg-[#1a1b24]/70 flex items-center justify-between gap-2 overflow-x-auto">
-            <div className="flex items-center gap-2 overflow-x-auto scrollbar-none flex-1 min-w-0">
-              <span className="text-[10px] text-slate-400 shrink-0 font-semibold flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-purple-500" />
-                Quick Starters:
-              </span>
-              {latestSpec && (
-                <button
-                  type="button"
-                  onClick={() => handleSendMessage('/create')}
-                  disabled={isActiveSessionRunning}
-                  className="shrink-0 px-3 py-1 rounded-full border border-purple-300 dark:border-purple-700 bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-bold text-[11px] hover:bg-purple-100 transition-colors shadow-2xs flex items-center gap-1"
-                >
-                  <span>⚡ /create (Dispatch Requirement)</span>
-                </button>
-              )}
-              {[
-                'Design user profile avatar upload & crop',
-                'Add JWT authentication with refresh token',
-                'Optimize multi-repo database schema',
-                'Contract-isolated payments webhook',
-              ].map((chip) => (
-                <button
-                  key={chip}
-                  type="button"
-                  onClick={() => handleSendMessage(chip)}
-                  disabled={isActiveSessionRunning}
-                  className="shrink-0 px-3 py-1 rounded-full border border-slate-200 dark:border-[#2d2f3d] bg-white dark:bg-[#23242e] text-[11px] text-slate-700 dark:text-slate-300 hover:border-purple-400 dark:hover:border-purple-600 transition-colors disabled:opacity-50"
-                >
-                  {chip}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowQuickStarters(false)}
-              title="Hide Quick Starters"
-              aria-label="Hide Quick Starters"
-              className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#252736] transition-colors shrink-0"
-            >
-              <EyeOff className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        ) : (
-          <div className="px-5 py-0.5 flex justify-end bg-transparent">
-            <button
-              type="button"
-              onClick={() => setShowQuickStarters(true)}
-              title="Show Quick Starters"
-              className="text-[10px] text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 flex items-center gap-1 transition-colors py-0.5 px-2 rounded hover:bg-slate-100 dark:hover:bg-[#20212d]"
-            >
-              <Sparkles className="w-2.5 h-2.5 text-purple-500" />
-              <span>Show Quick Starters</span>
-              <Eye className="w-3 h-3 text-slate-400" />
-            </button>
-          </div>
-        )}
 
         {/* Replying to Preview Banner */}
         {replyingToMessage && (

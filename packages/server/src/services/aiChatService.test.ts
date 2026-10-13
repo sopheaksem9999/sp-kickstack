@@ -513,6 +513,46 @@ Content:`,
     expect(errorDiagRes.message.content).toContain('Iframe / Embedding Restrictions');
     expect(errorDiagRes.message.content.length).toBeGreaterThan(50);
   });
+
+  it('strictly selects projects of the current workspace and never selects other workspace repos when creating requirements', async () => {
+    // Set up multiple workspaces and assign projects in DB
+    db.exec(`
+      INSERT OR IGNORE INTO workspaces (id, name, created_at, updated_at) VALUES ('speedx', 'Speedx', 'x', 'x'), ('cg', 'CG', 'x', 'x');
+      UPDATE projects SET workspace_id = 'speedx' WHERE name IN ('backend', 'frontend');
+      INSERT OR IGNORE INTO projects (name, workspace_id, repo_path, engine_type, created_at, updated_at) VALUES
+        ('api', 'cg', '/r/a', 'manual', 'x', 'x'),
+        ('admin dashboard', 'cg', '/r/ad', 'manual', 'x', 'x');
+    `);
+
+    // Create session in workspace 'speedx'
+    const session = chatService.createSession({
+      workspace_id: 'speedx',
+      title: 'Design API and Admin Dashboard Gateway',
+      provider: 'heuristic',
+    });
+
+    // Chat about API and admin features (which in old code would greedily pick 'api' and 'admin dashboard' from 'cg')
+    await chatService.sendSessionMessage(session.id, {
+      content: 'We need to design a REST API with admin dashboard controllers and authentication endpoints.',
+      provider: 'heuristic',
+    });
+
+    // Synthesize requirement from session
+    const res = await chatService.createRequirementFromSession(session.id, undefined, 'speedx');
+
+    // Requirement must only have speedx projects, never 'api' or 'admin dashboard'
+    expect(res.requirement.affected_projects.length).toBeGreaterThan(0);
+    for (const proj of res.requirement.affected_projects) {
+      expect(['backend', 'frontend']).toContain(proj);
+      expect(['api', 'admin dashboard']).not.toContain(proj);
+    }
+
+    // Title must adhere to standardized format [Module] <Action Verb> <Scope>
+    expect(res.requirement.title).toMatch(/^\[[A-Za-z0-9_-]+\]\s+[A-Za-z]+/);
+    expect(res.requirement.title).toMatch(/^\[(API|Auth)\]/);
+  });
+
+
 });
 
 

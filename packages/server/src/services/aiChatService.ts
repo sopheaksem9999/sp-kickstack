@@ -17,7 +17,9 @@ import {
   AttachmentItem,
   Requirement,
   normalizeMergePolicy,
+  formatRequirementTitle,
 } from '@sp-kickstack/shared';
+
 
 export class AiChatService {
   private requirementService: RequirementService;
@@ -821,7 +823,8 @@ ${apiHints ? `### 🔌 API & Contract Hints\n\`${apiHints}\`\n` : ''}
 
   public async createRequirementFromSession(
     sessionId: string,
-    extraInstructions?: string
+    extraInstructions?: string,
+    targetWorkspaceId?: string
   ): Promise<{
     requirement: Requirement;
     session: AiChatSession;
@@ -833,6 +836,14 @@ ${apiHints ? `### 🔌 API & Contract Hints\n\`${apiHints}\`\n` : ''}
 
     if (!session.messages || session.messages.length === 0) {
       throw new Error('Cannot create requirement from empty chat session. Please discuss your feature requirements first.');
+    }
+
+    const effectiveWorkspaceId = targetWorkspaceId || session.workspace_id || 'default';
+    if (targetWorkspaceId && session.workspace_id !== targetWorkspaceId) {
+      session.workspace_id = targetWorkspaceId;
+      this.db
+        .prepare('UPDATE ai_chat_sessions SET workspace_id = ?, updated_at = ? WHERE id = ?')
+        .run(targetWorkspaceId, new Date().toISOString(), sessionId);
     }
 
     // 1. Gather all attachments across the entire session
@@ -852,19 +863,21 @@ ${apiHints ? `### 🔌 API & Contract Hints\n\`${apiHints}\`\n` : ''}
       }
     }
 
+    const availableProjects = this.projectService.listProjects(effectiveWorkspaceId).map((p) => p.name);
+
     // 2. Request AI to synthesize the entire conversation into a comprehensive requirement specification
     const synthesisPrompt = `You are the Principal Software Architect for this multi-project workspace.
 Analyze the ENTIRE conversation history below between Developer and Architect.
 Synthesize all user requests, architectural designs, contracts, acceptance criteria, constraints, and edge cases discussed into a comprehensive, production-ready Requirement Ticket Specification.
 
-${this.compileWorkspaceContext(session.workspace_id)}
+${this.compileWorkspaceContext(effectiveWorkspaceId)}
 
 Guidelines:
-1. Title: Concise, clear architectural feature title.
+1. Title: Standardized format "[Module] <Action Verb> <Feature Scope>" (e.g. "[Auth] Add JWT Authentication with Refresh Token Rotation", "[Billing] Integrate Stripe Webhook and Payment Verification", "[API] Design REST Endpoints with Admin Dashboard Controllers"). Must be clear, professional, and specify the exact module and action. Do NOT use conversational phrasing or vague labels.
 2. Goal: Comprehensive business and technical goal synthesized from all discussion points.
 3. User Story: "As a [role], I want [capability], so that [business value]."
 4. Acceptance Criteria: An exhaustive list of ALL criteria, verification checks, edge cases, test requirements, and contracts agreed upon in this chat.
-5. Affected Projects: List all workspace project repositories that need code changes.
+5. Affected Projects: List all workspace project repositories that need code changes. MUST be chosen ONLY from the registered workspace projects: [${availableProjects.join(', ')}]. Do NOT invent or select other repositories.
 6. API Hints: Document all API paths, payload schemas, query parameters, or contract definitions discussed.
 7. Notes: Detailed architectural summary and record of key decisions made in this discussion.
 ${extraInstructions ? `8. Additional Developer Instructions: "${extraInstructions}"` : ''}
@@ -872,19 +885,20 @@ ${extraInstructions ? `8. Additional Developer Instructions: "${extraInstruction
 You MUST return your specification strictly in a \`\`\`json:spec block:
 \`\`\`json:spec
 {
-  "title": "Title here",
+  "title": "[Module] <Action Verb> <Feature Scope>",
   "goal": "Detailed goal here",
   "user_story": "As a ...",
   "acceptance_criteria": [
     "Criterion 1",
     "Criterion 2"
   ],
-  "affected_projects": ["backend", "frontend"],
+  "affected_projects": [${availableProjects.slice(0, 2).map((p) => JSON.stringify(p)).join(', ') || '"backend"'}],
   "api_hints": "POST /api/v1/...",
   "notes": "Architectural summary and decisions..."
 }
 \`\`\`
 `;
+
 
     const chatReq: AiChatRequest = {
       messages: [
@@ -899,7 +913,7 @@ You MUST return your specification strictly in a \`\`\`json:spec block:
       provider: session.provider,
       model: session.model,
       effort: 'high',
-      workspace_id: session.workspace_id,
+      workspace_id: effectiveWorkspaceId,
     };
 
     const aiResponse = await this.chat(chatReq, sessionId);
@@ -918,7 +932,6 @@ You MUST return your specification strictly in a \`\`\`json:spec block:
     }
 
     // Extract rich architecture directly from the session discussion
-    const availableProjects = this.projectService.listProjects(session.workspace_id).map((p) => p.name);
     const extractedArchitecture = this.extractRichArchitectureFromMessages(
       session.messages,
       session.title,
@@ -992,11 +1005,15 @@ You MUST return your specification strictly in a \`\`\`json:spec block:
 
     // 4. Create the requirement in database & disk
     const createdRequirement = this.requirementService.createRequirement({
-      workspace_id: session.workspace_id,
+      workspace_id: effectiveWorkspaceId,
       session_id: session.id,
-      title: spec.title || session.title || 'Architectural Requirement',
+      title: formatRequirementTitle(
+        spec.title || extractedArchitecture.title || session.title || 'Architectural Requirement',
+        detailedArchitecture
+      ),
       goal: spec.goal || `Implement architecture discussed in session "${session.title}"`,
       user_story: spec.user_story,
+
       acceptance_criteria:
         spec.acceptance_criteria && spec.acceptance_criteria.length > 0
           ? spec.acceptance_criteria
@@ -1004,7 +1021,7 @@ You MUST return your specification strictly in a \`\`\`json:spec block:
       // Only this workspace's repositories, whatever the AI suggested.
       affected_projects: (() => {
         const chosen = (spec.affected_projects || []).filter((p) => availableProjects.includes(p));
-        return chosen.length > 0 ? chosen : availableProjects.slice(0, 2);
+        return chosen.length > 0 ? chosen : availableProjects.length > 0 ? availableProjects.slice(0, 2) : [];
       })(),
       api_hints: spec.api_hints,
       notes: discussionNotes,
@@ -1162,21 +1179,26 @@ ${reqLines.length > 0 ? `\n### Existing Workspace Requirements / Tickets (refere
 
     // Extract Title: Look for "### Architectural Assessment: <Title>" or "#+ <Title>"
     let title = '';
-    const headingMatch = rawContent.match(/^#{1,3}\s*(?:Architectural\s*(?:Assessment|Specification|Design|Proposal)[:\s]+)?([^\n]+)/im);
+    const headingMatch = rawContent.match(/^#{1,3}[ \t]*(?:Architectural[ \t]*(?:Assessment|Specification|Design|Proposal)[: \t]+)?([^\r\n]+)/im);
     if (headingMatch && headingMatch[1].trim()) {
       title = headingMatch[1]
         .replace(/[`*#]/g, '')
-        .replace(/^Architectural\s*(?:Assessment|Specification|Design|Proposal)[:\s]+/i, '')
+        .replace(/^Architectural[ \t]*(?:Assessment|Specification|Design|Proposal)[: \t]*/i, '')
         .trim();
     }
 
     // If title is missing or is a prompt echo / generic title, resolve cleanly
     const isGenericTitle =
       !title ||
+      title.toLowerCase() === 'architectural assessment' ||
+      title.toLowerCase() === 'architectural specification' ||
+      title.toLowerCase() === 'architectural design' ||
+      title.toLowerCase() === 'architectural proposal' ||
       title.toLowerCase().startsWith('requirement created:') ||
       title.toLowerCase().startsWith('what is your recommend') ||
       title.toLowerCase() === 'new architecture discussion' ||
       title.length < 4;
+
 
     if (isGenericTitle) {
       if (
@@ -1278,12 +1300,8 @@ ${reqLines.length > 0 ? `\n### Existing Workspace Requirements / Tickets (refere
         affectedProjects.push(proj);
       }
     }
-    if (affectedProjects.length === 0) {
-      if (lowerContent.includes('api')) affectedProjects.push('api');
-      if (lowerContent.includes('admin') || lowerContent.includes('dashboard')) affectedProjects.push('admin dashboard');
-      if (affectedProjects.length === 0) {
-        affectedProjects.push(...availableProjects.slice(0, 2));
-      }
+    if (affectedProjects.length === 0 && availableProjects.length > 0) {
+      affectedProjects.push(...availableProjects.slice(0, 2));
     }
 
     // Extract API Hints
@@ -1297,6 +1315,7 @@ ${reqLines.length > 0 ? `\n### Existing Workspace Requirements / Tickets (refere
       title,
       goal,
       user_story: userStory,
+
       acceptance_criteria: criteria.length > 0 ? criteria : ['Implementation complete and verified with tests'],
       affected_projects: affectedProjects,
       api_hints: apiHints,
@@ -1690,8 +1709,8 @@ ${paragraphs.slice(1, 3).map((p) => `- ${p.slice(0, 200)}...`).join('\n') || '- 
       lower.includes('ticket draft') ||
       lower.includes('create ticket candidate')
     ) {
-      const projects = this.projectService.listProjects().map((p) => p.name);
-      const affected = projects.length > 0 ? projects.slice(0, 2) : ['frontend'];
+      const projects = this.projectService.listProjects(req.workspace_id).map((p) => p.name);
+      const affected = projects.length > 0 ? projects.slice(0, 2) : [];
 
       const criteria = headings.length >= 3
         ? headings.slice(0, 4).map((h) => `[Module: ${h}] Implement specifications and verification for ${h}`)
@@ -1831,24 +1850,45 @@ ${headings.slice(0, 5).map((h) => `- ${h}`).join('\n') || '- None'}
         ? rawLastUser.slice(rawLastUser.indexOf('\n\n') + 2).trim()
         : rawLastUser;
 
+    const projects = this.projectService.listProjects(req.workspace_id).map((p) => p.name);
+
+    if (rawLastUser.startsWith('You are the Principal Software Architect')) {
+      const priorMessages = req.messages.filter(
+        (m) => !m.content.startsWith('You are the Principal Software Architect')
+      );
+      const spec = this.extractRichArchitectureFromMessages(priorMessages, undefined, projects);
+      return {
+        message: {
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: `### Synthesized Architecture Specification\n\n\`\`\`json:spec\n${JSON.stringify(spec, null, 2)}\n\`\`\``,
+          timestamp: new Date().toISOString(),
+          suggested_spec: spec,
+        },
+        suggested_spec: spec,
+        provider_used: 'Local Heuristic Spec Synthesizer',
+      };
+    }
+
     const parsedWeb = this.parseWebpageContext(lastUserMessage);
     if (parsedWeb.hasContext) {
       return this.handleWebpageChat(req, parsedWeb);
     }
 
+
     const attachmentTexts = req.messages.flatMap((m) => this.extractAttachmentTexts(m.attachments));
     const attachedMd = attachmentTexts.find((a) => a.name.match(/\.(md|markdown|txt)$/i)) || attachmentTexts[0];
-
-    const projects = this.projectService.listProjects().map((p) => p.name);
     const affected = projects.length > 0
+
+
       ? projects.filter(
           (p) =>
             lastUserMessage.toLowerCase().includes(p.toLowerCase()) ||
             (attachedMd && attachedMd.content.toLowerCase().includes(p.toLowerCase()))
         )
-      : ['backend'];
+      : [];
     const resolvedAffected =
-      affected.length > 0 ? affected : projects.length > 0 ? projects.slice(0, 2) : ['backend'];
+      affected.length > 0 ? affected : projects.length > 0 ? projects.slice(0, 2) : [];
 
     // If an attached specification was provided:
     if (attachedMd && attachedMd.content.trim().length > 20) {
@@ -1916,9 +1956,8 @@ ${criteria.map((c) => `- [ ] ${c}`).join('\n')}
       };
     }
 
-    const title = lastUserMessage.length > 40
-      ? lastUserMessage.slice(0, 37) + '...'
-      : lastUserMessage || 'Proposed Feature Architecture';
+    const title = formatRequirementTitle(lastUserMessage, lastUserMessage);
+
 
     const spec: DraftRequirementResult = {
       title,
@@ -1936,7 +1975,7 @@ ${criteria.map((c) => `- [ ] ${c}`).join('\n')}
       provider_used: 'Local Heuristic Architect (Offline)',
     };
 
-    const replyContent = `### Architectural Assessment
+    const replyContent = `### Architectural Assessment: ${spec.title}
 
 **Proposed Multi-Repo Scope:**
 - **Affected Projects**: \`${resolvedAffected.join(', ')}\`

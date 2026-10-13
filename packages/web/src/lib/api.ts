@@ -517,7 +517,8 @@ export async function sendAiSessionMessage(
 
 export async function createRequirementFromSession(
   sessionId: string,
-  instructions?: string
+  instructions?: string,
+  workspaceId?: string
 ): Promise<{
   requirement: Requirement;
   session: AiChatSession;
@@ -525,7 +526,7 @@ export async function createRequirementFromSession(
   const res = await fetch(`${BASE}/ai/chat/sessions/${sessionId}/create-requirement`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ instructions }),
+    body: JSON.stringify({ instructions, workspace_id: workspaceId }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));

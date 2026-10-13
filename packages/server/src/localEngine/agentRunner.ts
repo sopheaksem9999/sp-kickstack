@@ -3,7 +3,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
-import type { AgentCliId, AiCliSettings, BridgeTask, LocalEngineSettings } from '@sp-kickstack/shared';
+import { AGENT_CLI_IDS } from '@sp-kickstack/shared';
+import type { AgentCliId, AiCliSettings, BridgeTask, LocalEngineSettings, LocalEngineStatus } from '@sp-kickstack/shared';
 import type { AppDatabase } from '../db/index.js';
 import type { ProjectService } from '../services/projectService.js';
 import type { SettingsService } from '../services/settingsService.js';
@@ -11,7 +12,7 @@ import { commitsAhead, resolveCommit } from '../lib/gitRepo.js';
 import { findCliBinary } from '../services/aiDraftService.js';
 import { FINISHED_RUN_STATUSES, RunStore, type LocalRun, type RunPatch, type RunStatus } from './runStore.js';
 import { AgentWorktrees } from './worktrees.js';
-import { buildCommand, chooseCli, CLI_LABELS, quotaResetAt as defaultQuotaResetAt, runEffort, runModel, type FindBinary } from './cliProfiles.js';
+import { buildCommand, chooseCli, CLI_LABELS, cliBinary, cliEnabled, quotaResetAt as defaultQuotaResetAt, runEffort, runModel, type FindBinary } from './cliProfiles.js';
 import { createParser, looksLikeRateLimit, resetFromText, type ParsedOutput } from './outputParsers.js';
 import { buildRunPrompt } from './prompt.js';
 import { findXticketScript, writeXticketLauncher } from './xticketLauncher.js';
@@ -74,6 +75,7 @@ export class AgentRunner {
   private again = false;
   private stopping = false;
   private binDir: string | null = null;
+  private dirtyLogged = new Set<string>();
   private find: FindBinary;
   private now: () => number;
 
@@ -169,9 +171,76 @@ export class AgentRunner {
     if (run.status === 'running') this.log(run.bridge_task_id, 'system', '✉ Note saved; the agent gets it at its next run');
   }
 
+  /** Server stopping: stop every agent; their runs continue (as continuations) after the restart. */
+  async shutdown(): Promise<void> {
+    this.stopping = true;
+    await Promise.all(
+      [...this.active.values()].map(async (active) => {
+        if (this.runs.transition(active.runId, ['running'], { status: 'queued', continuation: 1 })) {
+          this.log(active.taskId, 'system', '⏹ Server stopping; this run continues when the server starts again');
+        }
+        await stopGroup(active.agent.pid, active.agent.exited, this.stopGrace());
+        await active.settled.catch(() => {});
+      })
+    );
+  }
+
+  /**
+   * After a crash, runs still marked running lost their server. Their agent is stopped only when it
+   * is provably ours (pid + start time); the run is queued again, and fails at the third crash.
+   */
+  async recoverOnStartup(): Promise<void> {
+    for (const run of this.runs.withStatus(['running', 'held'])) {
+      if (this.active.has(run.id)) continue;
+      if (run.pid && isSameProcess(run.pid, run.pid_started_at)) await stopGroup(run.pid, null, this.stopGrace());
+      if (run.status === 'held') {
+        if (run.pid) this.runs.update(run.id, { pid: null });
+        continue;
+      }
+      const interruptions = run.interruptions + 1;
+      if (interruptions >= MAX_INTERRUPTIONS) {
+        const error = `Interrupted ${interruptions} times (the server stopped while the agent was running); Retry starts it again`;
+        if (this.runs.transition(run.id, ['running'], { status: 'failed', pid: null, interruptions, finished_at: this.iso(), error })) {
+          this.log(run.bridge_task_id, 'system', `✗ ${error}`);
+        }
+      } else if (this.runs.transition(run.id, ['running'], { status: 'queued', pid: null, interruptions, continuation: 1 })) {
+        this.log(run.bridge_task_id, 'system', '↻ The server restarted while the agent was running; it continues from the branch');
+      }
+    }
+  }
+
+  /** Free a task's worktree: the merge gate deletes merged branches, which git refuses while checked out. */
+  releaseWorktree(taskId: number): boolean {
+    const row = this.opts.db
+      .prepare('SELECT project, MAX(worktree) AS worktree FROM local_runs WHERE bridge_task_id = ? AND worktree IS NOT NULL GROUP BY project')
+      .get(taskId) as { project: string; worktree: string } | undefined;
+    return row ? this.removeTaskWorktree(taskId, row.project, row.worktree) : true;
+  }
+
+  status(): LocalEngineStatus {
+    const settings = this.settings();
+    const ai = this.ai();
+    const choice = chooseCli(settings, ai, this.find);
+    const paused = this.runs.pausedClis(this.now());
+    return {
+      enabled: settings.enabled,
+      cli: choice.cli,
+      problem: settings.enabled ? choice.problem : 'The Local AI CLI engine is turned off',
+      clis: AGENT_CLI_IDS.map((id) => ({
+        id, label: CLI_LABELS[id], installed: cliBinary(id, ai, this.find) !== null, enabled: cliEnabled(id, ai), pausedUntil: paused.get(id) ?? null,
+      })),
+      counts: {
+        running: this.runs.count('running'), queued: this.runs.count('queued'), held: this.runs.count('held'), rate_limited: this.runs.count('rate_limited'),
+      },
+      maxParallel: settings.maxParallel,
+      worktreeRoot: settings.worktreeRoot || path.join(this.opts.workspaceDir, 'agent-worktrees'),
+    };
+  }
+
   private async pass(): Promise<void> {
     if (this.stopping) return;
     this.resumeRateLimited();
+    this.cleanupWorktrees();
     const settings = this.settings();
     if (!settings.enabled) return;
     const ai = this.ai();
@@ -380,6 +449,41 @@ export class AgentRunner {
     if (Number.isNaN(until)) until = this.now() + DEFAULT_LIMIT_WAIT_MS;
     until = Math.min(Math.max(until, this.now() + 60_000), this.now() + MAX_LIMIT_WAIT_MS);
     return new Date(until).toISOString();
+  }
+
+  /** Worktrees of tasks that are COMPLETE or CANCELLED are removed (kept while they have uncommitted changes). */
+  private cleanupWorktrees() {
+    const rows = this.opts.db
+      .prepare(`
+        SELECT r.bridge_task_id AS taskId, r.project AS project, MAX(r.worktree) AS worktree
+        FROM local_runs r JOIN bridge_tasks t ON t.id = r.bridge_task_id
+        WHERE r.worktree IS NOT NULL AND t.status IN ('done', 'cancelled')
+        GROUP BY r.bridge_task_id, r.project
+      `)
+      .all() as Array<{ taskId: number; project: string; worktree: string }>;
+    for (const row of rows) this.removeTaskWorktree(row.taskId, row.project, row.worktree);
+  }
+
+  private removeTaskWorktree(taskId: number, project: string, worktree: string): boolean {
+    for (const active of this.active.values()) if (active.taskId === taskId) return false;
+    const repo = this.opts.projectService.getProject(project)?.repo_path;
+    if (!repo) return false;
+    let result: 'removed' | 'dirty' | 'missing';
+    try {
+      result = this.worktrees.removeIfClean(repo, worktree);
+    } catch (err: any) {
+      console.warn(`[local-engine] could not remove ${worktree}: ${err?.message || err}`);
+      return false;
+    }
+    if (result === 'dirty') {
+      if (!this.dirtyLogged.has(worktree)) {
+        this.dirtyLogged.add(worktree);
+        this.log(taskId, 'system', `Kept ${worktree}: it has uncommitted changes. Delete it yourself when you no longer need them.`);
+      }
+      return false;
+    }
+    this.opts.db.prepare('UPDATE local_runs SET worktree = NULL, updated_at = ? WHERE bridge_task_id = ?').run(new Date().toISOString(), taskId);
+    return true;
   }
 
   private resumeRateLimited() {

@@ -11,7 +11,7 @@ import { commitsAhead, resolveCommit } from '../lib/gitRepo.js';
 import { findCliBinary } from '../services/aiDraftService.js';
 import { FINISHED_RUN_STATUSES, RunStore, type LocalRun, type RunPatch, type RunStatus } from './runStore.js';
 import { AgentWorktrees } from './worktrees.js';
-import { buildCommand, chooseCli, CLI_LABELS, runEffort, runModel, type FindBinary } from './cliProfiles.js';
+import { buildCommand, chooseCli, CLI_LABELS, quotaResetAt as defaultQuotaResetAt, runEffort, runModel, type FindBinary } from './cliProfiles.js';
 import { createParser, looksLikeRateLimit, resetFromText, type ParsedOutput } from './outputParsers.js';
 import { buildRunPrompt } from './prompt.js';
 import { findXticketScript, writeXticketLauncher } from './xticketLauncher.js';
@@ -43,6 +43,9 @@ const MAX_LINE_CHARS = 2000;
 const TAIL_LINES = 20;
 /** Crash recoveries after which a run fails instead of starting again. */
 export const MAX_INTERRUPTIONS = 3;
+/** Wait when a usage limit names no reset time, and the longest wait honoured. */
+const DEFAULT_LIMIT_WAIT_MS = 15 * 60 * 1000;
+const MAX_LIMIT_WAIT_MS = 24 * 60 * 60 * 1000;
 
 interface ActiveRun {
   runId: string;
@@ -138,13 +141,43 @@ export class AgentRunner {
     }
   }
 
+  /** The agent asked a person: the run is held at once; the agent gets holdGraceMs to commit and stop. */
+  hold(runId: string, _reason: string): void {
+    const held = this.runs.transition(runId, ['running', 'queued', 'rate_limited'], { status: 'held', hold_requested_at: this.iso() });
+    if (!held) {
+      const run = this.runs.get(runId);
+      if (run?.status === 'held') return;
+      throw new Error(`Run ${runId} is ${run?.status ?? 'missing'}; it cannot be paused`);
+    }
+    const active = this.active.get(runId);
+    if (!active) return;
+    this.log(active.taskId, 'system', '⏸ Waiting for a person to answer; the agent commits its work and stops');
+    active.timers.push(setTimeout(() => void stopGroup(active.agent.pid, active.agent.exited, this.stopGrace()), this.opts.holdGraceMs ?? 120_000));
+  }
+
+  /** An answer or a finished dependency: the context goes into the next run, which continues the work. */
+  release(runId: string, context: string): void {
+    this.runs.appendNote(runId, context);
+    if (this.runs.transition(runId, ['held'], { status: 'queued', continuation: 1, hold_requested_at: null })) this.nudge();
+  }
+
+  /** A note to the agent: kept and given at its next run (a headless CLI cannot read input mid-run). */
+  note(runId: string, body: string): void {
+    const run = this.runs.get(runId);
+    if (!run) throw new Error(`Run ${runId} not found`);
+    this.runs.appendNote(runId, body);
+    if (run.status === 'running') this.log(run.bridge_task_id, 'system', '✉ Note saved; the agent gets it at its next run');
+  }
+
   private async pass(): Promise<void> {
     if (this.stopping) return;
+    this.resumeRateLimited();
     const settings = this.settings();
     if (!settings.enabled) return;
     const ai = this.ai();
     const choice = chooseCli(settings, ai, this.find);
     if (!choice.cli || !choice.bin) return;
+    if (this.runs.pausedClis(this.now()).has(choice.cli)) return;
     let running = this.runs.count('running');
     for (const run of this.runs.queued()) {
       if (running >= settings.maxParallel) break;
@@ -291,9 +324,27 @@ export class AgentRunner {
       if (this.runs.transition(runId, ['running', 'held'], { ...base, status: 'cancelled' })) this.log(taskId, 'system', '■ Stopped: the task was cancelled');
       return;
     }
+    if (run.status === 'queued') {
+      // Released while it was still stopping, or stopped by a server shutdown: it starts again.
+      this.runs.update(runId, { pid: null, exit_code: exit.code, end_sha: endSha });
+      return;
+    }
+    if (run.status === 'held') {
+      this.runs.update(runId, { pid: null, exit_code: exit.code, end_sha: endSha });
+      this.log(taskId, 'system', '⏸ Paused until a person answers; the next run continues from the branch');
+      return;
+    }
     if (timedOut) {
       const minutes = this.settings().runTimeoutMinutes;
       this.end(runId, taskId, { ...base, status: 'timed_out', error: `Stopped after the ${minutes} minute time limit (Settings → AI & Local Engines)` });
+      return;
+    }
+    if (out.rateLimit) {
+      const resumeAt = await this.resumeTime(cli, bin, out.rateLimit.resetAt);
+      const patch: RunPatch = { ...base, finished_at: null, status: 'rate_limited', resume_at: resumeAt, continuation: 1, error: `${label} usage limit reached; continues at ${resumeAt}` };
+      if (this.runs.transition(runId, ['running'], patch)) {
+        this.log(taskId, 'system', `⏸ ${label} usage limit reached; this run continues at ${resumeAt}`);
+      }
       return;
     }
     if (exit.spawnError) {
@@ -317,6 +368,28 @@ export class AgentRunner {
     }
     const error = dirty.length ? `Finished without committing; the uncommitted changes are in ${worktree}` : 'Finished without committing anything';
     this.end(runId, taskId, { ...base, status: 'no_changes', error });
+  }
+
+  /** The reset the CLI named, else its live quota's, else 15 minutes; at least 1 minute, at most 24 h ahead. */
+  private async resumeTime(cli: AgentCliId, bin: string, reported: string | null): Promise<string> {
+    let until = reported ? Date.parse(reported) : NaN;
+    if (Number.isNaN(until)) {
+      const fromQuota = await (this.opts.quotaResetAt ?? defaultQuotaResetAt)(cli, bin).catch(() => null);
+      until = fromQuota ? Date.parse(fromQuota) : NaN;
+    }
+    if (Number.isNaN(until)) until = this.now() + DEFAULT_LIMIT_WAIT_MS;
+    until = Math.min(Math.max(until, this.now() + 60_000), this.now() + MAX_LIMIT_WAIT_MS);
+    return new Date(until).toISOString();
+  }
+
+  private resumeRateLimited() {
+    const now = this.iso();
+    for (const run of this.runs.withStatus(['rate_limited'])) {
+      if (run.resume_at && run.resume_at > now) continue;
+      if (this.runs.transition(run.id, ['rate_limited'], { status: 'queued', resume_at: null, continuation: 1, error: null })) {
+        this.log(run.bridge_task_id, 'system', '↻ Usage limit reset; continuing');
+      }
+    }
   }
 
   private end(runId: string, taskId: number, patch: RunPatch & { status: RunStatus }, message?: string) {

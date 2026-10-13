@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Requirement } from '@sp-kickstack/shared';
-import { branchOptions, draftFromRequirement, modelSuggestionsFor, runSettingsPatch, runSettingsProblem, runSettingsSummary } from './runSettings.js';
+import { branchOptions, branchPatternExamples, draftFromRequirement, modelSuggestionsFor, runSettingsPatch, runSettingsProblem, runSettingsSummary } from './runSettings.js';
 
 const req = (over: Partial<Requirement> = {}): Requirement => ({
   id: 'REQ-008', seq: 8, title: 'T', status: 'draft', priority: 'normal', body_md: '', file_path: '', revision: 1,
@@ -53,5 +53,14 @@ describe('run settings helpers', () => {
     expect(runSettingsSummary(req({ agent_cli: 'agy-cli', agent_model: 'gemini-3.8-flash', agent_effort: 'high', target_branch: 'release/1.3', merge_policy: 'auto_merge' }))).toEqual([
       'AGY', 'gemini-3.8-flash · high', '→ release/1.3', 'Auto-merge',
     ]);
+  });
+});
+
+
+describe('branch name pattern examples', () => {
+  it('shows a goal and a ticket name for a pattern, or the problem', () => {
+    expect(branchPatternExamples('{req}')).toEqual({ goal: 'REQ-008', ticket: 'REQ-008-ticket-12', problem: null });
+    expect(branchPatternExamples('{project}/{req}')).toEqual({ goal: 'backend/REQ-008', ticket: 'backend/REQ-008-ticket-12', problem: null });
+    expect(branchPatternExamples('feature').problem).toBe('The pattern must contain {req}');
   });
 });

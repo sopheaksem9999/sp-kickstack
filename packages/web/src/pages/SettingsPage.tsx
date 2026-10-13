@@ -45,6 +45,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { NotificationSettingsSection } from '../components/NotificationSettingsSection.js';
+import { branchPatternExamples } from '../lib/runSettings.js';
 import { LocalEngineSettingsSection } from '../components/LocalEngineSettingsSection.js';
 import { BranchMergePolicy, ReasoningEffort, EngineId } from '@sp-kickstack/shared';
 
@@ -1009,6 +1010,8 @@ export function SettingsPage() {
   // Branch Settings
   const [defaultBranch, setDefaultBranch] = useState('develop');
   const [mergePolicy, setMergePolicy] = useState<BranchMergePolicy>('manual_review_merge');
+  const [taskBranchPattern, setTaskBranchPattern] = useState('{req}');
+  const [pushBranches, setPushBranches] = useState(true);
 
   // AI CLI Settings
   const [enabledEngines, setEnabledEngines] = useState<EngineId[]>([
@@ -1039,6 +1042,8 @@ export function SettingsPage() {
     if (settingsData?.branch_merge) {
       setDefaultBranch(settingsData.branch_merge.default_base_branch || 'develop');
       setMergePolicy(settingsData.branch_merge.merge_policy || 'manual_review_merge');
+      setTaskBranchPattern(settingsData.branch_merge.task_branch_pattern || '{req}');
+      setPushBranches(settingsData.branch_merge.push_branches !== false);
     }
     if (settingsData?.ai_cli) {
       const cli = settingsData.ai_cli;
@@ -1092,6 +1097,8 @@ export function SettingsPage() {
       updateBranchMergeSettings({
         default_base_branch: defaultBranch.trim() || 'develop',
         merge_policy: mergePolicy,
+        task_branch_pattern: taskBranchPattern.trim(),
+        push_branches: pushBranches,
       }),
     onSuccess: () => {
       toast.success('Branch & merge rules saved');
@@ -2138,11 +2145,49 @@ export function SettingsPage() {
                 </div>
               </div>
 
+              <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-[#2d2d2d]">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300" htmlFor="task-branch-pattern">
+                  Task branch name
+                </label>
+                <input
+                  id="task-branch-pattern"
+                  value={taskBranchPattern}
+                  onChange={(e) => setTaskBranchPattern(e.target.value)}
+                  className="w-full max-w-sm px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-xs font-mono"
+                />
+                {(() => {
+                  const ex = branchPatternExamples(taskBranchPattern);
+                  return ex.problem ? (
+                    <p className="text-[11px] text-rose-600 dark:text-rose-400">{ex.problem}</p>
+                  ) : (
+                    <p className="text-[11px] text-slate-500">
+                      {'{req}'}, {'{task}'} and {'{project}'} are filled in. A goal gets <code>{ex.goal}</code>, a ticket <code>{ex.ticket}</code>; a taken name gets -2. Existing branches keep their names.
+                    </p>
+                  );
+                })()}
+                <div className="flex items-center justify-between max-w-sm">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Push branches to origin</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={pushBranches}
+                    aria-label="Push branches to origin"
+                    onClick={() => setPushBranches(!pushBranches)}
+                    className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${pushBranches ? 'bg-[#7b68ee]' : 'bg-slate-300 dark:bg-[#3a3a3a]'}`}
+                  >
+                    <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${pushBranches ? 'left-[18px]' : 'left-0.5'}`} />
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  New task and target branches, and agents' new commits, are pushed by the bridge. Never forced; a failed push only adds a line to the task's Logs.
+                </p>
+              </div>
+
               <div className="pt-2">
                 <button
                   type="button"
                   onClick={() => updateBranchMutation.mutate()}
-                  disabled={updateBranchMutation.isPending}
+                  disabled={updateBranchMutation.isPending || Boolean(branchPatternExamples(taskBranchPattern).problem)}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#7b68ee] hover:bg-[#6c5ce7] text-white text-xs font-bold shadow-md shadow-purple-500/20 active:scale-[0.98] transition-all disabled:opacity-50"
                 >
                   <Save className="w-3.5 h-3.5" />

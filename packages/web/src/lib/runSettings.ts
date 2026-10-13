@@ -1,5 +1,5 @@
 import type { AgentCliId, BranchMergePolicy, ReasoningEffort, Requirement, UpdateRunSettingsInput } from '@sp-kickstack/shared';
-import { branchNameProblem } from '@sp-kickstack/shared';
+import { branchNameProblem, renderTaskBranchPattern, taskBranchPatternProblem } from '@sp-kickstack/shared';
 import { MODEL_SUGGESTIONS, describeProfile, isValidModel } from './agentProfile.js';
 import type { BranchEntry } from './runSettingsApi.js';
 
@@ -91,4 +91,10 @@ export function runSettingsSummary(req: Requirement): string[] {
   const profile = describeProfile({ model: req.agent_model ?? null, effort: req.agent_effort ?? null }) || 'default model';
   const merge = req.merge_policy === 'auto_merge' ? 'Auto-merge' : req.merge_policy === 'manual_review_merge' ? 'Review first' : 'Default merge';
   return [cli, profile, `→ ${req.target_branch || 'base branch'}`, merge];
+}
+
+/** Example names for Settings: a goal and a ticket, or why the pattern cannot be used. */
+export function branchPatternExamples(pattern: string): { goal: string; ticket: string; problem: string | null } {
+  const goal = renderTaskBranchPattern(pattern, { req: 'REQ-008', task: 12, project: 'backend' });
+  return { goal, ticket: `${goal}-ticket-12`, problem: taskBranchPatternProblem(pattern) };
 }

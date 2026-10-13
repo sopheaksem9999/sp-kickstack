@@ -14,6 +14,7 @@ import { useBridgeEvents } from './lib/useEvents.js';
 import { WorkspaceProvider, useWorkspace } from './lib/WorkspaceContext.js';
 import { ThemeProvider } from './lib/ThemeContext.js';
 import { CreateRequirementProvider } from './lib/CreateRequirementContext.js';
+import { TabProvider } from './lib/TabContext.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -81,7 +82,9 @@ export function App() {
         <BrowserRouter>
           <WorkspaceProvider>
             <CreateRequirementProvider>
-              <AppRoutes />
+              <TabProvider>
+                <AppRoutes />
+              </TabProvider>
             </CreateRequirementProvider>
           </WorkspaceProvider>
         </BrowserRouter>

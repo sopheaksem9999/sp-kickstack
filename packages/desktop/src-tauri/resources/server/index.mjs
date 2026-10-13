@@ -36715,7 +36715,7 @@ var UpdateWorkspaceInputSchema = external_exports.object({
 var ProjectSchema = external_exports.object({
   name: external_exports.string().min(1),
   workspace_id: external_exports.string().default("default"),
-  kind: external_exports.enum(["backend", "frontend", "mobile", "other"]).default("other"),
+  kind: external_exports.enum(["backend", "frontend", "full-stack", "mobile", "other"]).default("other"),
   repo_path: external_exports.string().min(1),
   engine_type: EngineTypeSchema,
   engine_url: external_exports.string().url().optional().nullable().or(external_exports.literal("")),

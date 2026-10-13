@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '../lib/ThemeContext.js';
+import { useAppTabs } from '../lib/TabContext.js';
 import {
   fetchSettings,
   updateBranchMergeSettings,
@@ -41,6 +42,7 @@ import {
   Bell,
   RefreshCw,
   Activity,
+  Layers,
 } from 'lucide-react';
 import { NotificationSettingsSection } from '../components/NotificationSettingsSection.js';
 import { LocalEngineSettingsSection } from '../components/LocalEngineSettingsSection.js';
@@ -888,6 +890,7 @@ export const VALID_TABS: SettingsTab[] = ['ai', 'git', 'ide', 'appearance', 'saf
 
 export function SettingsPage() {
   const { theme, setTheme } = useTheme();
+  const { isTabBarEnabled, setIsTabBarEnabled } = useAppTabs();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -2390,66 +2393,126 @@ export function SettingsPage() {
           {/* 4. Appearance & Themes */}
           {/* ========================================================= */}
           {activeTab === 'appearance' && (
-            <div className="bg-white dark:bg-[#242424] border border-slate-200 dark:border-[#2d2d2d] rounded-2xl p-6 shadow-sm space-y-4 animate-in fade-in-50 duration-150">
-              <div className="flex items-center gap-2 pb-3 border-b border-slate-100 dark:border-[#2d2d2d]">
-                <Monitor className="w-5 h-5 text-[#7b68ee]" />
-                <div>
-                  <h2 className="text-sm font-black uppercase tracking-wider text-slate-900 dark:text-white">
-                    Appearance & Color Theme
-                  </h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Choose your workspace display mode. Synchronized in local storage.
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                {/* Light Mode Option */}
-                <div
-                  onClick={() => setTheme('light')}
-                  className={`p-4 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${
-                    theme === 'light'
-                      ? 'bg-purple-50/60 border-[#7b68ee] ring-2 ring-[#7b68ee]/30 shadow-sm'
-                      : 'bg-slate-50 dark:bg-[#1a1a1a] border-slate-200 dark:border-[#2d2d2d] hover:border-slate-300'
-                  }`}
-                >
-                  <div className="p-2.5 rounded-lg bg-amber-100 text-amber-600 mt-0.5">
-                    <Sun className="w-5 h-5" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-bold text-xs text-slate-900 dark:text-white">Light Mode</h3>
-                      {theme === 'light' && (
-                        <CheckCircle2 className="w-4 h-4 text-[#7b68ee]" />
-                      )}
-                    </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                      Crisp, clean white backgrounds with high contrast and readability.
+            <div className="space-y-6 animate-in fade-in-50 duration-150">
+              <div className="bg-white dark:bg-[#242424] border border-slate-200 dark:border-[#2d2d2d] rounded-2xl p-6 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 pb-3 border-b border-slate-100 dark:border-[#2d2d2d]">
+                  <Monitor className="w-5 h-5 text-[#7b68ee]" />
+                  <div>
+                    <h2 className="text-sm font-black uppercase tracking-wider text-slate-900 dark:text-white">
+                      Appearance & Color Theme
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Choose your workspace display mode. Synchronized in local storage.
                     </p>
                   </div>
                 </div>
 
-                {/* Dark Mode Option */}
-                <div
-                  onClick={() => setTheme('dark')}
-                  className={`p-4 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${
-                    theme === 'dark'
-                      ? 'bg-purple-950/40 border-[#7b68ee] ring-2 ring-[#7b68ee]/30 shadow-sm'
-                      : 'bg-slate-50 dark:bg-[#1a1a1a] border-slate-200 dark:border-[#2d2d2d] hover:border-slate-300'
-                  }`}
-                >
-                  <div className="p-2.5 rounded-lg bg-indigo-900/60 text-indigo-300 mt-0.5">
-                    <Moon className="w-5 h-5" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-bold text-xs text-slate-900 dark:text-white">Dark Mode</h3>
-                      {theme === 'dark' && (
-                        <CheckCircle2 className="w-4 h-4 text-[#7b68ee]" />
-                      )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                  {/* Light Mode Option */}
+                  <div
+                    onClick={() => setTheme('light')}
+                    className={`p-4 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${
+                      theme === 'light'
+                        ? 'bg-purple-50/60 border-[#7b68ee] ring-2 ring-[#7b68ee]/30 shadow-sm'
+                        : 'bg-slate-50 dark:bg-[#1a1a1a] border-slate-200 dark:border-[#2d2d2d] hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="p-2.5 rounded-lg bg-amber-100 text-amber-600 mt-0.5">
+                      <Sun className="w-5 h-5" />
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                      Neutral dark palette (#191919) engineered for focus and reduced eye strain.
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-bold text-xs text-slate-900 dark:text-white">Light Mode</h3>
+                        {theme === 'light' && (
+                          <CheckCircle2 className="w-4 h-4 text-[#7b68ee]" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                        Crisp, clean white backgrounds with high contrast and readability.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Dark Mode Option */}
+                  <div
+                    onClick={() => setTheme('dark')}
+                    className={`p-4 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${
+                      theme === 'dark'
+                        ? 'bg-purple-950/40 border-[#7b68ee] ring-2 ring-[#7b68ee]/30 shadow-sm'
+                        : 'bg-slate-50 dark:bg-[#1a1a1a] border-slate-200 dark:border-[#2d2d2d] hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="p-2.5 rounded-lg bg-indigo-900/60 text-indigo-300 mt-0.5">
+                      <Moon className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-bold text-xs text-slate-900 dark:text-white">Dark Mode</h3>
+                        {theme === 'dark' && (
+                          <CheckCircle2 className="w-4 h-4 text-[#7b68ee]" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                        Neutral dark palette (#191919) engineered for focus and reduced eye strain.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Workspace In-App Tabs & Multi-Tab Navigation */}
+              <div className="bg-white dark:bg-[#242424] border border-slate-200 dark:border-[#2d2d2d] rounded-2xl p-6 shadow-sm space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-[#2d2d2d]">
+                  <div className="flex items-center gap-2">
+                    <Layers className="w-5 h-5 text-[#7b68ee]" />
+                    <div>
+                      <h2 className="text-sm font-black uppercase tracking-wider text-slate-900 dark:text-white">
+                        Multi-Tab Workspace (Desktop & Web)
+                      </h2>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        Browser & IDE-style in-app tab bar. Automatically intercepts target="_blank" links into new workspace tabs.
+                      </p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isTabBarEnabled}
+                      onChange={(e) => setIsTabBarEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-[#333] peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-[#7b68ee]"></div>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 text-xs">
+                  <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#1a1a1a] border border-slate-200 dark:border-[#2d2d2d] space-y-1">
+                    <div className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                      target="_blank" Redirection
+                    </div>
+                    <p className="text-slate-500 dark:text-slate-400 text-[11px] leading-relaxed">
+                      Links clicked with <code className="px-1 py-0.5 rounded bg-slate-200 dark:bg-[#282828] font-mono text-[10px]">target="_blank"</code> or Cmd-clicks stay in-app as separate tabs rather than opening external windows.
+                    </p>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#1a1a1a] border border-slate-200 dark:border-[#2d2d2d] space-y-1">
+                    <div className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[#7b68ee]"></span>
+                      Keyboard Shortcuts
+                    </div>
+                    <p className="text-slate-500 dark:text-slate-400 text-[11px] leading-relaxed">
+                      Press <kbd className="px-1 py-0.5 rounded bg-slate-200 dark:bg-[#282828] font-mono text-[10px]">Cmd/Ctrl+T</kbd> for a new tab, <kbd className="px-1 py-0.5 rounded bg-slate-200 dark:bg-[#282828] font-mono text-[10px]">Cmd/Ctrl+W</kbd> to close, and <kbd className="px-1 py-0.5 rounded bg-slate-200 dark:bg-[#282828] font-mono text-[10px]">Cmd+1..9</kbd> to switch.
+                    </p>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#1a1a1a] border border-slate-200 dark:border-[#2d2d2d] space-y-1">
+                    <div className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                      State & Tab Persistence
+                    </div>
+                    <p className="text-slate-500 dark:text-slate-400 text-[11px] leading-relaxed">
+                      Active tabs, subpaths, and query strings (?tab=...) are remembered and restored across desktop app restarts and page reloads.
                     </p>
                   </div>
                 </div>

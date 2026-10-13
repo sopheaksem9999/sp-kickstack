@@ -29,6 +29,7 @@ import { NotificationBell } from './NotificationBell.js';
 import { EngineQuickViewPopover } from './EngineQuickViewPopover.js';
 import { WorkspaceSelect } from './WorkspaceSelect.js';
 import { CommandPaletteModal } from './CommandPaletteModal.js';
+import { TabBar } from './TabBar.js';
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
@@ -363,6 +364,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+        <TabBar />
+
         {isOffline && (
           <div className="bg-amber-500/15 dark:bg-amber-950/40 border-b border-amber-300 dark:border-amber-800/50 px-6 py-2 text-xs text-amber-900 dark:text-amber-200 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">

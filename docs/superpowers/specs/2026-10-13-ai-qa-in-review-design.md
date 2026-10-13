@@ -1,6 +1,6 @@
 # AI QA in In Review (before the merge): design
 
-Status: design approved by the user in chat, section by section, on 2026-10-13. This is an addendum to
+Status: design approved by the user in chat, section by section, on 2026-10-13; revised the same day to move the automatic run from QA to In Review. This is an addendum to
 `2026-10-13-ai-qa-agent-design.md` (AI QA phase 1, built in `a1171f5..5dc0a73`). That spec listed "QA before
 the merge (in review)" as out of scope; this design brings it in. Everything not named here stays as phase 1
 built it.
@@ -19,12 +19,14 @@ there is fixed on the task branch and never reaches develop.
   to QA** would produce, and it is checked without moving any branch.
   - Rejected: checking each task branch on its own. It misses problems that appear only once the branches
     are combined with the latest base.
-- **When:** a **Run AI QA** button in In Review and in QA, plus a choice in Settings for the automatic run:
-  - when a requirement enters In Review;
-  - when it enters QA (today's behaviour, the default);
-  - never.
-
-  There is at most one automatic run per requirement.
+- **When:** AI QA **moves to In Review**. Its automatic run happens when a requirement enters In Review
+  (Settings → AI QA → **Run automatically**, on by default), and never in QA.
+  - **Run AI QA** is available in In Review (it checks the merge preview) and stays in QA as a **manual**
+    option. In QA it re-checks the real merged code, for example when develop moved after the preview.
+  - Rejected: a three-way Settings choice (In Review / QA / Never); one place is simpler. Also rejected:
+    removing AI QA from QA entirely, which would leave no way to check the actual merge result.
+  - In In Review the work is finished but not merged, so a finding is fixed on the task branch before it
+    reaches develop. QA becomes the stage where people check the merged app.
 - **Merge:** the merge warns but does not block; the person decides. Any way of moving the requirement to QA
   from the web asks for confirmation first, when In Review AI QA is running or found open blockers:
   - the **Merge & move to QA** buttons;
@@ -42,12 +44,9 @@ there is fixed on the task branch and never reaches develop.
 
 ## What the person sees
 
-- **Settings → AI & Local Engines → AI QA → Run automatically** becomes a choice of three:
-  - **When a requirement enters In Review** (before the merge);
-  - **When it enters QA** (after the merge), the default;
-  - **Never**.
-
-  A value saved by phase 1 is read as **QA** (on) or **Never** (off).
+- **Settings → AI & Local Engines → AI QA → Run automatically when a requirement enters In Review**
+  (on by default). It is the phase 1 switch with a new moment: it used to start AI QA on entering QA. A
+  saved value keeps its on/off meaning.
 - **Requirement header.** It shows in **In Review** and in **QA**: the AI QA status line, the popover with
   each repository's run and its **Log**, and **Run AI QA**.
   - In a review round the line starts `AI QA before merge`, for example `AI QA before merge: 2 findings
@@ -61,26 +60,23 @@ there is fixed on the task branch and never reaches develop.
 - **Findings.** They are open AI QA review comments on the repository's card, as in phase 1.
   - **Request changes** sends them back as usual. The requirement goes back to In Progress, and its review
     round stops.
-  - When the agents finish again, the requirement re-enters In Review. With **When a requirement enters In
-    Review**, a new automatic round starts.
+  - When the agents finish again, the requirement re-enters In Review, and (with **Run automatically** on)
+    a new automatic round starts.
 - **Moving to QA.** If a review round is running, the question is "AI QA is still checking this requirement.
   Merge anyway?". If open blocker findings from review rounds remain, it is "N open AI QA blocker(s). Merge
   anyway?".
   - **Merge anyway** merges as today, and the review round stops.
   - **Cancel** does nothing; a dragged card goes back to its column.
-  - With **When a requirement enters In Review** there is no second automatic run after the merge, but
-    **Run AI QA** is still available in QA.
+  - There is no automatic run after the merge. In QA, **Run AI QA** is a manual re-check of the merged
+    code; the header there shows the latest round (usually the one from In Review).
 
 ## Data
 
 - A new migration (the next free number: **12**, since phase 1 took 11) adds `bridge_tasks.qa_stage TEXT`,
   which is `'review'` or `'qa'`. Existing QA tasks are set to `'qa'`.
   - The AI Chat MCP plan then takes the number after this one.
-- `AiQaSettings.runAutomatically: boolean` is replaced by `autoRun: 'review' | 'qa' | 'off'` (default
-  `'qa'`).
-  - When `getAiQaSettings` reads a stored value without `autoRun`, it maps a stored
-    `runAutomatically: true` to `'qa'` and `false` to `'off'`.
-  - `UpdateAiQaSettingsInputSchema` accepts `autoRun` and no longer accepts `runAutomatically`.
+- `AiQaSettings.runAutomatically` keeps its name, type and default (`true`); only its moment changes (entering
+  In Review instead of QA). Its doc comment and the Settings label say so. No settings migration is needed.
 - Shared `BridgeTask` gains `qa_stage?: 'review' | 'qa' | null`.
 - `RequirementQa` gains:
   - `stage: 'review' | 'qa' | null`, the latest round's stage (null when AI QA never ran);
@@ -123,8 +119,11 @@ there is fixed on the task branch and never reaches develop.
     repository's QA task with the preview's error, and the other repositories still run;
   - with no unmerged work: it checks the target/base tip, as in phase 1.
 - **Stage qa:** unchanged from phase 1.
-- `onEnteredReview(reqId)` (new) starts a review round when `autoRun` is `'review'`. It never throws.
-  `onEnteredQa` starts a round only when `autoRun` is `'qa'`.
+- `onEnteredReview(reqId)` (new) starts a review round when `runAutomatically` is on. It never throws.
+- AI QA no longer starts on entering QA: `QaService.onEnteredQa`, `MergeGateOptions.onEnteredQa` and their
+  wiring in `index.ts` / `app.ts` are removed (the merge gate's test for them is replaced by the hold test
+  below). A QA round only starts from **Run AI QA** in QA, where the commit is the phase 1 one (the tip of the
+  branch the requirement merged into).
 - `addFinding` and `recordResult` accept reports while the requirement's status matches the QA task's
   stage (`review` ↔ `in_review`, `qa` ↔ `qa`). Otherwise they answer 409:
   - `<REQ> is no longer in review; this finding was not saved` (or `… this result was not saved`);
@@ -176,7 +175,8 @@ reaches `done`, `failed` or `cancelled`.
   - dropping the card on the QA column on the board (`RequirementsPage`).
 
   On a board drop, **Cancel** returns the card. The requirement's QA status is fetched when needed.
-- The Settings card's **Run automatically** switch becomes a three-way choice.
+- The Settings card's switch is relabelled **Run automatically when a requirement enters In Review**, with
+  the helper text "Before the merge, on a merge preview. In QA, Run AI QA re-checks the merged code by hand".
 - The Review comments, the badges and the Projects fields are unchanged.
 
 ## Errors
@@ -203,11 +203,10 @@ reaches `done`, `failed` or `cancelled`.
   - start in review: stage, preview commit, changed files and range, prompt wording;
   - the refusals: other statuses, a running merge;
   - a conflict fails only that repository;
-  - `onEnteredReview` / `onEnteredQa` follow `autoRun`;
+  - `onEnteredReview` follows `runAutomatically`; entering QA starts nothing;
   - findings and results follow the stage;
   - the `autoMergeHold` reasons;
   - the `status` fields.
-- **Settings:** the `autoRun` default; a stored `runAutomatically` true/false is mapped.
 - **Runner:**
   - a review run stops when the requirement moves to QA, and when it goes back to In Progress;
   - `onQaFinished` is called once per QA task.
@@ -221,8 +220,8 @@ reaches `done`, `failed` or `cancelled`.
 ## Docs
 
 - `06-review-qa-and-merge.md`: AI QA in In Review (the merge preview, the question before the merge,
-  auto-merge waiting) and the new Run automatically choice.
-- `09-settings-and-environment.md`: the three-way **Run automatically**.
+  auto-merge waiting); AI QA's automatic run moves from QA to In Review; Run AI QA in QA is manual.
+- `09-settings-and-environment.md`: **Run automatically** now means entering In Review.
 - `10-troubleshooting.md`: the new messages (the preview conflict, "no longer in review", "AI QA runs while
   a requirement is in review or in QA", the auto-merge pause).
 

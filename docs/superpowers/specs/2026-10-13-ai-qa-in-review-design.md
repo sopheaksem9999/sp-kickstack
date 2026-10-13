@@ -1,4 +1,4 @@
-# AI QA in In Review (before the merge): design
+# AI QA in In Review (before the merge), and the model by size and risk: design
 
 Status: design approved by the user in chat, section by section, on 2026-10-13; revised the same day to move the automatic run from QA to In Review. This is an addendum to
 `2026-10-13-ai-qa-agent-design.md` (AI QA phase 1, built in `a1171f5..5dc0a73`). That spec listed "QA before
@@ -225,8 +225,87 @@ reaches `done`, `failed` or `cancelled`.
 - `10-troubleshooting.md`: the new messages (the preview conflict, "no longer in review", "AI QA runs while
   a requirement is in review or in QA", the auto-merge pause).
 
+## Model by size and risk (added 2026-10-13)
+
+The user wants AI QA to choose a model that fits each review and to save tokens. Of the options discussed,
+they chose **model and effort by the size and risk of the change**. Skipping unchanged repositories and
+incremental re-checks were not chosen (see Out of scope). This applies to AI QA runs only. The agents'
+coding runs keep their current model choice (requirement / task / workspace profile, then Settings).
+
+**Settings** (Settings → AI & Local Engines → AI QA → **Model**):
+
+- **Auto (by size and risk)** is the default. **Fixed** is phase 1's single model and effort, still stored
+  as `model` / `effort`.
+- `AiQaSettings` gains:
+  - `modelMode: 'auto' | 'fixed'` (default `'auto'`);
+  - `tiers: Record<AgentCliId, { light: Profile; standard: Profile; deep: Profile }>`, where `Profile = { model:
+    string | null; effort: ReasoningEffort | null }` and a null model means the CLI's default model;
+  - `lightMaxLines` (default 150) and `deepMinLines` (default 1000).
+
+  A stored phase 1 value has none of these and gets the defaults.
+- Default tiers:
+
+  | CLI | Light | Standard | Deep |
+  |---|---|---|---|
+  | Claude Code | haiku · low | sonnet · medium | opus · high |
+  | Codex | CLI default · low | CLI default · medium | CLI default · high |
+  | AGY | CLI default · low | CLI default · medium | CLI default · high |
+
+- The card shows the tier table for the CLI that AI QA uses: the CLI chosen on the card, else the Local AI
+  CLI engine's. Each tier's model and effort, and the two line limits, are editable. The models use the same
+  validation as elsewhere (`AgentModelSchema`).
+
+**Choosing the tier** (new `services/qaTier.ts`, pure functions):
+
+- `classifyQaTier(files, riskPatterns, limits): { tier: 'light' | 'standard' | 'deep'; reason: string }`.
+  `files` is the change the QA prompt lists, each with its added and deleted lines (the preview diff in In
+  Review, the merged / branch diff in QA). Changed lines are additions plus deletions; binary files count
+  as files only. The rules, in order:
+  - **Deep** when a file matches a risky pattern (reason `touches <first matching path>`), or changed lines
+    ≥ `deepMinLines`, or files ≥ 40 (reason `<n> lines in <m> files`).
+  - **Light** when changed lines ≤ `lightMaxLines` and files ≤ 8.
+  - **Standard** otherwise.
+  - With no changed files listed, the tier is Standard (reason `no change list`).
+- **Risky patterns** are the project's `high_risk_paths` plus these built-in patterns:
+  `**/migrations/**`, `**/auth/**`, `**/security/**`, `**/payment*/**`, `**/billing/**`,
+  `.github/workflows/**`, `.gitlab-ci.yml`, `**/Dockerfile`, `**/docker-compose*.yml`, `**/.env*`,
+  `**/*secret*`.
+  - Patterns are globs: `**` is any number of folders, `*` is any characters within one path segment.
+    A pattern ending in `/` matches everything under that folder. Matching is case-insensitive and
+    implemented in `qaTier.ts`; no new dependency.
+- `qaProfileFor(settings, cli, tier): { model; effort }` returns the tier's profile for that CLI in Auto
+  mode, and `settings.model` / `settings.effort` in Fixed mode.
+
+**QaService.** For each repository, `start` classifies the change. It creates the run with the tier's model and
+effort, and stores `qa_tier` and `qa_tier_reason` on the QA task (two more columns in the same migration 12).
+Its log line names the choice, for example
+`AI QA queued (Run AI QA) for abc1234 · light: 42 lines in 3 files → haiku · low`. In Fixed mode
+`qa_tier` is null.
+
+**Projects form.** A new optional field, **High-risk paths**: one pattern per line, stored in the existing
+`high_risk_paths` field. Its helper text says "AI QA uses its strongest model when a change touches these
+paths". The project details show it when set.
+
+**Header.** The popover line for each repository shows the tier and why, for example
+`backend · light · 42 lines in 3 files`. `QaRunView` gains `tier` and `tierReason`.
+
+**Testing:**
+- `classifyQaTier`: each rule, the limits from settings, a project pattern and a built-in pattern, a
+  folder prefix, case-insensitivity, no files.
+- `qaProfileFor`: Auto per CLI (a Codex tier with a null model), and Fixed.
+- Settings: the defaults; a stored phase 1 value; out-of-range limits; a bad tier model.
+- QaService: the run gets the tier's model and effort; `qa_tier` / `qa_tier_reason` and the log line;
+  Fixed mode is unchanged.
+- Web: the tier text in the popover, and the settings card through typecheck and build.
+
+**Docs.** `09` (Model: Auto / Fixed, tiers, limits), `02` (the High-risk paths field), `06` (the tier in the
+popover).
+
 ## Out of scope
 
 - Blocking the merge on the server.
 - Previewing a merge across several requirements.
 - Trying the app (phase 2 of AI QA).
+- Skipping repositories whose code did not change since a passed round, and incremental re-checks of only
+  what changed since the last round (both discussed, not chosen for now).
+- Choosing models by size and risk for the agents' coding runs.

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { LocalEngineCliStatus, LocalEngineStatus } from '@sp-kickstack/shared';
-import { ENGINE_TYPE_OPTIONS, installBadge, limitBadge, localEngineDraftProblem, nextCliText, runCountsText } from './localEngineText.js';
+import { DEFAULT_ENGINE_TYPE, ENGINE_TYPE_OPTIONS, installBadge, limitBadge, localEngineDraftProblem, nextCliText, runCountsText } from './localEngineText.js';
 
 const draft = { enabled: true, agentCli: 'default' as const, maxParallel: 2, runTimeoutMinutes: 60, worktreeRoot: '' };
 const cli = (over: Partial<LocalEngineCliStatus> = {}): LocalEngineCliStatus => ({ id: 'agy-cli', label: 'AGY', installed: true, enabled: true, pausedUntil: null, ...over });
@@ -9,8 +9,9 @@ const status = (over: Partial<LocalEngineStatus> = {}): LocalEngineStatus => ({
 });
 
 describe('Local AI CLI engine texts', () => {
-  it('offers Manual, Stoneforge and Local AI CLI, and no Command', () => {
-    expect(ENGINE_TYPE_OPTIONS.map((o) => o.label)).toEqual(['Manual', 'Stoneforge', 'Local AI CLI']);
+  it('offers Local AI CLI first (the default for a new repository), then Manual and Stoneforge, and no Command', () => {
+    expect(ENGINE_TYPE_OPTIONS.map((o) => o.label)).toEqual(['Local AI CLI', 'Manual', 'Stoneforge']);
+    expect(DEFAULT_ENGINE_TYPE).toBe('local');
   });
 
   it('checks a draft like the server does', () => {

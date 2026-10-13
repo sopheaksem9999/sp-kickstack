@@ -1,10 +1,13 @@
 import type { EngineType, LocalEngineCliStatus, LocalEngineSettings, LocalEngineStatus } from '@sp-kickstack/shared';
 
-/** Engine choices for a repository (Command is gone: the server never accepted it). */
+/** A new repository runs its tasks with an AI CLI on this PC unless the person picks another engine. */
+export const DEFAULT_ENGINE_TYPE: EngineType = 'local';
+
+/** Engine choices for a repository, the default first (Command is gone: the server never accepted it). */
 export const ENGINE_TYPE_OPTIONS: Array<{ value: EngineType; label: string }> = [
+  { value: 'local', label: 'Local AI CLI' },
   { value: 'manual', label: 'Manual' },
   { value: 'stoneforge', label: 'Stoneforge' },
-  { value: 'local', label: 'Local AI CLI' },
 ];
 
 export const AGENT_CLI_CHOICES: Array<{ value: LocalEngineSettings['agentCli']; label: string }> = [

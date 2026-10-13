@@ -12,7 +12,7 @@ import {
 } from '../lib/api.js';
 import { Project, EngineType } from '@sp-kickstack/shared';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
-import { ENGINE_TYPE_OPTIONS } from '../lib/localEngineText.js';
+import { DEFAULT_ENGINE_TYPE, ENGINE_TYPE_OPTIONS } from '../lib/localEngineText.js';
 import { toast } from 'sonner';
 import {
   RefreshCw,
@@ -63,7 +63,7 @@ export function ProjectsPage() {
   const [name, setName] = useState('');
   const [kind, setKind] = useState<'backend' | 'frontend' | 'mobile' | 'other'>('backend');
   const [repoPath, setRepoPath] = useState('');
-  const [engineType, setEngineType] = useState<EngineType>('manual');
+  const [engineType, setEngineType] = useState<EngineType>(DEFAULT_ENGINE_TYPE);
   const [engineUrl, setEngineUrl] = useState('');
   const [baseBranch, setBaseBranch] = useState('main');
   const [contractPath, setContractPath] = useState('');

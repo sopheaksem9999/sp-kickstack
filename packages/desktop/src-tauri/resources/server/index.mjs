@@ -52052,6 +52052,10 @@ function createApp(deps) {
     }
   });
   app2.get("/api/tasks", (req, res) => {
+    const filterNames = ["req", "project", "status", "workspace", "role"];
+    if (filterNames.some((name) => req.query[name] !== void 0 && typeof req.query[name] !== "string")) {
+      return res.status(400).json({ error: "Each filter takes one value, e.g. ?workspace=default" });
+    }
     const one = (value) => typeof value === "string" && value !== "" ? value : void 0;
     const reqId = one(req.query.req);
     const project = one(req.query.project);

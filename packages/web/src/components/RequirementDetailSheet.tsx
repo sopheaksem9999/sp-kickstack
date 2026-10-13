@@ -24,7 +24,7 @@ import { canRetry, retryOutcome } from '../lib/taskActions.js';
 import { mergeCopy, mergeGateAction } from '../lib/mergeReady.js';
 import { useDemoMode } from '../lib/useDemoMode.js';
 import { StatusBadge } from './StatusBadge.js';
-import { ReviewPanel } from './ReviewPanel.js';
+import { RequestChangesButton, TaskReviewComments } from './ReviewComments.js';
 import { BridgeTask, RequirementStatus, BranchMergePolicy, Priority, UpdateRequirementInput } from '@sp-kickstack/shared';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { toast } from 'sonner';
@@ -688,9 +688,6 @@ export function RequirementDetailSheet({
                 )}
               </div>
 
-              {/* Review comments and Request changes (In Review / QA), as on the full page */}
-              <ReviewPanel req={req} tasks={graph?.tasks ?? []} />
-
               {/* Requirement Document & Spec Preview or Editor */}
               <div className="border border-slate-200 dark:border-[#2d2d2d] rounded-xl overflow-hidden bg-white dark:bg-[#242424] shadow-2xs space-y-0">
                 <div className="px-4 py-2 border-b border-slate-200 dark:border-[#2d2d2d] bg-slate-50/80 dark:bg-[#202020] flex items-center justify-between text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
@@ -864,18 +861,22 @@ export function RequirementDetailSheet({
                   <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     Per-Repo Agent Engines ({req.affected_projects.length})
                   </h3>
-                  {isEditable && (
-                    <button
-                      onClick={() => {
-                        setEditingProjectsList([...req.affected_projects]);
-                        setIsEditingProjects(true);
-                      }}
-                      className="flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-lg bg-purple-50 dark:bg-purple-950/40 text-[#7b68ee] dark:text-purple-300 hover:bg-purple-100 border border-purple-200 dark:border-purple-800/40 transition-all shadow-2xs cursor-pointer"
-                    >
-                      <Edit3 className="w-3 h-3" />
-                      <span>Edit Repos</span>
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {/* Sends the open review comments of every repository below as one round */}
+                    <RequestChangesButton req={req} tasks={graph?.tasks ?? []} />
+                    {isEditable && (
+                      <button
+                        onClick={() => {
+                          setEditingProjectsList([...req.affected_projects]);
+                          setIsEditingProjects(true);
+                        }}
+                        className="flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-lg bg-purple-50 dark:bg-purple-950/40 text-[#7b68ee] dark:text-purple-300 hover:bg-purple-100 border border-purple-200 dark:border-purple-800/40 transition-all shadow-2xs cursor-pointer"
+                      >
+                        <Edit3 className="w-3 h-3" />
+                        <span>Edit Repos</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Edit Projects Modal/Inline Panel */}
@@ -1015,6 +1016,8 @@ export function RequirementDetailSheet({
                                 </button>
                               )}
                             </div>
+
+                            <TaskReviewComments req={req} task={task} />
                           </div>
                         ))
                       )}

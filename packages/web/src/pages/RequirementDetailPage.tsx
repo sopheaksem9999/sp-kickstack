@@ -22,7 +22,7 @@ import { useDemoMode } from '../lib/useDemoMode.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { DependencyGraphCanvas } from '../components/DependencyGraphCanvas.js';
 import { AgentQuestionsPanel } from '../components/AgentQuestionsPanel.js';
-import { ReviewPanel } from '../components/ReviewPanel.js';
+import { RequestChangesButton, TaskReviewComments } from '../components/ReviewComments.js';
 import { TaskNoteDialog } from '../components/TaskNoteDialog.js';
 import { RunSettingsCard } from '../components/RunSettingsCard.js';
 import { RunSettingsDialog } from '../components/RunSettingsDialog.js';
@@ -437,7 +437,6 @@ export function RequirementDetailPage() {
       </div>
 
       <AgentQuestionsPanel reqId={req.id} />
-      <ReviewPanel req={req} tasks={graph?.tasks ?? []} />
 
       {/* ClickUp Doc Spec Preview Card */}
       <div className="bg-white dark:bg-[#181922] border border-slate-200 dark:border-[#262732] rounded-2xl p-5 shadow-sm space-y-4">
@@ -600,8 +599,10 @@ export function RequirementDetailPage() {
           </div>
 
           <div className="flex items-center gap-2.5">
+            {/* Sends the open review comments of every repository as one round */}
+            <RequestChangesButton req={req} tasks={graph?.tasks ?? []} />
             <span className="text-xs font-mono text-slate-400">
-              {req.affected_projects.length} connected repos (targeted to develop branch)
+              {req.affected_projects.length} connected repos → {req.target_branch || 'base branch'}
             </span>
             <button
               onClick={() => {
@@ -756,6 +757,8 @@ export function RequirementDetailPage() {
                           </button>
                         )}
                       </div>
+
+                      <TaskReviewComments req={req} task={task} />
                     </div>
                   ))
                 )}

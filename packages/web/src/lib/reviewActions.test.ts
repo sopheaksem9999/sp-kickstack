@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { commentLocation, requestChangesOutcome, requestChangesState, reviewableTasks } from './reviewActions';
+import { commentLocation, requestChangesOutcome, requestChangesState, reviewableTasks, taskReviewView } from './reviewActions';
 
 const c = (task_id: number, state: string) => ({ task_id, state }) as any;
 
@@ -38,5 +38,15 @@ describe('review actions', () => {
       kind: 'warning',
       message: 'Round 3 sent to 1 of 3 tasks. Task #2: rate limited; Task #4: engine offline. Their comments stay open; press Request changes again to retry.',
     });
+  });
+
+  it("gives each repository's task card its own comments, and a comment box only in review or QA", () => {
+    const goal = { id: 8, role: 'goal', status: 'in_review' } as any;
+    const comments = [{ id: 1, task_id: 8, state: 'open' }, { id: 2, task_id: 9, state: 'open' }] as any;
+    expect(taskReviewView({ status: 'in_review' }, goal, comments)).toEqual({ show: true, canAdd: true, comments: [comments[0]] });
+    expect(taskReviewView({ status: 'qa' }, goal, [])).toEqual({ show: true, canAdd: true, comments: [] });
+    expect(taskReviewView({ status: 'in_progress' }, goal, comments)).toEqual({ show: true, canAdd: false, comments: [comments[0]] });
+    expect(taskReviewView({ status: 'in_progress' }, goal, [])).toMatchObject({ show: false });
+    expect(taskReviewView({ status: 'in_review' }, { id: 7, role: 'waiting', status: 'held' } as any, [])).toMatchObject({ show: false });
   });
 });

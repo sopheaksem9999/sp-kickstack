@@ -7,6 +7,21 @@ export function reviewableTasks(tasks: BridgeTask[]): BridgeTask[] {
   return tasks.filter((t) => (t.role === 'goal' || t.role === 'ticket') && t.status !== 'cancelled');
 }
 
+/**
+ * One repository task card's review comments: its own, shown while the requirement is in review or
+ * QA (or once it has any); new ones can be added only in review or QA.
+ */
+export function taskReviewView(
+  req: Pick<Requirement, 'status'>,
+  task: BridgeTask,
+  comments: ReviewComment[]
+): { show: boolean; canAdd: boolean; comments: ReviewComment[] } {
+  if (reviewableTasks([task]).length === 0) return { show: false, canAdd: false, comments: [] };
+  const own = comments.filter((c) => c.task_id === task.id);
+  const canAdd = REVIEW_STATUSES.includes(req.status);
+  return { show: canAdd || own.length > 0, canAdd, comments: own };
+}
+
 /** "src/a.ts:4", "src/a.ts" or "General". */
 export function commentLocation(c: Pick<ReviewComment, 'file_path' | 'line'>): string {
   if (!c.file_path) return 'General';

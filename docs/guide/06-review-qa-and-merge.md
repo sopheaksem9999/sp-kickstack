@@ -37,14 +37,15 @@ card shows the branch name.
 
 ## Comment on a task
 
-The **Review comments** panel appears on the requirement page while the requirement is In Review
-or QA (and later, if it has comments).
+While the requirement is In Review or QA, each repository's task card has a **Review comments**
+section: in the side panel under **Per-Repo Agent Engines**, and on the full page under
+**Task Columns**. A card keeps showing its comments afterwards.
 
-1. Pick the task: click its chip, shown as `<project> · #<task id>`.
+1. Go to the card of the repository you tested (for example **BACKEND**).
 2. Optional: enter a **File** path relative to the repository (for example
    `src/api/users.ts`) and a **Line** number. A line needs a file.
 3. Write the comment in the box ("What should the agent change?"), up to 4000 characters.
-4. Click **Add comment**.
+4. Click **Add comment**. Repeat in other cards as needed.
 
 Each comment shows its location (`src/api/users.ts:42`, `src/api/users.ts` or `General`) and its
 state:
@@ -61,9 +62,10 @@ them instead`). Resolving is only for your bookkeeping; it does not tell the age
 ## Send work back with Request changes
 
 1. Add at least one open comment.
-2. Click **Request changes (N)**. N is the number of open comments. If the button is disabled,
-   the text under it says why: "Add a comment first",
-   "Available once the requirement is in review or QA", or
+2. Click **Request changes (N)**: on the **Per-Repo Agent Engines** heading in the side panel, or
+   next to the repository count above the task columns on the full page. N is the number of open
+   comments in all repositories; one click sends them all as one round. If the button is disabled,
+   the text next to it says why: "Add a comment first" or
    "A merge is running; wait for it to finish".
 3. The dialog **Request changes?** says how many comments go to how many agents.
 4. Optional: to run the tasks you send back with another model or effort, click the button under

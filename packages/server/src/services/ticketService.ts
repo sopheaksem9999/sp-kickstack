@@ -220,6 +220,7 @@ ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input
         title: ticket.title,
         bodyMd: ticket.body_md || '',
         ...engineProfile(profile),
+        bridgeTaskId: ticketId,
       });
       const stored = this.db
         .prepare(`

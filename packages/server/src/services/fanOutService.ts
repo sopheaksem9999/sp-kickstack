@@ -204,7 +204,7 @@ ${wrapUntrusted('requirement', requirementMd)}
         const adapter = this.getAdapter(task.project);
         const profile = resolveAgentProfile(this.db, taskId);
         const recorded = recordedProfile(profile, this.projectService.getProject(task.project)?.engine_type);
-        const engineTask = await adapter.createGoal({ title: task.title, bodyMd: task.body_md || '', ...engineProfile(profile) });
+        const engineTask = await adapter.createGoal({ title: task.title, bodyMd: task.body_md || '', ...engineProfile(profile), bridgeTaskId: taskId });
         const stored = this.db
           .prepare(`
             UPDATE bridge_tasks

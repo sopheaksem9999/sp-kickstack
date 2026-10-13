@@ -9,6 +9,8 @@ export interface CreateEngineTaskInput {
   model?: string;
   /** Agent reasoning effort for this task; omitted when none is set. */
   effort?: ReasoningEffort;
+  /** The bridge task this belongs to (the Local AI CLI engine needs it; HTTP engines never receive it). */
+  bridgeTaskId?: number;
 }
 
 export interface EngineAdapter {

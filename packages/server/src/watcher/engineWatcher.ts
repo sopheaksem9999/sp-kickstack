@@ -7,6 +7,7 @@ import { TaskReactor } from '../services/taskReactor.js';
 import { LinkService } from '../services/linkService.js';
 import { forEachLimit } from '../lib/concurrency.js';
 import { isRateLimit } from '../adapters/rateLimit.js';
+import { oneLine } from '../lib/promptSafety.js';
 
 export type EventCallback = (event: {
   type: string;
@@ -151,10 +152,13 @@ export class EngineWatcher {
     const oldStatus = task.status;
     // Guarded on the status we read before awaiting the engine: if someone else
     // (webhook, operator, link release) changed it meanwhile, theirs wins.
+    // A failed or stuck task shows the engine's reason (for the local engine: the run's error).
+    const problem =
+      (engineTask.status === 'failed' || engineTask.status === 'needs_human') && engineTask.summary ? oneLine(engineTask.summary, 500) : null;
     const updated = this.db
       .prepare(`
         UPDATE bridge_tasks
-        SET status = ?, engine_status_raw = ?, pr_url = COALESCE(?, pr_url), paused_until = ?, updated_at = ?
+        SET status = ?, engine_status_raw = ?, pr_url = COALESCE(?, pr_url), paused_until = ?, last_error = COALESCE(?, last_error), updated_at = ?
         WHERE id = ? AND status = ?
       `)
       .run(
@@ -162,6 +166,7 @@ export class EngineWatcher {
         engineTask.rawStatus,
         engineTask.prUrl || null,
         pausedUntil,
+        problem,
         new Date().toISOString(),
         task.id,
         oldStatus

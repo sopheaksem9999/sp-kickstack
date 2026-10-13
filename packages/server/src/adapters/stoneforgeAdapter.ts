@@ -10,6 +10,12 @@ function resumeAtOf(data: any): string | undefined {
 
 const RATE_LIMIT_STATUSES = new Set(['rate_limited', 'rate-limited', 'ratelimited', 'quota_exceeded', 'usage_limited', 'throttled']);
 
+/** The create request body: exactly the fields Stoneforge has always received (never bridgeTaskId). */
+function engineBody(input: CreateEngineTaskInput) {
+  const { title, bodyMd, priority, labels, model, effort } = input;
+  return { title, bodyMd, priority, labels, model, effort };
+}
+
 export class StoneforgeAdapter implements EngineAdapter {
   public type = 'stoneforge' as const;
 
@@ -75,7 +81,7 @@ export class StoneforgeAdapter implements EngineAdapter {
   public async createGoal(input: CreateEngineTaskInput): Promise<EngineTask> {
     const data = await this.fetchJson<any>('/api/goals', {
       method: 'POST',
-      body: JSON.stringify(input),
+      body: JSON.stringify(engineBody(input)),
     });
     return {
       id: String(data.id),
@@ -92,7 +98,7 @@ export class StoneforgeAdapter implements EngineAdapter {
   public async createTask(input: CreateEngineTaskInput): Promise<EngineTask> {
     const data = await this.fetchJson<any>('/api/tasks', {
       method: 'POST',
-      body: JSON.stringify(input),
+      body: JSON.stringify(engineBody(input)),
     });
     return {
       id: String(data.id),

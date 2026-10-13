@@ -115,6 +115,30 @@ export function changedFiles(repo: string, base: string, branch: string, limit =
     .slice(0, limit);
 }
 
+/** The ref to compare a branch with: the local base branch, else origin's; null when neither exists. */
+export function baseRef(repo: string, base: string): string | null {
+  if (resolveCommit(repo, `refs/heads/${base}`)) return base;
+  return resolveCommit(repo, `refs/remotes/origin/${base}`) ? `origin/${base}` : null;
+}
+
+/**
+ * What to compare a task branch with (`ref...branch`) so its own changes show: its base branch; once the
+ * branch is merged into the base, the base just before that merge (the merge commit's first parent), else
+ * `startSha` (where the branch started). Null when the base or the branch does not exist.
+ */
+export function compareRef(repo: string, base: string, branch: string, startSha?: string | null): string | null {
+  const from = baseRef(repo, base);
+  const tip = resolveCommit(repo, `refs/heads/${branch}`);
+  if (!from || !tip) return null;
+  if (!isAncestor(repo, tip, from)) return from;
+  const merges = (tryGit(repo, ['rev-list', '--merges', '--ancestry-path', '--reverse', `${tip}..${from}`]) ?? '')
+    .split('\n')
+    .filter(Boolean)
+    .slice(0, 50);
+  const merge = merges.find((sha) => tryGit(repo, ['rev-parse', '--verify', '--quiet', `${sha}^2`])?.trim() === tip);
+  return merge ? `${merge}^1` : startSha || from;
+}
+
 /** Files changed on `to` since it left `from` (`from...to`): status, old path of a rename, line counts. */
 export function diffSummary(
   repo: string,

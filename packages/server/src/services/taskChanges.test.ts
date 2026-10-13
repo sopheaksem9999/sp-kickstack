@@ -13,6 +13,7 @@ import { WorkspaceService } from './workspaceService.js';
 import { ReviewService } from './reviewService.js';
 import { ManualAdapter } from '../adapters/manualAdapter.js';
 import { TaskChangesService, parseUnifiedDiff } from './taskChanges.js';
+import { ReviewAssistService } from './reviewAssist.js';
 import { makeRepo, commitOnBranch, sh } from '../testing/gitFixture.js';
 import { createApp } from '../api/app.js';
 import { testRequest } from '../api/testHelper.js';
@@ -96,6 +97,15 @@ describe('Files a task changed on its branch', () => {
     ]);
     expect(changes().fileDiff(goalId, 'moved.txt')).toMatchObject({ binary: false, lines: [] });
     expect(changes().fileDiff(goalId, 'img.png')).toMatchObject({ binary: true, lines: [] });
+  });
+
+  it("still lists the task's changes after its branch was merged into the base (QA)", () => {
+    const before = changes().changes(goalId);
+    sh(repo, ['merge', '--no-ff', '-q', '-m', `Merge ${reqId}`, reqId]);
+    commitOnBranch(repo, 'develop', 'later.txt', 'after the merge\n');
+    expect(changes().changes(goalId)).toEqual(before);
+    expect(changes().fileDiff(goalId, 'src/new.ts').lines).toHaveLength(3);
+    expect(new ReviewAssistService(db, new RequirementService(db, ws)).branchFiles(goalId).files).toContain('src/new.ts');
   });
 
   it('refuses paths outside the repository, files the task did not change and unknown tasks', () => {

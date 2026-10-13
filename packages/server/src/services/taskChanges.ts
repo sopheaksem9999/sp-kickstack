@@ -5,8 +5,8 @@ import { AppDatabase } from '../db/index.js';
 import { ProjectService } from './projectService.js';
 import { BranchService } from './branchService.js';
 import { HttpError, badRequest } from '../lib/httpError.js';
-import { diffFile, diffSummary, isGitWorkTree, resolveCommit } from '../lib/gitRepo.js';
-import { baseRef, isSafeRelativePath } from './reviewAssist.js';
+import { compareRef, diffFile, diffSummary, isGitWorkTree } from '../lib/gitRepo.js';
+import { isSafeRelativePath } from './reviewAssist.js';
 
 /** Files listed at most; the rest is reported as truncated. */
 const MAX_FILES = 300;
@@ -82,7 +82,7 @@ export class TaskChangesService {
     const base = project ? this.branches.baseBranchFor(project, task.req_id) : null;
     const repo = project?.repo_path ?? '';
     const branch = task.branch ?? null;
-    const usable = Boolean(repo && branch && base && isGitWorkTree(repo) && resolveCommit(repo, `refs/heads/${branch}`));
-    return { repo, branch, base, from: usable ? baseRef(repo, base!) : null };
+    const usable = Boolean(repo && branch && base && isGitWorkTree(repo));
+    return { repo, branch, base, from: usable ? compareRef(repo, base!, branch!, task.base_sha) : null };
   }
 }

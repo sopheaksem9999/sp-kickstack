@@ -12,7 +12,7 @@ import { SettingsService } from './settingsService.js';
 import { BranchService } from './branchService.js';
 import type { RequirementService } from './requirementService.js';
 import { CLI_LABELS, cliBinary, cliEnabled, runEffort, runModel, type FindBinary } from '../localEngine/cliProfiles.js';
-import { changedFiles, isGitWorkTree, readFileAt, resolveCommit } from '../lib/gitRepo.js';
+import { changedFiles, compareRef, isGitWorkTree, readFileAt, resolveCommit } from '../lib/gitRepo.js';
 import { HttpError, badRequest } from '../lib/httpError.js';
 import { oneLine, wrapUntrusted } from '../lib/promptSafety.js';
 import { decodeDataUrl, isTextAttachment, safeAttachmentName } from './reviewAttachments.js';
@@ -40,12 +40,6 @@ interface Snippet {
   from: number;
   to: number;
   text: string;
-}
-
-/** The ref to compare a task branch with: the local base branch, else origin's; null when neither exists. */
-export function baseRef(repo: string, base: string): string | null {
-  if (resolveCommit(repo, `refs/heads/${base}`)) return base;
-  return resolveCommit(repo, `refs/remotes/origin/${base}`) ? `origin/${base}` : null;
 }
 
 /** Relative to the repository: not absolute, no `..`. */
@@ -286,7 +280,7 @@ export class ReviewAssistService {
     if (!repo || !task.branch || !base || !isGitWorkTree(repo) || !resolveCommit(repo, `refs/heads/${task.branch}`)) {
       return { branch: task.branch ?? null, base, files: [] };
     }
-    const from = baseRef(repo, base);
+    const from = compareRef(repo, base, task.branch, task.base_sha);
     return { branch: task.branch, base, files: from ? changedFiles(repo, from, task.branch, 200) : [] };
   }
 
@@ -312,7 +306,7 @@ export class ReviewAssistService {
     let changed: string[] = [];
     let snippets: Snippet[] = [];
     if (repo && task.branch && isGitWorkTree(repo) && resolveCommit(repo, `refs/heads/${task.branch}`)) {
-      const from = base ? baseRef(repo, base) : null;
+      const from = base ? compareRef(repo, base, task.branch, task.base_sha) : null;
       if (from) changed = changedFiles(repo, from, task.branch);
       snippets = codeSnippets(repo, task.branch, mentionedFiles(repo, draft));
     }

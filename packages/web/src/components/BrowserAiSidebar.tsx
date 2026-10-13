@@ -789,7 +789,9 @@ export function BrowserAiSidebar({
       const assistantMsg: Message = {
         id: `asst-${Date.now()}`,
         role: 'assistant',
-        content: res.message?.content || 'Done.',
+        content:
+          res.message?.content?.trim() ||
+          'No response was returned by the AI assistant. Please check your AI engine settings in Workspace Settings.',
         timestamp: new Date(),
       };
 
@@ -861,7 +863,7 @@ export function BrowserAiSidebar({
           fullSession.messages.map((m) => ({
             id: m.id,
             role: m.role as 'user' | 'assistant',
-            content: m.content,
+            content: m.content?.trim() || '*(No response recorded)*',
             timestamp: new Date(m.timestamp),
             attachments: m.attachments,
           }))
@@ -1359,7 +1361,7 @@ ${parsed.api_hints ? `## API Hints\n\`${parsed.api_hints}\`\n` : ''}`;
                   ))}
                 </div>
               )}
-              <MarkdownMessage content={msg.content} />
+              <MarkdownMessage content={msg.content?.trim() || '*(No response recorded)*'} />
 
               {/* Action buttons on Assistant responses */}
               {msg.role === 'assistant' && msg.id !== 'welcome' && (

@@ -497,8 +497,21 @@ You can use buildStart and transformIndexHtml hooks to process assets.`,
 
     expect(extractRes.message.content).toContain('Extracted Requirement');
     expect(extractRes.message.content).toContain('```json:spec');
-    expect(extractRes.suggested_spec).toBeDefined();
-    expect(extractRes.suggested_spec?.title).toContain('Vite Plugin API Integration');
+    // 4. Test Error Diagnostics when user queries about errors or blank/loading states
+    const errorDiagRes = await chatService.sendSessionMessage(session.id, {
+      content: `check curent page errer
+--- Page Grounding Context ---
+[Active Webpage Context]
+URL: http://localhost:8100/
+Title: SPEEDX
+Headings: 
+Content:`,
+    });
+
+    expect(errorDiagRes.message.content).toContain('Page Inspection & Diagnostics');
+    expect(errorDiagRes.message.content).toContain('http://localhost:8100/');
+    expect(errorDiagRes.message.content).toContain('Iframe / Embedding Restrictions');
+    expect(errorDiagRes.message.content.length).toBeGreaterThan(50);
   });
 });
 

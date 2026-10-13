@@ -54,6 +54,23 @@ messages appear as red toasts in the app; `<REQ-ID>`, `<id>` and similar parts a
 | `<CLI> is chosen for <REQ> but is not installed on this PC` | The requirement's CLI cannot run here. | Install it, or change the CLI in **Run settings**, then **Retry**. |
 | `Could not push <branch> to origin: <reason>` (in Logs) | The push was refused or `origin` was unreachable; the task carries on. | Fix the credentials or the network; the next push tries again. |
 
+## Messages about AI QA
+
+| Message | Meaning | What to do |
+|---|---|---|
+| `AI QA failed: <project>: No AI CLI can run QA: …` | The Local AI CLI engine is off, or the CLI chosen for AI QA is not installed or is turned off. | Fix it in Settings → AI & Local Engines, then click **Run AI QA**. |
+| `AI QA failed: <project>: Stopped after the N minute AI QA time limit …` | The QA run took longer than the AI QA time limit. | Raise **Time limit per QA run**, then click **Run AI QA**. |
+| `AI QA failed: <project>: <CLI> failed: …` | The agent stopped with an error. | Open the run's **Log** from the header status. |
+| `AI QA failed: <project>: stopped` | The requirement left QA while AI QA ran. | Click **Run AI QA** once it is back in QA. |
+| A run shows `Finished without a result` | The agent ended without `xticket qa-result`. | Read its findings and log; run AI QA again if needed. |
+| `skipped <project>: not a git repository` | AI QA checks git repositories only. | Nothing to do. |
+| `AI QA is already running for <REQ-ID>` | **Run AI QA** was clicked while QA runs. | Wait for the runs to finish. |
+| `<REQ-ID> is <status>; AI QA runs while a requirement is in QA` | **Run AI QA** outside QA. | Move the requirement to QA first (**Merge & move to QA**). |
+| `No repository of <REQ-ID> is a git repository; AI QA needs one` | None of the requirement's repositories can be checked. | Nothing to do. |
+| `<REQ-ID> is no longer in QA; this finding was not saved` | A finding arrived after the requirement left QA. It is shown to the agent, or kept in `agent-outbox/<project>/failed/`. | Nothing to do; run AI QA again once the requirement is back in QA. |
+| `The QA run reached its limit of N findings` | The agent reported more findings than allowed. | Raise **Maximum findings per QA run** if you want more. |
+| `No QA run …` | `xticket comment` or `xticket qa-result` was used outside an AI QA run. | These commands are for AI QA agents only. |
+
 ## Messages about the connection
 
 | Message | Meaning | What to do |

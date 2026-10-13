@@ -32555,6 +32555,19 @@ var MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS idx_neuron_rules_workspace ON neuron_rules(workspace_id);
       `);
     }
+  },
+  {
+    version: 11,
+    name: "AI QA: finding source and severity on review comments, QA results on tasks, build and lint commands",
+    up: (db2) => {
+      addColumn(db2, "review_comments", "source", "TEXT NOT NULL DEFAULT 'person'");
+      addColumn(db2, "review_comments", "severity", "TEXT");
+      addColumn(db2, "review_comments", "qa_task_id", "INTEGER");
+      addColumn(db2, "bridge_tasks", "qa_passed", "INTEGER");
+      addColumn(db2, "bridge_tasks", "qa_summary", "TEXT");
+      addColumn(db2, "projects", "build_command", "TEXT");
+      addColumn(db2, "projects", "lint_command", "TEXT");
+    }
   }
 ];
 var LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
@@ -36802,6 +36815,9 @@ var ProjectSchema = external_exports.object({
   contract_path: external_exports.string().optional().nullable(),
   /** Shell command run in a fresh worktree of the merge result before the base branch advances. */
   test_command: external_exports.string().max(2e3).optional().nullable(),
+  /** AI QA: shell commands the QA agent runs in its checkout (optional). */
+  build_command: external_exports.string().max(2e3).optional().nullable(),
+  lint_command: external_exports.string().max(2e3).optional().nullable(),
   done_means: DoneMeansSchema.default("merged"),
   high_risk_paths: external_exports.array(external_exports.string()).default([]),
   enabled: external_exports.boolean().default(true),
@@ -37026,6 +37042,27 @@ var LocalEngineSettingsSchema = external_exports.object({
   worktreeRoot: external_exports.string().trim().max(1e3).refine((v) => v === "" || isAbsolutePath(v), "must be an absolute path, or empty for the default").default("")
 });
 var UpdateLocalEngineSettingsInputSchema = LocalEngineSettingsSchema.partial().strict();
+var AiQaSettingsSchema = external_exports.object({
+  runAutomatically: external_exports.boolean().default(true),
+  agentCli: external_exports.enum(["default", "claude-cli", "agy-cli", "codex-cli"]).default("default"),
+  model: AgentModelSchema.nullable().default(null),
+  effort: ReasoningEffortSchema.nullable().default(null),
+  timeLimitMinutes: external_exports.number().int().min(5).max(240).default(30),
+  maxFindings: external_exports.number().int().min(1).max(200).default(30)
+});
+var UpdateAiQaSettingsInputSchema = AiQaSettingsSchema.partial().strict();
+var QaSeveritySchema = external_exports.enum(["blocker", "major", "minor"]);
+var QaFindingInputSchema = external_exports.object({
+  severity: QaSeveritySchema,
+  title: external_exports.string().trim().min(3).max(200).regex(/^[^\r\n]*$/, "must be one line"),
+  body: external_exports.string().max(8e3).default(""),
+  file_path: external_exports.string().trim().min(1).max(300).optional(),
+  line: external_exports.number().int().positive().optional()
+});
+var QaResultInputSchema = external_exports.object({
+  passed: external_exports.boolean(),
+  summary: external_exports.string().trim().min(1).max(4e3)
+});
 var DraftRequirementResultSchema = external_exports.object({
   title: external_exports.string(),
   goal: external_exports.string(),
@@ -37377,11 +37414,11 @@ var ProjectService = class {
     const stmt = this.db.prepare(`
       INSERT INTO projects (
         name, workspace_id, kind, repo_path, engine_type, engine_url, engine_meta,
-        base_branch, contract_path, done_means, high_risk_paths, test_command,
+        base_branch, contract_path, done_means, high_risk_paths, test_command, build_command, lint_command,
         enabled, engine_status, created_at, updated_at
       ) VALUES (
         @name, @workspace_id, @kind, @repo_path, @engine_type, @engine_url, @engine_meta,
-        @base_branch, @contract_path, @done_means, @high_risk_paths, @test_command,
+        @base_branch, @contract_path, @done_means, @high_risk_paths, @test_command, @build_command, @lint_command,
         @enabled, @engine_status, @created_at, @updated_at
       )
       ON CONFLICT(name) DO UPDATE SET
@@ -37396,6 +37433,8 @@ var ProjectService = class {
         done_means = excluded.done_means,
         high_risk_paths = excluded.high_risk_paths,
         test_command = excluded.test_command,
+        build_command = excluded.build_command,
+        lint_command = excluded.lint_command,
         enabled = excluded.enabled,
         updated_at = excluded.updated_at
     `);
@@ -37407,7 +37446,9 @@ var ProjectService = class {
       enabled: validated.enabled ? 1 : 0,
       engine_url: validated.engine_url || null,
       contract_path: validated.contract_path || null,
-      test_command: validated.test_command || null
+      test_command: validated.test_command || null,
+      build_command: validated.build_command || null,
+      lint_command: validated.lint_command || null
     });
     return this.getProject(validated.name);
   }
@@ -37462,6 +37503,8 @@ var ProjectService = class {
         done_means = @done_means,
         high_risk_paths = @high_risk_paths,
         test_command = @test_command,
+        build_command = @build_command,
+        lint_command = @lint_command,
         enabled = @enabled,
         updated_at = @updated_at
       WHERE name = @name
@@ -37472,7 +37515,9 @@ var ProjectService = class {
       enabled: validated.enabled ? 1 : 0,
       engine_url: validated.engine_url || null,
       contract_path: validated.contract_path || null,
-      test_command: validated.test_command || null
+      test_command: validated.test_command || null,
+      build_command: validated.build_command || null,
+      lint_command: validated.lint_command || null
     });
     return this.getProject(name);
   }
@@ -37635,6 +37680,26 @@ var SettingsService = class {
     const updated = LocalEngineSettingsSchema.parse({ ...this.getLocalEngineSettings(), ...patch });
     this.db.prepare(`
         INSERT INTO settings (key, value) VALUES ('local_engine_settings', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run(JSON.stringify(updated));
+    return updated;
+  }
+  getAiQaSettings() {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'ai_qa_settings'").get();
+    if (row) {
+      try {
+        return AiQaSettingsSchema.parse(JSON.parse(row.value));
+      } catch {
+      }
+    }
+    return AiQaSettingsSchema.parse({});
+  }
+  /** Partial update; unknown fields and out-of-range values are refused (400 through the API). */
+  updateAiQaSettings(updates) {
+    const patch = UpdateAiQaSettingsInputSchema.parse(updates ?? {});
+    const updated = AiQaSettingsSchema.parse({ ...this.getAiQaSettings(), ...patch });
+    this.db.prepare(`
+        INSERT INTO settings (key, value) VALUES ('ai_qa_settings', ?)
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
       `).run(JSON.stringify(updated));
     return updated;
@@ -37976,6 +38041,14 @@ var AgentWorktrees = class {
     }
     fs4.mkdirSync(path2.dirname(dir), { recursive: true });
     runGit(repo, ["worktree", "add", "--quiet", dir, branch]);
+  }
+  /** AI QA: a fresh detached checkout of `sha` at `dir`; what an earlier attempt left there is removed. */
+  checkoutDetached(repo, sha, dir) {
+    if (!isGitWorkTree(repo)) throw new Error(`AI QA needs a git repository: ${repo} is not the top of a git work tree`);
+    if (fs4.existsSync(dir)) removeWorktree(repo, dir);
+    runGit(repo, ["worktree", "prune"]);
+    fs4.mkdirSync(path2.dirname(dir), { recursive: true });
+    runGit(repo, ["worktree", "add", "--quiet", "--detach", dir, sha]);
   }
   /** Remove a worktree that has no uncommitted changes. */
   removeIfClean(repo, dir) {
@@ -39817,16 +39890,23 @@ var EngineWatcher = class {
 // packages/server/src/watcher/outboxScanner.ts
 import fs6 from "node:fs";
 import path4 from "node:path";
+function kindFromName(file) {
+  return ["question", "qa-comment", "qa-result"].find((k) => file.startsWith(`${k}-`)) ?? "ticket";
+}
+function kindFromData(data) {
+  return data?.kind === "question" || data?.kind === "qa-comment" || data?.kind === "qa-result" ? data.kind : "ticket";
+}
 function isPermanent(err) {
   const status = err?.status;
   return Array.isArray(err?.issues) || status === 400 || status === 404 || status === 409 || status === 429;
 }
 var OutboxScanner = class {
-  constructor(projectService2, ticketService2, questionService2, agentOutboxRoot) {
+  constructor(projectService2, ticketService2, questionService2, agentOutboxRoot, qaService2) {
     this.projectService = projectService2;
     this.ticketService = ticketService2;
     this.questionService = questionService2;
     this.agentOutboxRoot = agentOutboxRoot;
+    this.qaService = qaService2;
   }
   isScanning = false;
   /** The repository's own .devflow/outbox, and its Local AI CLI agents' outbox. */
@@ -39854,15 +39934,19 @@ var OutboxScanner = class {
         const files = fs6.readdirSync(outboxDir).filter((f) => f.endsWith(".json"));
         for (const file of files) {
           const filePath = path4.join(outboxDir, file);
-          let kind = file.startsWith("question-") ? "question" : "ticket";
+          let kind = kindFromName(file);
           try {
             const data = JSON.parse(fs6.readFileSync(filePath, "utf-8"));
-            kind = data?.kind === "question" ? "question" : "ticket";
+            kind = kindFromData(data);
             const sourceProject = data.project || project.name;
             const sourceTaskId = data.engineTaskId || data.taskId;
             if (kind === "question") {
               if (!this.questionService) throw Object.assign(new Error("This bridge does not take questions"), { status: 400 });
               await this.questionService.ask(AskQuestionInputSchema.parse(data), sourceProject, sourceTaskId);
+            } else if (kind === "qa-comment" || kind === "qa-result") {
+              if (!this.qaService) throw Object.assign(new Error("This bridge does not take AI QA reports"), { status: 400 });
+              if (kind === "qa-comment") this.qaService.addFinding(data, sourceProject, sourceTaskId);
+              else this.qaService.recordResult(data, sourceProject, sourceTaskId);
             } else {
               await this.ticketService.createTicket(CreateTicketInputSchema.parse(data), sourceProject, sourceTaskId);
             }
@@ -40200,6 +40284,7 @@ var STATUS = {
   rate_limited: "rate_limited",
   review: "in_review",
   no_changes: "needs_human",
+  done: "done",
   failed: "failed",
   timed_out: "failed",
   cancelled: "cancelled"
@@ -52221,6 +52306,13 @@ Your branch \`${m.task.branch}\` had no new commits, so nothing changed.`
       projects: prepared.map((p) => p.project.name),
       warnings
     });
+    if (movedToQa) {
+      try {
+        this.options.onEnteredQa?.(reqId, Object.fromEntries(prepared.map((p) => [p.project.name, p.resultSha])));
+      } catch (err) {
+        console.warn(`[merge] ${reqId}: AI QA did not start: ${err?.message || err}`);
+      }
+    }
     this.db.prepare("UPDATE requirements SET merge_state = 'idle', merge_error = NULL WHERE id = ?").run(reqId);
   }
   async finishFailure(reqId, err, mergedProjects) {
@@ -53129,6 +53221,8 @@ function toComment(row, attachments = []) {
     created_at: row.created_at,
     updated_at: row.updated_at,
     sent_at: row.sent_at,
+    source: row.source ?? "person",
+    severity: row.severity ?? null,
     attachments
   };
 }
@@ -53351,6 +53445,40 @@ function registerHumanLoopRoutes(app2, deps) {
       next(err);
     }
   });
+  const agentOf = (body) => ({
+    project: typeof body?.project === "string" && body.project ? body.project : "unknown",
+    runId: typeof body?.engineTaskId === "string" ? body.engineTaskId : void 0
+  });
+  app2.post("/api/agent/qa/comments", deps.requireAgentToken, (req, res, next) => {
+    try {
+      const { project, runId } = agentOf(req.body);
+      res.status(201).json(deps.qaService.addFinding(req.body, project, runId));
+    } catch (err) {
+      next(err);
+    }
+  });
+  app2.post("/api/agent/qa/result", deps.requireAgentToken, (req, res, next) => {
+    try {
+      const { project, runId } = agentOf(req.body);
+      res.json(deps.qaService.recordResult(req.body, project, runId));
+    } catch (err) {
+      next(err);
+    }
+  });
+  app2.get("/api/requirements/:id/qa", (req, res, next) => {
+    try {
+      res.json(deps.qaService.status(req.params.id));
+    } catch (err) {
+      next(err);
+    }
+  });
+  app2.post("/api/requirements/:id/qa", (req, res, next) => {
+    try {
+      res.status(202).json(deps.qaService.start(req.params.id, "manual"));
+    } catch (err) {
+      next(err);
+    }
+  });
   app2.get("/api/questions", (req, res, next) => {
     try {
       const status = typeof req.query.status === "string" ? req.query.status : void 0;
@@ -53482,6 +53610,419 @@ function registerHumanLoopRoutes(app2, deps) {
   });
 }
 
+// packages/server/src/localEngine/runStore.ts
+import { randomUUID as randomUUID3 } from "node:crypto";
+var FINISHED_RUN_STATUSES = ["review", "no_changes", "done", "failed", "timed_out", "cancelled"];
+var PATCHABLE = /* @__PURE__ */ new Set([
+  "title",
+  "body_md",
+  "model",
+  "effort",
+  "cli",
+  "status",
+  "notes_md",
+  "continuation",
+  "worktree",
+  "start_sha",
+  "end_sha",
+  "pid",
+  "pid_started_at",
+  "exit_code",
+  "error",
+  "resume_at",
+  "interruptions",
+  "hold_requested_at",
+  "cancel_requested_at",
+  "started_at",
+  "finished_at"
+]);
+var RunStore = class {
+  constructor(db2) {
+    this.db = db2;
+  }
+  /**
+   * Queue a new run. Notes that earlier runs of the same task never delivered (sent after they
+   * finished) move to the new run, so Retry and Request changes do not lose them.
+   */
+  create(input) {
+    const id = `local-${randomUUID3()}`;
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    this.db.transaction(() => {
+      const pending = this.db.prepare("SELECT notes_md FROM local_runs WHERE bridge_task_id = ? AND notes_md <> '' ORDER BY created_at, rowid").all(input.bridgeTaskId);
+      if (pending.length) {
+        this.db.prepare("UPDATE local_runs SET notes_md = '', updated_at = ? WHERE bridge_task_id = ? AND notes_md <> ''").run(now, input.bridgeTaskId);
+      }
+      this.db.prepare(`
+          INSERT INTO local_runs (id, bridge_task_id, project, title, body_md, model, effort, preferred_cli, status, notes_md, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)
+        `).run(
+        id,
+        input.bridgeTaskId,
+        input.project,
+        input.title,
+        input.bodyMd,
+        input.model ?? null,
+        input.effort ?? null,
+        input.preferredCli ?? null,
+        pending.map((r) => r.notes_md).join("\n\n"),
+        now,
+        now
+      );
+    })();
+    return this.get(id);
+  }
+  get(id) {
+    return this.db.prepare("SELECT * FROM local_runs WHERE id = ?").get(id);
+  }
+  /** Change fields without a status check. */
+  update(id, patch) {
+    const { sql, values } = this.setClause(patch);
+    this.db.prepare(`UPDATE local_runs SET ${sql} WHERE id = ?`).run(...values, id);
+  }
+  /** Compare-and-set: apply `patch` only while the run is in one of `from`. True when applied. */
+  transition(id, from, patch) {
+    const { sql, values } = this.setClause(patch);
+    const marks = from.map(() => "?").join(", ");
+    return this.db.prepare(`UPDATE local_runs SET ${sql} WHERE id = ? AND status IN (${marks})`).run(...values, id, ...from).changes === 1;
+  }
+  appendNote(id, note) {
+    const text = note.trim();
+    if (!text) return false;
+    return this.db.prepare("UPDATE local_runs SET notes_md = CASE WHEN notes_md = '' THEN ? ELSE notes_md || char(10) || char(10) || ? END, updated_at = ? WHERE id = ?").run(text, text, (/* @__PURE__ */ new Date()).toISOString(), id).changes === 1;
+  }
+  /** Queued runs, oldest first. */
+  queued() {
+    return this.withStatus(["queued"]);
+  }
+  withStatus(statuses) {
+    const marks = statuses.map(() => "?").join(", ");
+    return this.db.prepare(`SELECT * FROM local_runs WHERE status IN (${marks}) ORDER BY created_at, rowid`).all(...statuses);
+  }
+  forTask(taskId) {
+    return this.db.prepare("SELECT * FROM local_runs WHERE bridge_task_id = ? ORDER BY created_at, rowid").all(taskId);
+  }
+  count(status) {
+    return this.db.prepare("SELECT COUNT(*) AS n FROM local_runs WHERE status = ?").get(status).n;
+  }
+  /** CLIs paused by a usage limit: the latest future resume time among their rate-limited runs. */
+  pausedClis(now = Date.now()) {
+    const rows = this.db.prepare(`
+        SELECT cli, MAX(resume_at) AS until FROM local_runs
+        WHERE status = 'rate_limited' AND cli IS NOT NULL AND resume_at > ?
+        GROUP BY cli
+      `).all(new Date(now).toISOString());
+    return new Map(rows.map((r) => [r.cli, r.until]));
+  }
+  setClause(patch) {
+    const keys = Object.keys(patch);
+    for (const key of keys) {
+      if (!PATCHABLE.has(key)) throw new Error(`local_runs.${key} cannot be changed`);
+    }
+    const values = keys.map((k) => patch[k] ?? null);
+    return {
+      sql: [...keys.map((k) => `${k} = ?`), "updated_at = ?"].join(", "),
+      values: [...values, (/* @__PURE__ */ new Date()).toISOString()]
+    };
+  }
+};
+
+// packages/server/src/localEngine/qaPrompt.ts
+var MAX_FILES_LISTED = 200;
+var COMMAND_LABEL = { test: "Test command", build: "Build command", lint: "Lint command" };
+function acceptanceCriteria(bodyMd) {
+  const lines2 = bodyMd.split("\n");
+  const start = lines2.findIndex((l) => /^#{1,6}\s*acceptance criteria\s*$/i.test(l.trim()));
+  if (start < 0) return [];
+  const items = [];
+  for (const line of lines2.slice(start + 1)) {
+    if (/^#{1,6}\s/.test(line.trim())) break;
+    const item = /^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?(.+)$/.exec(line);
+    if (item) items.push(item[1].trim());
+  }
+  return items;
+}
+function buildQaPrompt(input) {
+  const criteria = acceptanceCriteria(input.bodyMd);
+  const commit = input.commit.slice(0, 12);
+  const range = input.from ? `${input.from.slice(0, 12)}..${commit}` : null;
+  const files = input.changedFiles.slice(0, MAX_FILES_LISTED);
+  const more = input.changedFiles.length - files.length;
+  const commands = ["test", "build", "lint"].filter((k) => input.commands[k]?.trim()).map((k) => `- ${COMMAND_LABEL[k]}: \`${input.commands[k].trim()}\``);
+  return [
+    `# AI QA of ${input.reqId} in ${input.project}`,
+    "",
+    `You are the QA reviewer of requirement ${input.reqId} ("${oneLine(input.title)}") in the repository **${input.project}**. Your working directory is a temporary checkout of commit \`${commit}\`: the code after the requirement was merged. Check it and report what you find. You do not fix anything.`,
+    "",
+    "## The requirement",
+    wrapUntrusted("requirement", input.bodyMd),
+    "",
+    "## Acceptance criteria",
+    criteria.length ? criteria.map((c3, i2) => `${i2 + 1}. ${oneLine(c3)}`).join("\n") : "The requirement has no acceptance criteria section: judge the code against the requirement text above.",
+    "",
+    "## What changed in this repository",
+    files.length ? [...files.map((f) => `- ${f}`), ...more > 0 ? [`\u2026and ${more} more (see git diff)`] : []].join("\n") : "No changed files were found for this requirement; look at the recent commits.",
+    range ? `Inspect the changes with \`git log --oneline ${range}\` and \`git diff ${range}\`.` : "Inspect recent history with `git log` and `git show`.",
+    "",
+    "## This repository's rules",
+    "Read CLAUDE.md and AGENTS.md (when they exist) in the checkout, and judge the changes against them.",
+    "",
+    "## Checks, in this order",
+    "1. For each acceptance criterion: is it met by the code? Report every gap.",
+    "2. Review the changed files: bugs, missing error handling and edge cases, security problems, and breaches of the repository rules.",
+    commands.length ? "3. Run these commands and report each failure with the key lines of its output. The checkout is fresh: install the dependencies first when a command needs them.\n" + commands.join("\n") : "3. No test, build or lint command is set for this repository: skip this step.",
+    "",
+    "## Rules",
+    "- Do not commit, push, switch branches or edit files to fix anything. Anything you change in this checkout is thrown away.",
+    `- One finding per problem; at most ${input.maxFindings} findings, the most important first.`,
+    "- Severity: **blocker** (a criterion is not met, tests or the build fail, data loss, security), **major** (a real bug or a likely failure), **minor** (quality, naming, small gaps).",
+    "- Do not ask a person questions: report what is unclear as a finding.",
+    "",
+    "## Reporting",
+    "Report each finding as soon as you find it:",
+    "```",
+    'xticket comment --severity blocker|major|minor [--file <path> [--line <n>]] --title "<one line>" [--body "<details>" | --body-file <path>]',
+    "```",
+    "`--file` is relative to the repository root. Put the evidence in the body: what you checked, what happens, the key output lines.",
+    "",
+    "Finish with exactly one result:",
+    "```",
+    'xticket qa-result --passed --summary "<what you checked>"',
+    'xticket qa-result --failed --summary "<the main problems>"',
+    "```",
+    "Use --failed when you reported any blocker or major finding."
+  ].join("\n");
+}
+
+// packages/server/src/services/qaService.ts
+var ACTIVE_STATUSES = ["pending", "queued", "running", "rate_limited"];
+var titleKey = (title) => title.toLowerCase().replace(/\s+/g, " ").trim();
+var savedTitle = (body) => /^\*\*(.+?)\*\*/.exec(body)?.[1] ?? body.split("\n")[0];
+var QaService = class {
+  constructor(opts) {
+    this.opts = opts;
+    this.db = opts.db;
+    this.settings = opts.settingsService ?? new SettingsService(opts.db);
+    this.branches = opts.branchService ?? new BranchService(opts.db, opts.projectService, this.settings);
+    this.taskChanges = new TaskChangesService(opts.db);
+    this.runs = new RunStore(opts.db);
+  }
+  db;
+  settings;
+  branches;
+  taskChanges;
+  runs;
+  /** Start AI QA for every git repository of a requirement in QA. `commits`: the merged result per repository (else the branch tip). */
+  start(reqId, trigger, commits = {}) {
+    const req = this.opts.requirementService.getRequirement(reqId);
+    if (!req) throw new HttpError(404, `Requirement ${reqId} not found`);
+    if (req.status !== "qa") throw conflict(`${reqId} is ${req.status}; AI QA runs while a requirement is in QA`);
+    if (!this.opts.engine) throw new HttpError(503, "The Local AI CLI engine is not running in this server");
+    if (this.activeTasks(reqId).length > 0) throw conflict(`AI QA is already running for ${reqId}`);
+    const projects = this.projectsOf(reqId);
+    if (projects.length === 0) throw conflict(`${reqId} has no repository work to check`);
+    const repos = projects.filter((p) => isGitWorkTree(p.repo_path));
+    if (repos.length === 0) throw conflict(`No repository of ${reqId} is a git repository; AI QA needs one`);
+    const settings = this.settings.getAiQaSettings();
+    const cliProblem = this.cliProblem(settings, this.opts.engine.status());
+    const round = this.lastRound(reqId) + 1;
+    for (const project of repos) {
+      const base = this.branches.baseBranchFor(project, reqId);
+      const commit = commits[project.name] ?? resolveCommit(project.repo_path, `refs/heads/${base}`) ?? resolveCommit(project.repo_path, `refs/remotes/origin/${base}`);
+      const taskId = this.insertTask(reqId, project.name, round, commit);
+      if (!commit) {
+        this.failTask(taskId, `${project.name}: branch ${base} was not found, so there is no commit to check`);
+        continue;
+      }
+      if (cliProblem) {
+        this.failTask(taskId, cliProblem);
+        continue;
+      }
+      const changes = this.changesOf(project, reqId);
+      const bodyMd = buildQaPrompt({
+        reqId,
+        title: req.title,
+        bodyMd: req.body_md,
+        project: project.name,
+        commit,
+        from: changes.from,
+        changedFiles: changes.files,
+        commands: { test: project.test_command, build: project.build_command, lint: project.lint_command },
+        maxFindings: settings.maxFindings
+      });
+      this.runs.create({
+        bridgeTaskId: taskId,
+        project: project.name,
+        title: `AI QA \xB7 ${reqId}`,
+        bodyMd,
+        model: settings.model,
+        effort: settings.effort,
+        preferredCli: settings.agentCli === "default" ? null : settings.agentCli
+      });
+      this.log(taskId, `AI QA queued (${trigger === "auto" ? "the requirement entered QA" : "Run AI QA"}) for ${commit.slice(0, 7)}`);
+    }
+    this.opts.emit?.({ type: "qa_started", req_id: reqId, payload: { reqId, round, trigger, projects: repos.map((p) => p.name) } });
+    this.opts.engine.nudge();
+    return this.status(reqId);
+  }
+  /** The merge gate moved the requirement to QA: start AI QA when Settings → AI QA → Run automatically is on. Never throws. */
+  onEnteredQa(reqId, commits) {
+    if (!this.settings.getAiQaSettings().runAutomatically) return;
+    try {
+      this.start(reqId, "auto", commits);
+    } catch (err) {
+      console.warn(`[ai-qa] ${reqId}: AI QA did not start: ${err?.message || err}`);
+    }
+  }
+  /** `xticket comment`: an open review comment marked AI QA on the repository's card. */
+  addFinding(input, project, runId) {
+    const finding = QaFindingInputSchema.parse(input);
+    const qa = this.qaTaskOf(project, runId);
+    this.requireQa(qa.req_id, "finding");
+    if (finding.line !== void 0 && !finding.file_path) throw badRequest("--line needs --file");
+    if (finding.file_path && !isSafeRelativePath(finding.file_path)) {
+      throw badRequest("The file path must be relative to the repository (no leading / and no ..)");
+    }
+    const card = this.cardOf(qa.req_id, qa.project);
+    if (!card) throw conflict(`${qa.req_id} has no task in ${qa.project} to put the finding on`);
+    const title = oneLine(finding.title, 200);
+    const file = finding.file_path ?? null;
+    const line = finding.line ?? null;
+    const same = this.db.prepare("SELECT id, body_md FROM review_comments WHERE qa_task_id = ? AND file_path IS ? AND line IS ?").all(qa.id, file, line).find((c3) => titleKey(savedTitle(c3.body_md)) === titleKey(title));
+    if (same) return { commentId: same.id, duplicate: true };
+    const max = this.settings.getAiQaSettings().maxFindings;
+    const saved = this.db.prepare("SELECT COUNT(*) AS n FROM review_comments WHERE qa_task_id = ?").get(qa.id).n;
+    if (saved >= max) throw conflict(`The QA run reached its limit of ${max} findings`);
+    const body = finding.body.trim() ? `**${title}**
+
+${finding.body.trim()}` : `**${title}**`;
+    const at = (/* @__PURE__ */ new Date()).toISOString();
+    const commentId = Number(
+      this.db.prepare(`
+          INSERT INTO review_comments (req_id, task_id, file_path, line, body_md, state, source, severity, qa_task_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, 'open', 'ai-qa', ?, ?, ?, ?)
+        `).run(qa.req_id, card.id, file, line, body, finding.severity, qa.id, at, at).lastInsertRowid
+    );
+    this.log(qa.id, `\u2691 ${finding.severity}: ${title}${file ? ` (${file}${line ? `:${line}` : ""})` : ""}`);
+    this.opts.emit?.({ type: "qa_finding", req_id: qa.req_id, task_id: card.id, payload: { reqId: qa.req_id, project: qa.project, severity: finding.severity, commentId } });
+    return { commentId, duplicate: false };
+  }
+  /** `xticket qa-result`: the run's verdict and summary. */
+  recordResult(input, project, runId) {
+    const result = QaResultInputSchema.parse(input);
+    const qa = this.qaTaskOf(project, runId);
+    this.requireQa(qa.req_id, "result");
+    this.db.prepare("UPDATE bridge_tasks SET qa_passed = ?, qa_summary = ?, updated_at = ? WHERE id = ?").run(result.passed ? 1 : 0, result.summary, (/* @__PURE__ */ new Date()).toISOString(), qa.id);
+    this.log(qa.id, `${result.passed ? "\u2713 AI QA passed" : "\u2717 AI QA found problems"}: ${oneLine(result.summary, 300)}`);
+    this.opts.emit?.({ type: "qa_result", req_id: qa.req_id, task_id: qa.id, payload: { reqId: qa.req_id, project: qa.project, passed: result.passed } });
+    return { ok: true, passed: result.passed, summary: result.summary };
+  }
+  /** The requirement header: the latest QA round, per repository. */
+  status(reqId) {
+    if (!this.opts.requirementService.getRequirement(reqId)) throw new HttpError(404, `Requirement ${reqId} not found`);
+    const round = this.lastRound(reqId);
+    const tasks = round ? this.db.prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND role = 'qa' AND revision = ? ORDER BY project, id").all(reqId, round) : [];
+    const findings = { total: 0, blocker: 0, major: 0, minor: 0 };
+    const runs = tasks.map((task) => {
+      const counts = this.db.prepare("SELECT severity, COUNT(*) AS n FROM review_comments WHERE qa_task_id = ? GROUP BY severity").all(task.id);
+      let mine = 0;
+      for (const c3 of counts) {
+        mine += c3.n;
+        findings.total += c3.n;
+        if (c3.severity in findings) findings[c3.severity] += c3.n;
+      }
+      return {
+        task,
+        project: task.project,
+        status: task.status,
+        passed: task.qa_passed == null ? null : task.qa_passed === 1,
+        summary: task.qa_summary ?? null,
+        error: task.last_error ?? null,
+        findings: mine
+      };
+    });
+    const skipped = round ? this.projectsOf(reqId).filter((p) => !isGitWorkTree(p.repo_path)).map((p) => ({ project: p.name, reason: "not a git repository" })) : [];
+    return { reqId, round, running: tasks.some((t) => ACTIVE_STATUSES.includes(t.status)), runs, skipped, findings };
+  }
+  /** Enabled repositories with goal or ticket work in the requirement. */
+  projectsOf(reqId) {
+    const rows = this.db.prepare("SELECT DISTINCT project FROM bridge_tasks WHERE req_id = ? AND role IN ('goal', 'ticket') AND status <> 'cancelled' ORDER BY project").all(reqId);
+    return rows.map((r) => this.opts.projectService.getProject(r.project)).filter((p) => Boolean(p?.enabled));
+  }
+  activeTasks(reqId) {
+    const marks = ACTIVE_STATUSES.map(() => "?").join(", ");
+    return this.db.prepare(`SELECT id FROM bridge_tasks WHERE req_id = ? AND role = 'qa' AND status IN (${marks})`).all(reqId, ...ACTIVE_STATUSES).map((r) => r.id);
+  }
+  lastRound(reqId) {
+    return this.db.prepare("SELECT MAX(revision) AS r FROM bridge_tasks WHERE req_id = ? AND role = 'qa'").get(reqId).r ?? 0;
+  }
+  insertTask(reqId, project, round, commit) {
+    const at = (/* @__PURE__ */ new Date()).toISOString();
+    return Number(
+      this.db.prepare(`
+          INSERT INTO bridge_tasks (req_id, project, role, title, status, base_sha, revision, created_at, updated_at)
+          VALUES (?, ?, 'qa', ?, 'queued', ?, ?, ?, ?)
+        `).run(reqId, project, `AI QA \xB7 ${project}`, commit, round, at, at).lastInsertRowid
+    );
+  }
+  failTask(taskId, reason) {
+    this.db.prepare("UPDATE bridge_tasks SET status = 'failed', last_error = ?, updated_at = ? WHERE id = ?").run(reason, (/* @__PURE__ */ new Date()).toISOString(), taskId);
+    this.log(taskId, `\u2717 ${reason}`);
+  }
+  /** Why no AI CLI can run QA now (the engine's own wording), or null. */
+  cliProblem(settings, engine) {
+    if (!engine.enabled) return "No AI CLI can run QA: the Local AI CLI engine is turned off (Settings \u2192 AI & Local Engines)";
+    if (settings.agentCli === "default") return engine.cli ? null : `No AI CLI can run QA: ${engine.problem ?? "no AI CLI is installed and turned on"}`;
+    const cli = engine.clis.find((c3) => c3.id === settings.agentCli);
+    if (cli?.installed && cli.enabled) return null;
+    const why = cli?.enabled === false ? "is turned off in Settings \u2192 AI & Local Engines" : "is not installed on this PC";
+    return `No AI CLI can run QA: ${cli?.label ?? settings.agentCli} is chosen for AI QA but ${why}`;
+  }
+  /** Files the requirement changed in the repository: from its merge commits (branches may be deleted), else from its unmerged branches. */
+  changesOf(project, reqId) {
+    const tasks = this.db.prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND project = ? AND role IN ('goal', 'ticket') AND status <> 'cancelled' ORDER BY id").all(reqId, project.name);
+    const files = /* @__PURE__ */ new Set();
+    let from = null;
+    for (const t of tasks) {
+      if (t.merge_sha) {
+        const parent = resolveCommit(project.repo_path, `${t.merge_sha}^1`);
+        if (!parent) continue;
+        from ??= parent;
+        for (const f of diffSummary(project.repo_path, parent, t.merge_sha)) files.add(f.path);
+      } else if (t.branch) {
+        try {
+          for (const f of this.taskChanges.changes(t.id).files) files.add(f.path);
+        } catch {
+        }
+        from ??= t.base_sha ?? null;
+      }
+    }
+    return { files: [...files].sort(), from };
+  }
+  /** The QA task an agent reports for: its run id (XTICKET_TASK) in its repository. */
+  qaTaskOf(project, runId) {
+    const row = runId ? this.db.prepare(`
+            SELECT t.* FROM local_runs r JOIN bridge_tasks t ON t.id = r.bridge_task_id
+            WHERE r.id = ? AND r.project = ? AND t.role = 'qa'
+          `).get(runId, project) : void 0;
+    if (!row) throw new HttpError(404, `No QA run ${runId ?? "(XTICKET_TASK is not set)"} for ${project}; findings come from AI QA runs`);
+    return row;
+  }
+  requireQa(reqId, what) {
+    const status = this.opts.requirementService.getRequirement(reqId)?.status;
+    if (status !== "qa") throw conflict(`${reqId} is no longer in QA; this ${what} was not saved`);
+  }
+  /** The repository's card: its goal, else its first ticket. */
+  cardOf(reqId, project) {
+    return this.db.prepare(`
+        SELECT * FROM bridge_tasks WHERE req_id = ? AND project = ? AND role IN ('goal', 'ticket') AND status <> 'cancelled'
+        ORDER BY CASE role WHEN 'goal' THEN 0 ELSE 1 END, id LIMIT 1
+      `).get(reqId, project);
+  }
+  log(taskId, message) {
+    this.db.prepare("INSERT INTO task_logs (task_id, stream, message, created_at) VALUES (?, 'system', ?, ?)").run(taskId, message, (/* @__PURE__ */ new Date()).toISOString());
+  }
+};
+
 // packages/server/src/api/localEngineRoutes.ts
 function registerLocalEngineRoutes(app2, deps) {
   app2.get("/api/settings/local-engine", (_req, res) => {
@@ -53492,6 +54033,18 @@ function registerLocalEngineRoutes(app2, deps) {
       const updated = deps.settingsService.updateLocalEngineSettings(req.body);
       deps.broadcaster.broadcast({ type: "settings_updated", payload: { local_engine: updated } });
       deps.localEngine?.nudge();
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  });
+  app2.get("/api/settings/ai-qa", (_req, res) => {
+    res.json(deps.settingsService.getAiQaSettings());
+  });
+  app2.put("/api/settings/ai-qa", (req, res, next) => {
+    try {
+      const updated = deps.settingsService.updateAiQaSettings(req.body);
+      deps.broadcaster.broadcast({ type: "settings_updated", payload: { ai_qa: updated } });
       res.json(updated);
     } catch (err) {
       next(err);
@@ -53654,7 +54207,19 @@ function createApp(deps) {
   const gitReviewService = new GitReviewService(deps.projectService);
   const terminalService = deps.terminalService || new TerminalService(deps.projectService);
   const reactor2 = deps.reactor || new TaskReactor(deps.db, deps.requirementService, deps.linkService, (evt) => deps.broadcaster.broadcast(evt));
-  const mergeGate2 = deps.mergeGate || new MergeGateService(deps.db, deps.projectService, deps.requirementService, reactor2, { settingsService: settingsService2 });
+  const qaService2 = deps.qaService || new QaService({
+    db: deps.db,
+    projectService: deps.projectService,
+    requirementService: deps.requirementService,
+    settingsService: settingsService2,
+    branchService: branchService2,
+    engine: deps.localEngine,
+    emit: (evt) => deps.broadcaster.broadcast(evt)
+  });
+  const mergeGate2 = deps.mergeGate || new MergeGateService(deps.db, deps.projectService, deps.requirementService, reactor2, {
+    settingsService: settingsService2,
+    onEnteredQa: (reqId, commits) => qaService2.onEnteredQa(reqId, commits)
+  });
   if (!deps.reactor) {
     reactor2.setHooks({ onRequirementInReview: (id) => mergeGate2.autoStart(id) });
   }
@@ -53950,12 +54515,12 @@ function createApp(deps) {
     }
   });
   app2.get("/api/requirements/:id/graph", (req, res) => {
-    const tasks = deps.db.prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND role <> 'question' AND (last_error IS NULL OR last_error <> ?)").all(req.params.id, DEDUPE_NOTE);
+    const tasks = deps.db.prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND role NOT IN ('question', 'qa') AND (last_error IS NULL OR last_error <> ?)").all(req.params.id, DEDUPE_NOTE);
     const links = deps.db.prepare(`
         SELECT l.* FROM links l
         JOIN bridge_tasks t ON l.task_id = t.id
         JOIN bridge_tasks d ON l.depends_on_id = d.id
-        WHERE t.req_id = ? AND d.role <> 'question'
+        WHERE t.req_id = ? AND d.role NOT IN ('question', 'qa')
       `).all(req.params.id);
     res.json({ tasks, links });
   });
@@ -54296,7 +54861,7 @@ function createApp(deps) {
   };
   app2.post("/api/tickets", requireAgentToken, handleCreateTicket);
   app2.post("/api/agent/tickets", requireAgentToken, handleCreateTicket);
-  registerHumanLoopRoutes(app2, { questionService: questionService2, reviewService, requirementService: deps.requirementService, settingsService: settingsService2, notificationService: notificationService2, broadcaster: deps.broadcaster, requireAgentToken });
+  registerHumanLoopRoutes(app2, { questionService: questionService2, qaService: qaService2, reviewService, requirementService: deps.requirementService, settingsService: settingsService2, notificationService: notificationService2, broadcaster: deps.broadcaster, requireAgentToken });
   registerLocalEngineRoutes(app2, { settingsService: settingsService2, broadcaster: deps.broadcaster, localEngine: deps.localEngine });
   const hasValidGitHubSignature = (req) => {
     if (!deps.webhookSecret) return true;
@@ -55074,122 +55639,6 @@ import fs21 from "node:fs";
 import path24 from "node:path";
 import readline from "node:readline";
 
-// packages/server/src/localEngine/runStore.ts
-import { randomUUID as randomUUID3 } from "node:crypto";
-var FINISHED_RUN_STATUSES = ["review", "no_changes", "failed", "timed_out", "cancelled"];
-var PATCHABLE = /* @__PURE__ */ new Set([
-  "title",
-  "body_md",
-  "model",
-  "effort",
-  "cli",
-  "status",
-  "notes_md",
-  "continuation",
-  "worktree",
-  "start_sha",
-  "end_sha",
-  "pid",
-  "pid_started_at",
-  "exit_code",
-  "error",
-  "resume_at",
-  "interruptions",
-  "hold_requested_at",
-  "cancel_requested_at",
-  "started_at",
-  "finished_at"
-]);
-var RunStore = class {
-  constructor(db2) {
-    this.db = db2;
-  }
-  /**
-   * Queue a new run. Notes that earlier runs of the same task never delivered (sent after they
-   * finished) move to the new run, so Retry and Request changes do not lose them.
-   */
-  create(input) {
-    const id = `local-${randomUUID3()}`;
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    this.db.transaction(() => {
-      const pending = this.db.prepare("SELECT notes_md FROM local_runs WHERE bridge_task_id = ? AND notes_md <> '' ORDER BY created_at, rowid").all(input.bridgeTaskId);
-      if (pending.length) {
-        this.db.prepare("UPDATE local_runs SET notes_md = '', updated_at = ? WHERE bridge_task_id = ? AND notes_md <> ''").run(now, input.bridgeTaskId);
-      }
-      this.db.prepare(`
-          INSERT INTO local_runs (id, bridge_task_id, project, title, body_md, model, effort, preferred_cli, status, notes_md, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)
-        `).run(
-        id,
-        input.bridgeTaskId,
-        input.project,
-        input.title,
-        input.bodyMd,
-        input.model ?? null,
-        input.effort ?? null,
-        input.preferredCli ?? null,
-        pending.map((r) => r.notes_md).join("\n\n"),
-        now,
-        now
-      );
-    })();
-    return this.get(id);
-  }
-  get(id) {
-    return this.db.prepare("SELECT * FROM local_runs WHERE id = ?").get(id);
-  }
-  /** Change fields without a status check. */
-  update(id, patch) {
-    const { sql, values } = this.setClause(patch);
-    this.db.prepare(`UPDATE local_runs SET ${sql} WHERE id = ?`).run(...values, id);
-  }
-  /** Compare-and-set: apply `patch` only while the run is in one of `from`. True when applied. */
-  transition(id, from, patch) {
-    const { sql, values } = this.setClause(patch);
-    const marks = from.map(() => "?").join(", ");
-    return this.db.prepare(`UPDATE local_runs SET ${sql} WHERE id = ? AND status IN (${marks})`).run(...values, id, ...from).changes === 1;
-  }
-  appendNote(id, note) {
-    const text = note.trim();
-    if (!text) return false;
-    return this.db.prepare("UPDATE local_runs SET notes_md = CASE WHEN notes_md = '' THEN ? ELSE notes_md || char(10) || char(10) || ? END, updated_at = ? WHERE id = ?").run(text, text, (/* @__PURE__ */ new Date()).toISOString(), id).changes === 1;
-  }
-  /** Queued runs, oldest first. */
-  queued() {
-    return this.withStatus(["queued"]);
-  }
-  withStatus(statuses) {
-    const marks = statuses.map(() => "?").join(", ");
-    return this.db.prepare(`SELECT * FROM local_runs WHERE status IN (${marks}) ORDER BY created_at, rowid`).all(...statuses);
-  }
-  forTask(taskId) {
-    return this.db.prepare("SELECT * FROM local_runs WHERE bridge_task_id = ? ORDER BY created_at, rowid").all(taskId);
-  }
-  count(status) {
-    return this.db.prepare("SELECT COUNT(*) AS n FROM local_runs WHERE status = ?").get(status).n;
-  }
-  /** CLIs paused by a usage limit: the latest future resume time among their rate-limited runs. */
-  pausedClis(now = Date.now()) {
-    const rows = this.db.prepare(`
-        SELECT cli, MAX(resume_at) AS until FROM local_runs
-        WHERE status = 'rate_limited' AND cli IS NOT NULL AND resume_at > ?
-        GROUP BY cli
-      `).all(new Date(now).toISOString());
-    return new Map(rows.map((r) => [r.cli, r.until]));
-  }
-  setClause(patch) {
-    const keys = Object.keys(patch);
-    for (const key of keys) {
-      if (!PATCHABLE.has(key)) throw new Error(`local_runs.${key} cannot be changed`);
-    }
-    const values = keys.map((k) => patch[k] ?? null);
-    return {
-      sql: [...keys.map((k) => `${k} = ?`), "updated_at = ?"].join(", "),
-      values: [...values, (/* @__PURE__ */ new Date()).toISOString()]
-    };
-  }
-};
-
 // packages/server/src/localEngine/agentEnv.ts
 import os6 from "node:os";
 import path22 from "node:path";
@@ -55539,6 +55988,8 @@ var TAIL_LINES = 20;
 var MAX_INTERRUPTIONS = 3;
 var DEFAULT_LIMIT_WAIT_MS = 15 * 60 * 1e3;
 var MAX_LIMIT_WAIT_MS = 24 * 60 * 60 * 1e3;
+var QA_NO_RESULT = "Finished without a result";
+var QA_CONTINUE = "## Continue\nAn earlier attempt of this QA run was interrupted. The findings it reported are kept: report only new ones, then the result.\n\n";
 var AgentRunner = class {
   constructor(opts) {
     this.opts = opts;
@@ -55611,6 +56062,7 @@ var AgentRunner = class {
     if (this.runs.transition(runId, ["queued", "held", "rate_limited", "running"], { status: "cancelled", pid: null, finished_at: this.iso() })) {
       this.log(run.bridge_task_id, "system", "\u25A0 Cancelled");
     }
+    this.followRun(runId);
   }
   /** The agent asked a person: the run is held at once; the agent gets holdGraceMs to commit and stop. */
   hold(runId, _reason) {
@@ -55644,6 +56096,7 @@ var AgentRunner = class {
       [...this.active.values()].map(async (active) => {
         if (this.runs.transition(active.runId, ["running"], { status: "queued", continuation: 1 })) {
           this.log(active.taskId, "system", "\u23F9 Server stopping; this run continues when the server starts again");
+          this.followRun(active.runId);
         }
         await stopGroup(active.agent.pid, active.agent.exited, this.stopGrace());
         await active.settled.catch(() => {
@@ -55668,9 +56121,11 @@ var AgentRunner = class {
         const error = `Interrupted ${interruptions} times (the server stopped while the agent was running); Retry starts it again`;
         if (this.runs.transition(run.id, ["running"], { status: "failed", pid: null, interruptions, finished_at: this.iso(), error })) {
           this.log(run.bridge_task_id, "system", `\u2717 ${error}`);
+          this.followRun(run.id);
         }
       } else if (this.runs.transition(run.id, ["running"], { status: "queued", pid: null, interruptions, continuation: 1 })) {
         this.log(run.bridge_task_id, "system", "\u21BB The server restarted while the agent was running; it continues from the branch");
+        this.followRun(run.id);
       }
     }
   }
@@ -55708,6 +56163,7 @@ var AgentRunner = class {
   async pass() {
     if (this.stopping) return;
     this.resumeRateLimited();
+    this.stopQaOutsideQa();
     this.cleanupWorktrees();
     const settings = this.settings();
     if (!settings.enabled) return;
@@ -55723,21 +56179,23 @@ var AgentRunner = class {
         if (this.runs.transition(run.id, ["queued"], { status: "failed", error: choice.problem, finished_at: this.iso() })) {
           this.log(run.bridge_task_id, "system", `\u2717 ${choice.problem}`);
         }
+        this.followRun(run.id);
         continue;
       }
       if (!choice.cli || !choice.bin || paused.has(choice.cli)) continue;
       if (this.start(run, choice.cli, choice.bin, ai, settings)) running++;
     }
   }
-  /** The requirement's CLI when it chose one (it must be enabled and installed), else the engine's choice. */
+  /** The requirement's (or AI QA's) CLI when one was chosen (it must be enabled and installed), else the engine's choice. */
   cliFor(run, ai, fallback) {
     if (!run.preferred_cli) return fallback.cli ? fallback : { cli: null, bin: null, problem: null };
     const cli = run.preferred_cli;
     const bin = cliEnabled(cli, ai) ? cliBinary(cli, ai, this.find) : null;
     if (bin) return { cli, bin, problem: null };
-    const reqId = this.task(run.bridge_task_id)?.req_id ?? "this requirement";
+    const task = this.task(run.bridge_task_id);
     const why = cliEnabled(cli, ai) ? "is not installed on this PC" : "is turned off in Settings \u2192 AI & Local Engines";
-    return { cli: null, bin: null, problem: `${CLI_LABELS[cli]} is chosen for ${reqId} but ${why}` };
+    if (task?.role === "qa") return { cli: null, bin: null, problem: `No AI CLI can run QA: ${CLI_LABELS[cli]} is chosen for AI QA but ${why}` };
+    return { cli: null, bin: null, problem: `${CLI_LABELS[cli]} is chosen for ${task?.req_id ?? "this requirement"} but ${why}` };
   }
   taskBusy(run) {
     if (this.active.has(run.id)) return true;
@@ -55748,6 +56206,7 @@ var AgentRunner = class {
   start(run, cli, bin, ai, settings) {
     if (run.cancel_requested_at) {
       this.runs.transition(run.id, ["queued"], { status: "cancelled", finished_at: this.iso() });
+      this.followRun(run.id);
       return false;
     }
     const task = this.task(run.bridge_task_id);
@@ -55755,25 +56214,25 @@ var AgentRunner = class {
       this.runs.transition(run.id, ["queued"], { status: "cancelled", error: "The task is no longer active", finished_at: this.iso() });
       return false;
     }
+    const qa = task.role === "qa";
     const fail = (message) => {
       if (this.runs.transition(run.id, ["queued"], { status: "failed", error: message, finished_at: this.iso() })) this.log(task.id, "system", `\u2717 ${message}`);
+      this.followRun(run.id);
       return false;
     };
     const project = this.opts.projectService.getProject(run.project);
     if (!project) return fail(`Repository ${run.project} is not registered`);
-    if (!project.enabled || project.engine_type !== "local") return false;
-    if (!task.branch) return fail(`Local AI CLI needs a git repository: ${project.repo_path} is not the top of a git work tree`);
-    const dir = this.recordedWorktree(task.id) ?? this.worktrees.pathFor(project.name, task.id);
-    let gitCommonDir;
+    if (!project.enabled || !qa && project.engine_type !== "local") return false;
+    let checkout;
     try {
-      this.worktrees.ensure(project.repo_path, task.branch, dir);
-      gitCommonDir = this.worktrees.gitCommonDir(project.repo_path);
+      checkout = qa ? this.qaCheckout(project.name, project.repo_path, task) : this.taskCheckout(project.name, project.repo_path, task);
     } catch (err) {
       return fail(err?.message || String(err));
     }
+    const { dir, gitCommonDir } = checkout;
     const model = runModel(cli, run.model, ai);
     const effort = runEffort(cli, run.effort, ai);
-    let prompt = buildRunPrompt({ bodyMd: run.body_md, worktree: dir, branch: task.branch, notesMd: run.notes_md, continuation: run.continuation === 1 });
+    let prompt = qa ? `${run.continuation === 1 ? QA_CONTINUE : ""}${run.body_md}` : buildRunPrompt({ bodyMd: run.body_md, worktree: dir, branch: task.branch, notesMd: run.notes_md, continuation: run.continuation === 1 });
     if (this.opts.neuronService) {
       prompt = this.opts.neuronService.enrichPrompt(prompt, project.name);
     }
@@ -55794,11 +56253,11 @@ var AgentRunner = class {
         ...this.opts.agentToken ? { XTICKET_TOKEN: this.opts.agentToken } : {}
       }
     });
-    const startSha = resolveCommit(project.repo_path, `refs/heads/${task.branch}`);
     let agent;
     try {
       agent = spawnAgent(command, dir, env);
     } catch (err) {
+      if (qa) removeWorktree(project.repo_path, dir);
       return fail(`Could not start ${CLI_LABELS[cli]} (${bin}): ${err?.message || err}`);
     }
     const claimed = !this.runs.get(run.id)?.cancel_requested_at && this.runs.transition(run.id, ["queued"], {
@@ -55807,7 +56266,7 @@ var AgentRunner = class {
       model,
       effort,
       worktree: dir,
-      start_sha: startSha,
+      start_sha: checkout.startSha,
       end_sha: null,
       pid: agent.pid,
       pid_started_at: agent.startedAt,
@@ -55824,10 +56283,27 @@ var AgentRunner = class {
       void stopGroup(agent.pid, agent.exited, this.stopGrace());
       return false;
     }
+    this.followRun(run.id);
     this.opts.db.prepare("UPDATE bridge_tasks SET model = ?, effort = ? WHERE id = ?").run(model, effort, task.id);
-    this.log(task.id, "system", `\u25B6 ${CLI_LABELS[cli]} started in ${dir} on ${task.branch}${model ? ` \xB7 ${model}` : ""}${effort ? ` \xB7 ${effort}` : ""}`);
-    this.supervise(run.id, task, project.repo_path, cli, bin, agent, settings.runTimeoutMinutes, runDir);
+    const profile = `${model ? ` \xB7 ${model}` : ""}${effort ? ` \xB7 ${effort}` : ""}`;
+    this.log(task.id, "system", qa ? `\u25B6 AI QA with ${CLI_LABELS[cli]} in ${dir} at ${checkout.ref}${profile}` : `\u25B6 ${CLI_LABELS[cli]} started in ${dir} on ${checkout.ref}${profile}`);
+    const minutes = qa ? this.qaSettings().timeLimitMinutes : settings.runTimeoutMinutes;
+    this.supervise(run.id, task, project.repo_path, cli, bin, agent, minutes, runDir);
     return true;
+  }
+  /** The task's own worktree on its branch (kept between runs). */
+  taskCheckout(projectName, repo, task) {
+    if (!task.branch) throw new Error(`Local AI CLI needs a git repository: ${repo} is not the top of a git work tree`);
+    const dir = this.recordedWorktree(task.id) ?? this.worktrees.pathFor(projectName, task.id);
+    this.worktrees.ensure(repo, task.branch, dir);
+    return { dir, ref: task.branch, startSha: resolveCommit(repo, `refs/heads/${task.branch}`), gitCommonDir: this.worktrees.gitCommonDir(repo) };
+  }
+  /** AI QA: a fresh detached checkout of the commit to check, removed when the run ends. */
+  qaCheckout(projectName, repo, task) {
+    if (!task.base_sha) throw new Error("AI QA has no commit to check");
+    const dir = this.worktrees.pathFor(projectName, task.id);
+    this.worktrees.checkoutDetached(repo, task.base_sha, dir);
+    return { dir, ref: task.base_sha.slice(0, 7), startSha: task.base_sha, gitCommonDir: this.worktrees.gitCommonDir(repo) };
   }
   supervise(runId, task, repo, cli, bin, agent, minutes, runDir) {
     const parser = createParser(cli);
@@ -55900,6 +56376,7 @@ var AgentRunner = class {
       } finally {
         this.active.delete(runId);
       }
+      this.followRun(runId);
       await this.tick();
     });
     this.active.set(runId, active);
@@ -55909,13 +56386,15 @@ var AgentRunner = class {
     const run = this.runs.get(runId);
     const task = this.task(taskId);
     if (!run || !task) return;
-    const endSha = task.branch ? resolveCommit(repo, `refs/heads/${task.branch}`) : null;
+    const qa = task.role === "qa";
+    if (qa) this.dropQaCheckout(taskId, repo, run.worktree);
+    const endSha = !qa && task.branch ? resolveCommit(repo, `refs/heads/${task.branch}`) : null;
     if (endSha && endSha !== run.start_sha) this.opts.onCommits?.(taskId);
     const base = { pid: null, exit_code: exit.code, end_sha: endSha, finished_at: this.iso() };
     const label = CLI_LABELS[cli];
     if (run.cancel_requested_at) {
       if (this.runs.transition(runId, ["running", "held", "queued", "rate_limited"], { ...base, status: "cancelled" })) {
-        this.log(taskId, "system", "\u25A0 Stopped: the task was cancelled");
+        this.log(taskId, "system", qa ? "\u25A0 AI QA stopped" : "\u25A0 Stopped: the task was cancelled");
       }
       return;
     }
@@ -55929,8 +56408,8 @@ var AgentRunner = class {
       return;
     }
     if (timedOut) {
-      const minutes = this.settings().runTimeoutMinutes;
-      this.end(runId, taskId, { ...base, status: "timed_out", error: `Stopped after the ${minutes} minute time limit (Settings \u2192 AI & Local Engines)` });
+      const error2 = qa ? `Stopped after the ${this.qaSettings().timeLimitMinutes} minute AI QA time limit (Settings \u2192 AI & Local Engines \u2192 AI QA)` : `Stopped after the ${this.settings().runTimeoutMinutes} minute time limit (Settings \u2192 AI & Local Engines)`;
+      this.end(runId, taskId, { ...base, status: "timed_out", error: error2 });
       return;
     }
     if (out.rateLimit) {
@@ -55951,6 +56430,10 @@ var AgentRunner = class {
 ${out.tail.join("\n")}`.trim() });
       return;
     }
+    if (qa) {
+      this.finishQa(runId, taskId, base);
+      return;
+    }
     const worktree = run.worktree ?? "";
     const dirty = worktree ? this.worktrees.uncommitted(worktree) : [];
     if (dirty.length) {
@@ -55964,6 +56447,17 @@ ${out.tail.join("\n")}`.trim() });
     const error = dirty.length ? `Finished without committing; the uncommitted changes are in ${worktree}` : "Finished without committing anything";
     this.end(runId, taskId, { ...base, status: "no_changes", error });
   }
+  /** AI QA ends done; its result is what the agent reported with `xticket qa-result`. */
+  finishQa(runId, taskId, base) {
+    const row = this.task(taskId);
+    if (!row || row.qa_passed == null) {
+      this.opts.db.prepare("UPDATE bridge_tasks SET qa_summary = ? WHERE id = ? AND qa_passed IS NULL").run(QA_NO_RESULT, taskId);
+      this.end(runId, taskId, { ...base, status: "done" }, "\u2713 AI QA finished without a result (the agent did not run xticket qa-result)");
+      return;
+    }
+    const summary = (row.qa_summary ?? "").split("\n")[0];
+    this.end(runId, taskId, { ...base, status: "done" }, `\u2713 AI QA ${row.qa_passed ? "passed" : "found problems"}: ${summary}`);
+  }
   /** The reset the CLI named, else its live quota's, else 15 minutes; at least 1 minute, at most 24 h ahead. */
   async resumeTime(cli, bin, reported) {
     let until = reported ? Date.parse(reported) : NaN;
@@ -55975,15 +56469,23 @@ ${out.tail.join("\n")}`.trim() });
     until = Math.min(Math.max(until, this.now() + 6e4), this.now() + MAX_LIMIT_WAIT_MS);
     return new Date(until).toISOString();
   }
-  /** Worktrees of tasks that are COMPLETE or CANCELLED are removed (kept while they have uncommitted changes). */
+  /** Worktrees of tasks that are COMPLETE or CANCELLED are removed (kept while they have uncommitted changes); AI QA checkouts always go. */
   cleanupWorktrees() {
     const rows = this.opts.db.prepare(`
-        SELECT r.bridge_task_id AS taskId, r.project AS project, MAX(r.worktree) AS worktree
+        SELECT r.bridge_task_id AS taskId, r.project AS project, MAX(r.worktree) AS worktree, t.role AS role
         FROM local_runs r JOIN bridge_tasks t ON t.id = r.bridge_task_id
-        WHERE r.worktree IS NOT NULL AND t.status IN ('done', 'cancelled')
+        WHERE r.worktree IS NOT NULL AND (t.status IN ('done', 'cancelled') OR (t.role = 'qa' AND t.status = 'failed'))
         GROUP BY r.bridge_task_id, r.project
       `).all();
-    for (const row of rows) this.removeTaskWorktree(row.taskId, row.project, row.worktree);
+    for (const row of rows) {
+      if (row.role !== "qa") {
+        this.removeTaskWorktree(row.taskId, row.project, row.worktree);
+        continue;
+      }
+      if ([...this.active.values()].some((a2) => a2.taskId === row.taskId)) continue;
+      const repo = this.opts.projectService.getProject(row.project)?.repo_path;
+      if (repo) this.dropQaCheckout(row.taskId, repo, row.worktree);
+    }
   }
   removeTaskWorktree(taskId, project, worktree) {
     for (const active of this.active.values()) if (active.taskId === taskId) return false;
@@ -56012,8 +56514,39 @@ ${out.tail.join("\n")}`.trim() });
       if (run.resume_at && run.resume_at > now) continue;
       if (this.runs.transition(run.id, ["rate_limited"], { status: "queued", resume_at: null, continuation: 1, error: null })) {
         this.log(run.bridge_task_id, "system", "\u21BB Usage limit reset; continuing");
+        this.followRun(run.id);
       }
     }
+  }
+  /** AI QA checks a requirement in QA: its runs stop once the requirement leaves QA (Request changes, done, cancelled) or the QA task is cancelled. */
+  stopQaOutsideQa() {
+    const rows = this.opts.db.prepare(`
+        SELECT r.id AS runId, t.id AS taskId, t.req_id AS reqId FROM local_runs r
+        JOIN bridge_tasks t ON t.id = r.bridge_task_id
+        JOIN requirements q ON q.id = t.req_id
+        WHERE t.role = 'qa' AND r.status IN ('queued', 'running', 'rate_limited') AND r.cancel_requested_at IS NULL
+          AND (q.status <> 'qa' OR t.status = 'cancelled')
+      `).all();
+    for (const row of rows) {
+      this.log(row.taskId, "system", `\u25A0 ${row.reqId} is no longer in QA; AI QA stops`);
+      void this.cancel(row.runId).catch((err) => console.warn(`[local-engine] run ${row.runId}: ${err?.message || err}`));
+    }
+  }
+  /** A QA task has no engine to sync it: its status follows its run (a no-op for other tasks). */
+  followRun(runId) {
+    const run = this.runs.get(runId);
+    if (!run) return;
+    const status = toEngineTask(run).status;
+    this.opts.db.prepare("UPDATE bridge_tasks SET status = ?, last_error = ?, updated_at = ? WHERE id = ? AND role = 'qa' AND status <> 'cancelled'").run(status, status === "failed" ? run.error : null, (/* @__PURE__ */ new Date()).toISOString(), run.bridge_task_id);
+  }
+  /** Remove an AI QA checkout; whatever the agent left in it is thrown away. */
+  dropQaCheckout(taskId, repo, worktree) {
+    if (!worktree) return;
+    removeWorktree(repo, worktree);
+    this.opts.db.prepare("UPDATE local_runs SET worktree = NULL, updated_at = ? WHERE bridge_task_id = ?").run((/* @__PURE__ */ new Date()).toISOString(), taskId);
+  }
+  qaSettings() {
+    return this.opts.settingsService.getAiQaSettings();
   }
   end(runId, taskId, patch, message) {
     if (this.runs.transition(runId, ["running"], patch)) {
@@ -56102,9 +56635,20 @@ var questionService = new QuestionService(db, linkService, getAdapter, (evt) => 
 var notifier = new Notifier();
 var notificationService = new NotificationService(db, settingsService, notifier);
 var reactor = new TaskReactor(db, requirementService, linkService, (evt) => broadcaster.broadcast(evt));
+var qaService = new QaService({
+  db,
+  projectService,
+  requirementService,
+  settingsService,
+  branchService,
+  engine: localEngine,
+  emit: (evt) => broadcaster.broadcast(evt)
+});
 var mergeGate = new MergeGateService(db, projectService, requirementService, reactor, {
   getAdapter,
-  releaseWorktree: (taskId) => localEngine.releaseWorktree(taskId)
+  releaseWorktree: (taskId) => localEngine.releaseWorktree(taskId),
+  // Entering QA after a merge starts AI QA (Settings → AI & Local Engines → AI QA → Run automatically).
+  onEnteredQa: (reqId, commits) => qaService.onEnteredQa(reqId, commits)
 });
 reactor.setHooks({ onRequirementInReview: (id) => mergeGate.autoStart(id) });
 mergeGate.resetInterrupted();
@@ -56126,7 +56670,7 @@ var watcher = new EngineWatcher(
   5e3,
   reactor
 );
-var outboxScanner = new OutboxScanner(projectService, ticketService, questionService, path25.join(WORKSPACE_DIR, "agent-outbox"));
+var outboxScanner = new OutboxScanner(projectService, ticketService, questionService, path25.join(WORKSPACE_DIR, "agent-outbox"), qaService);
 var retrySweeper = new RetrySweeper(db, fanOutService, ticketService, linkService, { throttle: engineThrottle });
 var TICK_MS = Number(process.env.WATCH_INTERVAL_MS) || 5e3;
 var yamlPath = path25.join(WORKSPACE_DIR, "projects.yaml");
@@ -56151,6 +56695,7 @@ var app = createApp({
   mergeGate,
   getAdapter,
   questionService,
+  qaService,
   settingsService,
   notificationService,
   neuronService,

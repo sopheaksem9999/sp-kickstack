@@ -33,6 +33,23 @@ Below the settings the card shows which CLI the next run uses; how many runs are
 waiting for a person and rate limited; and for each CLI **Installed on PC** / **Not Detected** and
 **HEALTHY** / **PAUSED until …** (a usage limit). Click **Save Local Engine** to save.
 
+### AI QA
+
+On **AI & Local Engines**, the **AI QA** card controls the agent that checks a requirement when it enters
+QA (see [AI QA](06-review-qa-and-merge.md#ai-qa)).
+
+| Setting | Default | Meaning |
+|---|---|---|
+| **Run automatically when a requirement enters QA** | on | Off: AI QA runs only when you click **Run AI QA**. |
+| **CLI** | **Local engine's CLI** | Which CLI runs QA. It must be installed and turned on. |
+| **Model and effort** | Engine default | The model and effort for QA runs. |
+| **Time limit per QA run** | 30 minutes | 5 to 240. A longer QA run is stopped and shows `AI QA failed`. |
+| **Maximum findings per QA run** | 30 | 1 to 200. Further findings are refused (`The QA run reached its limit of N findings`). |
+
+The card shows which CLI runs QA, with **Installed on PC** / **Not Detected** and **HEALTHY** /
+**PAUSED until …**. AI QA needs the Local AI CLI engine to be on (**Run agents on this PC**). Click
+**Save AI QA** to save.
+
 ### Git & Branch Rules
 
 - **Default Implementation Base Branch** (`develop` by default): used only for projects that have

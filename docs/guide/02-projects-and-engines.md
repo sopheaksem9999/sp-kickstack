@@ -20,6 +20,8 @@ for it. This page is for whoever sets up projects and engines.
    | **Engine URL (Optional)** | Required for Stoneforge, for example `http://127.0.0.1:3457`. Leave empty for Manual. |
    | **Contract Path (Optional)** | A file in the repository that describes its API, for example `api/openapi.yaml`. When a ticket to this project is finished, the waiting agent is told where to read it. |
    | **Test Command (Optional)** | A shell command the merge gate runs before anything is pushed, for example `npm ci && npm test`. |
+   | **Build Command (Optional)** | A shell command AI QA runs to check that the project builds, for example `npm ci && npm run build`. |
+   | **Lint Command (Optional)** | A shell command AI QA runs to check the code style, for example `npm ci && npm run lint`. |
 
 4. Click **Save Project**.
 
@@ -45,6 +47,10 @@ The merge gate runs the test command with `/bin/sh` in a fresh temporary checkou
 result. That checkout has no installed dependencies, so include the install step
 (`npm ci && npm test`). The command must finish within 15 minutes. A non-zero exit code stops
 the merge and nothing is pushed. See [Review, QA and merge](06-review-qa-and-merge.md).
+
+AI QA runs the test, build and lint commands (each only when set) in its own temporary copy of the
+merged commit, which also has no installed dependencies; the agent installs them when a command needs
+them. A failing command becomes a **blocker** finding. See [AI QA](06-review-qa-and-merge.md#ai-qa).
 
 ### Fields the form does not show
 

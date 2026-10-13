@@ -250,9 +250,61 @@ Fix the cause, then click **Merge & move to QA** again.
 | `Already merged and pushed: <projects>. Starting the merge again merges only the rest.` | Some projects were published before a later one failed. Fix the failing one and merge again. |
 | `Interrupted by a restart; start the merge again` | The server restarted during the merge. Merge again. |
 
+## AI QA
+
+When a requirement enters QA after **Merge & move to QA**, an AI agent checks each repository's merged
+code. This happens automatically when Settings → AI & Local Engines → **AI QA** → **Run automatically**
+is on, which is the default. For each repository, the agent checks:
+
+1. Each acceptance criterion: is it met by the code?
+2. The changed files: bugs, missing error handling and edge cases, security problems, and breaches of the
+   repository's `CLAUDE.md` / `AGENTS.md`.
+3. The project's **Test Command**, **Build Command** and **Lint Command**, each only when set (see
+   [02](02-projects-and-engines.md#the-test-command)).
+
+How the agent runs:
+
+- It uses the Local AI CLI engine's CLI, or the one chosen for AI QA.
+- It works in a temporary copy of the merged commit, for every repository that is a git repository,
+  whatever that repository's engine.
+- It never commits, pushes or changes a branch, and the copy is deleted when the run ends.
+- QA runs count toward **Parallel agents**.
+
+The requirement header shows the result:
+
+- `AI QA running… (backend ✓, frontend …)` while it runs.
+- `AI QA: 3 findings (1 blocker)` or `AI QA passed` when it is done.
+- `AI QA failed: <reason>` for a run that could not finish.
+- `skipped <project>: not a git repository` for a repository it cannot check.
+
+Click the status to see each repository's run and to open its **Log**.
+
+### Findings
+
+Each finding is an **open review comment** on the repository's card. It is badged **AI QA · blocker**,
+**AI QA · major** or **AI QA · minor**, with the file and line when the agent named them.
+
+- **blocker**: an acceptance criterion is not met, tests or the build fail, data loss, security.
+- **major**: a real bug or a likely failure.
+- **minor**: quality, naming, small gaps.
+
+Nothing is sent to the agents by itself. Edit, resolve or delete findings like any comment, and send
+the ones you keep with **Request changes** (see [From QA](#from-qa)).
+
+### Run AI QA
+
+**Run AI QA**, in the header while the requirement is in QA, checks every repository again, for
+example after fixes were merged.
+
+- It checks the current tip of the branch the requirement merged into: its target branch, else the
+  repository's base branch.
+- It is disabled while AI QA runs.
+- Moving the requirement out of QA (Request changes, Done, Cancel) stops its AI QA runs.
+
 ## Finish QA
 
-1. Check the merged base branch (run the app, test the acceptance criteria).
+1. Read the AI QA findings (see [AI QA](#ai-qa)) and check the merged base branch (run the app, test the
+   acceptance criteria).
 2. If something is wrong, use **Request changes** (see [From QA](#from-qa)).
 3. If all is well, set **State: Done** on the requirement page, or drag the card to
    **COMPLETE**.

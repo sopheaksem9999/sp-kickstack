@@ -12,8 +12,8 @@ projects and engines needs to know.
 1. **You write a requirement.** You describe what you want and pick the projects
    (repositories) it affects. It starts as a draft, shown as **TO DO**.
 2. **You press Start Fan-Out.** The bridge sends one goal to each affected project's engine.
-   Each goal works on its own git branch, named `req/<REQ-ID>/task-<id>`
-   (for example `req/REQ-007/task-12`). The requirement is now **In Progress**.
+   Each goal works on its own git branch, named after the requirement, `<REQ-ID>`
+   (for example `REQ-007`). The requirement is now **In Progress**.
 3. **Agents work.** If an agent needs something from another project, it files a ticket
    (`xticket create`). If it needs a decision from a person, it asks a question
    (`xticket ask`) and pauses until you answer. You can also send a running agent a **Note**.

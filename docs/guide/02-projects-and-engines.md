@@ -30,7 +30,7 @@ The project appears as a card. A toast says `Project <name> registered`. You can
 
 ### Branches and the base branch
 
-- The bridge creates a branch per task (`req/<REQ-ID>/task-<id>`) only when **Repository Path**
+- The bridge creates a branch per task (`<REQ-ID>`; a ticket: `<REQ-ID>-ticket-<id>`) only when **Repository Path**
   is the root of a git work tree. Otherwise the project works without branches, and the merge
   gate does not apply (see [Confirm merged](06-review-qa-and-merge.md#work-without-task-branches)).
 - The branch starts from the project's base branch. If there is no local branch of that name,
@@ -84,7 +84,7 @@ After **Start Fan-Out**, each task of the repository moves by itself:
 
 1. **QUEUED**: waiting for a free slot. At most 2 agents run at once (change it in Settings).
 2. **IN PROGRESS**: the agent works in its own copy of the repository, a git worktree on the task
-   branch (`req/<REQ-ID>/task-<id>`) in the `agent-worktrees` folder of the server workspace, or in
+   branch (`<REQ-ID>`; a ticket: `<REQ-ID>-ticket-<id>`) in the `agent-worktrees` folder of the server workspace, or in
    `~/.sp-kickstack/agent-worktrees` when that workspace lies inside a git repository (as with
    `npm run dev`). Your own checkout is never touched. Open **Logs** on the task to watch it: its messages, the commands it
    runs (`→ Bash: npm test`) and the files it edits.
@@ -105,6 +105,8 @@ Other endings:
 - **Model and effort** are passed to the CLI. Without a choice, the CLI's model and effort from
   Settings are used. A Claude model name such as `opus` may not exist in AGY or Codex; the run then
   fails with the CLI's own message.
+- **CLI per requirement:** a requirement can choose its own CLI in **Run settings** (see
+  [03](03-requirements-and-fan-out.md#run-settings)); the Settings choice applies to the others.
 - **Restarts**: if the server stops while agents run (for example `npm run dev` restarting after a
   code change), the agents are stopped and continue from their branch when the server is back.
 - **Safety**: the agent's commands run as your user account. Codex is limited to the worktree;
@@ -288,7 +290,7 @@ For projects whose pull requests live on GitHub, point a repository webhook at
   **Repository Path**.
 - The pull request's branch or title must name the requirement (`REQ-007`). When several tasks
   match, a `task-<id>` in the branch or title picks one. Bridge branches
-  (`req/REQ-007/task-12`) contain both.
+  (`REQ-007`) contain both.
 - Set `GITHUB_WEBHOOK_SECRET` to the webhook's secret so the bridge checks the signature. Without
   it, unsigned deliveries are accepted.
 

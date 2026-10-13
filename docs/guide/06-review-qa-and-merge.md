@@ -17,14 +17,14 @@ With the **Auto-merge (no review)** policy the merge starts at this point by its
 
 ## Look at the changes
 
-Each task's work is on its branch `req/<REQ-ID>/task-<id>` in the project's repository. The task
+Each task's work is on its branch `<REQ-ID>` (a ticket: `<REQ-ID>-ticket-<id>`; tasks created before 2026-10-13 keep `req/<REQ-ID>/task-<id>`) in the project's repository. The task
 card shows the branch name.
 
 - In a terminal, compare a task branch with its base branch:
 
   ```bash
-  git -C /Users/you/dev/backend log --oneline develop..req/REQ-007/task-12
-  git -C /Users/you/dev/backend diff develop...req/REQ-007/task-12
+  git -C /Users/you/dev/backend log --oneline develop..REQ-007
+  git -C /Users/you/dev/backend diff develop...REQ-007
   ```
 
   The agent's own notes are in `specs/<REQ-ID>/` on that branch (`spec.md`, `plan.md`, and
@@ -88,7 +88,7 @@ For each task that has open comments (it must be IN REVIEW or COMPLETE):
 
    ```text
    ## Review feedback (round 2)
-   A reviewer asked for changes. Keep working on `req/REQ-007/task-12`: address every point
+   A reviewer asked for changes. Keep working on `REQ-007`: address every point
    below, commit, and report back for review.
 
    1. `src/api/users.ts:42` — Return 404, not 500, for an unknown id
@@ -168,6 +168,10 @@ The **State** select on the requirement page is not a way to merge: while the re
 Review it already shows **State: QA / Review**, so choosing that entry changes nothing.
 
 ### What happens next
+
+With a **target branch** (see [Run settings](03-requirements-and-fan-out.md#run-settings)), "base"
+below means the target branch: the merge goes into it instead of the base branch, and the target
+branch is pushed to `origin`. If `origin` does not have it yet, the push creates it.
 
 The merge is all-or-nothing across the requirement's projects:
 

@@ -88,21 +88,16 @@ it uses its requirement's or workspace's setting.
 ### Set it on a requirement
 
 1. Open the requirement page (see [Start the fan-out](#start-the-fan-out)).
-2. In the header, next to **Merge:**, click the **Agent:** button. It reads `Engine default` when
-   nothing is set anywhere, or `Default: sonnet · high (workspace)` when the workspace has a
-   default, or your own choice such as `opus · high`. If you choose only one of the two, the button
-   also shows the other one from the workspace, for example `sonnet · high` for an effort `high`
-   and a workspace model `sonnet`; hover over it to see which part comes from the workspace.
-3. Under **Model**, click **Default**, a model (`opus`, `sonnet`, `haiku`, `fable`), or type
-   another id into **Other model id** and press Enter. A red hint means the id was not accepted
-   and it is not used.
+2. In the header, the **Run settings** card shows CLI · model · effort · target branch · merge
+   policy. Click **Edit**.
+3. Under **Model**, click **Default**, a suggested model, or type another id into **Other model id**
+   and press Enter. The suggestions follow the chosen **CLI** (see [Run settings](#run-settings)).
+   A red hint means the id was not accepted and it is not used.
 4. Under **Effort**, click **Default** or one of `low`, `medium`, `high`, `xhigh`, `max`.
+5. Click **Save**. A toast says `Run settings saved; they apply to runs started from now on`.
 
-There is no Save button: every click is saved at once, and a toast says
-`Agent model saved; it applies to runs started from now on (tasks with a pin keep their pin)`.
-
-You can set it at any stage, including before **Start Fan-Out**. Set it first if the first run
-should already use it.
+You can set it at any stage until the requirement is done or cancelled, including before
+**Start Fan-Out**. Set it first if the first run should already use it.
 
 ### What happens next
 
@@ -115,19 +110,40 @@ should already use it.
   **not confirmed**.
 - The task card shows what was sent (see below).
 
+## Run settings
+
+Each requirement has a **Run settings** card on its page: CLI · model · effort · target branch · merge
+policy. Click **Edit** to change them; they apply to agent runs started afterwards.
+
+| Setting | Meaning |
+|---|---|
+| **CLI** | Claude Code, AGY or Codex for this requirement's agents, on Local AI CLI repositories. **Use default** follows Settings → AI & Local Engines. If the chosen CLI is not installed or is turned off, its runs fail with `<CLI> is chosen for <REQ> but …`. |
+| **Model / effort** | The suggestions follow the CLI (`opus`, `sonnet`… for Claude Code; `gemini-3.8-flash`… for AGY). Empty = the CLI's model and effort in Settings. |
+| **Target branch** | Tasks start from this branch and are merged into it, for example `release/1.3` for the next release. Pick an existing branch (the list shows which repositories have it) or type a new name: it is created from each repository's base branch at fan-out, and pushed. Empty = each repository's base branch. It cannot change after fan-out. |
+| **Merge policy** | Review first or auto-merge; Default = the workspace setting. |
+
 ## Start the fan-out
 
 1. Open the requirement page: click a card on the **Requirements** board, then the
    **Open full page** icon at the top of the side panel. (Links in the bell and the questions
    button open this page directly.)
-2. Click **Start Fan-Out**. It is shown while the requirement is To Do or Ready.
+2. Click **Start Fan-Out**. It is shown while the requirement is To Do or Ready. The **Start fan-out**
+   dialog opens with the repositories and the [run settings](#run-settings); check or change them.
+3. Click **Start Fan-Out** in the dialog. Nothing starts before that; an error (for example
+   `No enabled projects`) shows in the dialog.
+
+On the **Requirements** board, dragging a To Do or Ready card to **In Progress** opens the same
+dialog. The card moves once fan-out has started; **Cancel** leaves it where it was.
 
 ### What happens next
 
 For each affected project that is enabled, the bridge:
 
 1. Creates one **goal** task.
-2. For git projects, creates the branch `req/<REQ-ID>/task-<id>` from the project's base branch.
+2. For git projects, creates the branch `<REQ-ID>` (for example `REQ-007`) from the requirement's
+   target branch, else the project's base branch, and pushes it to `origin` (Settings → Git & Branch
+   Rules). A ticket gets `<REQ-ID>-ticket-<id>`; a taken name gets `-2`. Tasks created before
+   2026-10-13 keep `req/<REQ-ID>/task-<id>`.
 3. Sends the goal to the project's engine, with a prompt that contains:
    - your requirement text (marked as untrusted input, so instructions inside it are treated as
      data);
@@ -157,7 +173,7 @@ The requirement page shows:
 - **Execution Views**: **Task Columns** (one column per project) or **Topology DAG** (tasks and
   their dependencies as a graph).
 - On each task card: the status badge, `Role: goal` or `Role: ticket`, the branch
-  (`⎇ req/REQ-007/task-12`, with `✓` and the merge commit once merged), the model and effort the
+  (`⎇ REQ-007`, with `✓` and the merge commit once merged), the model and effort the
   run was sent with, and buttons: **CLI Logs**, **Open Engine**, **Retry**, **Note**,
   **Mark Done** (each only when it applies). **Retry** has a small arrow next to it for retrying
   with another model, except on tasks of Manual projects (see
@@ -271,7 +287,8 @@ and tries again on its own; start the bridge (`npm run dev`) and press **Refresh
 ## Change the requirement status by hand
 
 Before fan-out, you can move a requirement freely (board drag, or the **State** select on its
-page). Once any task exists, the status follows the tasks and only these moves are allowed:
+page), except that dragging it to **In Progress** opens the fan-out dialog (see
+[Start the fan-out](#start-the-fan-out)). Once any task exists, the status follows the tasks and only these moves are allowed:
 
 | Move | Allowed when | Otherwise you see |
 |---|---|---|

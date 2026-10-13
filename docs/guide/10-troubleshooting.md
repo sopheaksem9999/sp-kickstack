@@ -39,11 +39,15 @@ messages appear as red toasts in the app; `<REQ-ID>`, `<id>` and similar parts a
 | `Task #<id> is <status>; only finished work can be sent back` | **Request changes** only works on IN REVIEW or COMPLETE tasks. | Wait, or use **Note**. |
 | `Question #<id> is already answered` | Someone answered first. | Reload to see the answer. |
 | `Base branch "<base>" was not found in <repo>` | The project's base branch does not exist. | Create it or fix **Base Branch**, then **Retry**. |
-| `Branch req/<REQ-ID>/task-<id> is checked out in <path>; switch that checkout to another branch, then Retry` | Local AI CLI: the agent needs its own worktree on the task branch, and git allows a branch in one checkout only. | Switch that checkout to another branch, then **Retry**. |
+| `Branch <branch> is checked out in <path>; switch that checkout to another branch, then Retry` | Local AI CLI: the agent needs its own worktree on the task branch, and git allows a branch in one checkout only. | Switch that checkout to another branch, then **Retry**. |
 | `Local AI CLI needs a git repository: <path> is not the top of a git work tree` | The repository path is not the root of a git repository. | Fix **Repository Path**, or use the Manual engine. |
 | `Finished without committing anything` | Local AI CLI: the agent ended without a commit on its branch. | Read **Logs**, then **Retry** or **Request changes** with clearer instructions. |
 | `Stopped after the <n> minute time limit (Settings → AI & Local Engines)` | Local AI CLI: the run took longer than the limit. | Raise the limit or split the work, then **Retry**. |
 | `Interrupted 3 times (the server stopped while the agent was running); Retry starts it again` | The server crashed three times during this run. | **Retry**. |
+| `<REQ> was already fanned out to <branch>; the target branch cannot change (create a new requirement for another branch)` | Tasks were branched from the target branch. | Keep it, or create a new requirement for the other branch. |
+| `<branch> is the branch of task #<id>; choose another target branch` | A task's own branch cannot be a target. | Pick another branch. |
+| `<CLI> is chosen for <REQ> but is not installed on this PC` | The requirement's CLI cannot run here. | Install it, or change the CLI in **Run settings**, then **Retry**. |
+| `Could not push <branch> to origin: <reason>` (in Logs) | The push was refused or `origin` was unreachable; the task carries on. | Fix the credentials or the network; the next push tries again. |
 
 ## Messages about the connection
 
@@ -137,6 +141,6 @@ npm run verify
   status again from the tasks; when all are complete and merged, the result is Done. Use
   **Request changes** to send work back.
 - **The in-app diff does not show a task's changes**: it compares the folder's checked-out branch
-  with `main`. Use `git diff <base>...req/<REQ-ID>/task-<id>` (see [06](06-review-qa-and-merge.md#look-at-the-changes)).
+  with `main`. Use `git diff <base>...<task branch>` (see [06](06-review-qa-and-merge.md#look-at-the-changes)).
 - **`xticket status` or `xticket list` says `Unsupported command`**: they are listed in the help
   but not implemented yet.

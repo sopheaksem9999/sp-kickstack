@@ -92,7 +92,7 @@ requirement is not Done or Cancelled.
 
    ```text
    ## Retry
-   A previous attempt stopped (<last error or status>). Continue from the commits already on `req/REQ-007/task-12`.
+   A previous attempt stopped (<last error or status>). Continue from the commits already on `REQ-007`.
    ```
 
 3. The task's retry attempts start again from 1. A "task was retried" entry appears in the bell.

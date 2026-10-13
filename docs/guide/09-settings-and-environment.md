@@ -39,7 +39,13 @@ waiting for a person and rate limited; and for each CLI **Installed on PC** / **
   no **Base Branch** of their own.
 - **Merge Policy**: **Review first** (default) or **Auto-merge (no review)**. A requirement's own
   **Merge:** setting wins. See [Merge policies](06-review-qa-and-merge.md#merge-policies).
+- **Task branch name** and **Push branches to origin**, see the table below.
 - Click **Save Branch & Merge Rules**.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| **Task branch name** | `{req}` | Name of new task branches. `{req}`, `{task}` and `{project}` are filled in; a ticket adds `-ticket-<task>`; a taken name gets `-2`. Existing branches keep their names. |
+| **Push branches to origin** | on | The bridge pushes new task and target branches, and agents' new commits, to `origin`. Never forced: a failed push only adds `Could not push <branch> to origin: <reason>` to the task's Logs. |
 
 One more setting has no control in the app: `auto_delete_branch` (off by default). When on, the
 merge gate deletes each task branch after merging it (a branch that is checked out somewhere is

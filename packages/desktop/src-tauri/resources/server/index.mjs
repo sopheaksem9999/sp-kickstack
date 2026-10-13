@@ -32523,6 +32523,15 @@ var MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS idx_local_runs_task ON local_runs(bridge_task_id);
       `);
     }
+  },
+  {
+    version: 9,
+    name: "requirement run settings: CLI and target branch; preferred CLI of a local run",
+    up: (db2) => {
+      addColumn(db2, "requirements", "agent_cli", "TEXT");
+      addColumn(db2, "requirements", "target_branch", "TEXT");
+      addColumn(db2, "local_runs", "preferred_cli", "TEXT");
+    }
   }
 ];
 var LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
@@ -36616,7 +36625,44 @@ var coerce = {
 };
 var NEVER = INVALID;
 
+// packages/shared/dist/branchNames.js
+var DEFAULT_TASK_BRANCH_PATTERN = "{req}";
+function branchNameProblem(name) {
+  const value = name.trim();
+  if (!value)
+    return "Enter a branch name";
+  if (value.length > 100)
+    return "Branch names are at most 100 characters";
+  if (!/^[A-Za-z0-9._/-]+$/.test(value))
+    return "Branch names use letters, digits and . _ / - only";
+  if (value.startsWith("-") || value.startsWith("/"))
+    return "A branch name cannot start with - or /";
+  if (value.endsWith("/") || value.endsWith(".") || value.endsWith(".lock"))
+    return "A branch name cannot end with /, . or .lock";
+  if (value.includes("..") || value.includes("//"))
+    return "A branch name cannot contain .. or //";
+  if (value.split("/").some((part) => part.startsWith(".")))
+    return "No part of a branch name can start with .";
+  return null;
+}
+function renderTaskBranchPattern(pattern, tokens) {
+  return pattern.trim().split("{req}").join(tokens.req).split("{task}").join(String(tokens.task)).split("{project}").join(tokens.project);
+}
+function taskBranchPatternProblem(pattern) {
+  if (!pattern.includes("{req}"))
+    return "The pattern must contain {req}";
+  const example = renderTaskBranchPattern(pattern, { req: "REQ-001", task: 1, project: "backend" });
+  const problem = branchNameProblem(example);
+  return problem ? `${problem} (it gives "${example}")` : null;
+}
+
 // packages/shared/dist/schemas.js
+var refineWith = (check) => (value, ctx) => {
+  const problem = check(value);
+  if (problem)
+    ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: problem });
+};
+var TargetBranchSchema = external_exports.string().trim().superRefine(refineWith(branchNameProblem));
 var NormStatusSchema = external_exports.enum([
   "pending",
   "queued",
@@ -36674,7 +36720,11 @@ function normalizeMergePolicy(value) {
 var BranchMergeSettingsSchema = external_exports.object({
   default_base_branch: external_exports.string().default("develop"),
   merge_policy: BranchMergePolicySchema.default("manual_review_merge"),
-  auto_delete_branch: external_exports.boolean().default(false)
+  auto_delete_branch: external_exports.boolean().default(false),
+  /** Task branch names: {req}, {task}, {project}; tickets add -ticket-{task}. */
+  task_branch_pattern: external_exports.string().trim().superRefine(refineWith(taskBranchPatternProblem)).default(DEFAULT_TASK_BRANCH_PATTERN),
+  /** The bridge pushes new task/target branches and agents' new commits to origin. */
+  push_branches: external_exports.boolean().default(true)
 });
 var AttachmentItemSchema = external_exports.object({
   name: external_exports.string().min(1),
@@ -37042,6 +37092,13 @@ var UpdateNotificationSettingsInputSchema = external_exports.object({
   message: "Unknown notification event",
   path: ["events"]
 });
+var UpdateRunSettingsInputSchema = external_exports.object({
+  agent_cli: external_exports.enum(AGENT_CLI_IDS).nullable().optional(),
+  agent_model: AgentModelSchema.nullable().optional(),
+  agent_effort: ReasoningEffortSchema.nullable().optional(),
+  target_branch: TargetBranchSchema.nullable().optional(),
+  merge_policy: BranchMergePolicySchema.nullable().optional()
+}).strict();
 
 // packages/server/src/services/workspaceService.ts
 var WorkspaceService = class {
@@ -37425,7 +37482,9 @@ ${input.attachments.map(
       merge_policy: row.merge_policy || null,
       sprint_id: row.sprint_id || null,
       agent_model: row.agent_model ?? null,
-      agent_effort: row.agent_effort ?? null
+      agent_effort: row.agent_effort ?? null,
+      agent_cli: row.agent_cli ?? null,
+      target_branch: row.target_branch ?? null
     };
   }
   listRequirements(workspaceId, sessionId) {
@@ -37554,6 +37613,47 @@ ${input.attachments.map(
     const model = parsed.model === void 0 ? req.agent_model ?? null : parsed.model;
     const effort = parsed.effort === void 0 ? req.agent_effort ?? null : parsed.effort;
     this.db.prepare("UPDATE requirements SET agent_model = ?, agent_effort = ?, updated_at = datetime('now') WHERE id = ?").run(model, effort, id);
+    return this.getRequirement(id);
+  }
+  /**
+   * CLI, model, effort, target branch and merge policy for this requirement's runs: undefined keeps a
+   * value, null clears it. Editable until the requirement is done or cancelled; the target branch only
+   * until fan-out, because tasks were branched from it.
+   */
+  updateRunSettings(id, input) {
+    const parsed = UpdateRunSettingsInputSchema.parse(input ?? {});
+    const req = this.getRequirement(id);
+    if (!req) throw new HttpError(404, `Requirement ${id} not found`);
+    if (req.status === "done" || req.status === "cancelled") {
+      throw conflict(`${id} is ${req.status}; its run settings can no longer change`);
+    }
+    const current = req.target_branch ?? null;
+    const target = parsed.target_branch === void 0 ? current : parsed.target_branch || null;
+    if (target !== current) {
+      const fannedOut = this.db.prepare("SELECT 1 FROM bridge_tasks WHERE req_id = ? AND role IN ('goal', 'ticket') LIMIT 1").get(id);
+      if (fannedOut) {
+        throw conflict(
+          `${id} was already fanned out to ${current ?? "each repository's base branch"}; the target branch cannot change (create a new requirement for another branch)`
+        );
+      }
+      if (target) {
+        const owner = this.db.prepare("SELECT id FROM bridge_tasks WHERE branch = ? LIMIT 1").get(target);
+        if (owner) throw badRequest(`${target} is the branch of task #${owner.id}; choose another target branch`);
+      }
+    }
+    const keep = (next, value) => next === void 0 ? value ?? null : next;
+    this.db.prepare(`
+        UPDATE requirements
+        SET agent_cli = ?, agent_model = ?, agent_effort = ?, target_branch = ?, merge_policy = ?, updated_at = datetime('now')
+        WHERE id = ?
+      `).run(
+      keep(parsed.agent_cli, req.agent_cli),
+      keep(parsed.agent_model, req.agent_model),
+      keep(parsed.agent_effort, req.agent_effort),
+      target,
+      keep(parsed.merge_policy, req.merge_policy),
+      id
+    );
     return this.getRequirement(id);
   }
   updateStatus(id, status) {
@@ -37856,11 +37956,7 @@ var SettingsService = class {
       } catch (err) {
       }
     }
-    return {
-      default_base_branch: "develop",
-      merge_policy: "manual_review_merge",
-      auto_delete_branch: false
-    };
+    return BranchMergeSettingsSchema.parse({});
   }
   updateBranchMergeSettings(updates) {
     const current = this.getBranchMergeSettings();
@@ -38055,6 +38151,10 @@ function createBranch(repo, name, startSha) {
   if (resolveCommit(repo, `refs/heads/${name}`)) return;
   runGit(repo, ["branch", "--", name, startSha]);
 }
+function hasBranchesUnder(repo, name) {
+  const refs = tryGit(repo, ["for-each-ref", "--count=1", "--format=%(refname)", `refs/heads/${name}/`, `refs/remotes/origin/${name}/`]);
+  return (refs ?? "").trim() !== "";
+}
 async function addDetachedWorktree(repo, dir, sha, timeoutMs) {
   await runGitAsync(repo, ["worktree", "add", "--quiet", "--detach", dir, sha], { timeoutMs });
 }
@@ -38153,11 +38253,90 @@ function runShell(cwd, command, timeoutMs) {
     });
   });
 }
+function listBranchNames(repo) {
+  const refs = (prefix) => (tryGit(repo, ["for-each-ref", "--format=%(refname)", prefix]) || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  const local = refs("refs/heads").map((r) => r.slice("refs/heads/".length));
+  const remote = refs("refs/remotes/origin").map((r) => r.slice("refs/remotes/origin/".length)).filter((n2) => n2 !== "HEAD");
+  return [.../* @__PURE__ */ new Set([...local, ...remote])];
+}
+
+// packages/server/src/localEngine/worktrees.ts
+import fs4 from "node:fs";
+import os from "node:os";
+import path3 from "node:path";
+var real = (p) => {
+  try {
+    return fs4.realpathSync(p);
+  } catch {
+    return path3.resolve(p);
+  }
+};
+function insideGitWorkTree(dir) {
+  let probe = path3.resolve(dir);
+  while (!fs4.existsSync(probe) && path3.dirname(probe) !== probe) probe = path3.dirname(probe);
+  try {
+    return runGit(probe, ["rev-parse", "--is-inside-work-tree"]).trim() === "true";
+  } catch {
+    return false;
+  }
+}
+function defaultWorktreeRoot(workspaceDir, homeDir = os.homedir()) {
+  return insideGitWorkTree(workspaceDir) ? path3.join(homeDir, ".sp-kickstack", "agent-worktrees") : path3.join(workspaceDir, "agent-worktrees");
+}
+function folderName(project) {
+  return project.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+|-+$/g, "") || "project";
+}
+var AgentWorktrees = class {
+  constructor(root) {
+    this.root = root;
+  }
+  pathFor(project, taskId) {
+    return path3.join(this.root(), folderName(project), `task-${taskId}`);
+  }
+  /** Create the worktree for `branch` at `dir`, or reuse it. Throws an Error a person can act on. */
+  ensure(repo, branch, dir) {
+    if (!isGitWorkTree(repo)) throw new Error(`Local AI CLI needs a git repository: ${repo} is not the top of a git work tree`);
+    runGit(repo, ["worktree", "prune"]);
+    const checkout = checkoutPathOf(repo, branch);
+    if (checkout && real(checkout) === real(dir)) return;
+    if (checkout) throw new Error(`Branch ${branch} is checked out in ${checkout}; switch that checkout to another branch, then Retry`);
+    if (fs4.existsSync(dir)) {
+      if (fs4.readdirSync(dir).length > 0) throw new Error(`Folder ${dir} already exists and is not the worktree of ${branch}; move it away, then Retry`);
+      fs4.rmdirSync(dir);
+    }
+    fs4.mkdirSync(path3.dirname(dir), { recursive: true });
+    runGit(repo, ["worktree", "add", "--quiet", dir, branch]);
+  }
+  /** Remove a worktree that has no uncommitted changes. */
+  removeIfClean(repo, dir) {
+    if (!fs4.existsSync(dir)) {
+      try {
+        runGit(repo, ["worktree", "prune"]);
+      } catch {
+      }
+      return "missing";
+    }
+    if (!isClean(dir)) return "dirty";
+    runGit(repo, ["worktree", "remove", dir]);
+    return "removed";
+  }
+  /** Paths with uncommitted changes, as `git status --porcelain` lists them. */
+  uncommitted(dir) {
+    try {
+      return runGit(dir, ["status", "--porcelain"]).split("\n").map((l) => l.slice(3).trim()).filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+  /** The repository's shared .git folder (absolute). */
+  gitCommonDir(repo) {
+    return path3.resolve(repo, runGit(repo, ["rev-parse", "--git-common-dir"]).trim());
+  }
+};
 
 // packages/server/src/services/branchService.ts
-function taskBranchName(reqId, taskId) {
-  return `req/${reqId}/task-${taskId}`;
-}
+var pendingPushes = /* @__PURE__ */ new Set();
+var PUSH_TIMEOUT_MS = 12e4;
 function branchInstructions(branch, base, policy) {
   const when = policy === "auto_merge" ? "automatically, once all work for the requirement is in review and the tests pass" : "after a person reviews it and moves the requirement to QA";
   return `## Your branch
@@ -38172,8 +38351,55 @@ var BranchService = class {
     this.settings = settingsService2 ?? new SettingsService(db2);
   }
   settings;
-  baseBranchFor(project) {
+  /** The repository's own base branch: its setting, else Settings → default base branch. */
+  projectBaseBranch(project) {
     return project.base_branch || this.settings.getBranchMergeSettings().default_base_branch || "develop";
+  }
+  /** Where a requirement's tasks start and merge: its target branch, else the repository's base branch. */
+  baseBranchFor(project, reqId) {
+    const row = reqId ? this.db.prepare("SELECT target_branch FROM requirements WHERE id = ?").get(reqId) : void 0;
+    return row?.target_branch || this.projectBaseBranch(project);
+  }
+  /**
+   * A free branch name for a task: the Settings pattern (default {req}), plus -ticket-{task} for
+   * tickets, plus -2, -3… when the name is taken locally, on origin, by another task or by a branch under it.
+   */
+  nameTaskBranch(project, reqId, taskId, role) {
+    const pattern = this.settings.getBranchMergeSettings().task_branch_pattern || DEFAULT_TASK_BRANCH_PATTERN;
+    const stem = renderTaskBranchPattern(pattern, { req: reqId, task: taskId, project: folderName(project.name) }) + (role === "ticket" ? `-ticket-${taskId}` : "");
+    for (let n2 = 1; ; n2++) {
+      const name = n2 === 1 ? stem : `${stem}-${n2}`;
+      if (!this.branchTaken(project, name, taskId)) return name;
+    }
+  }
+  branchTaken(project, name, taskId) {
+    const recorded = this.db.prepare("SELECT 1 FROM bridge_tasks WHERE project = ? AND branch = ? AND id <> ? LIMIT 1").get(project.name, name, taskId);
+    if (recorded) return true;
+    const repo = project.repo_path;
+    if (!isGitWorkTree(repo)) return false;
+    return Boolean(resolveCommit(repo, `refs/heads/${name}`) || resolveCommit(repo, `refs/remotes/origin/${name}`) || hasBranchesUnder(repo, name));
+  }
+  /** Branches of the chosen repositories (one workspace) and which repositories have each; task branches excluded. */
+  listBranches(projectNames) {
+    const projects = projectNames.map((name) => {
+      const project = this.projectService.getProject(name);
+      if (!project) throw badRequest(`Unknown repository: ${name}`);
+      return project;
+    });
+    if (new Set(projects.map((p) => p.workspace_id || "default")).size > 1) throw badRequest("Choose repositories of one workspace");
+    const taskBranches = new Set(
+      this.db.prepare("SELECT DISTINCT branch FROM bridge_tasks WHERE branch IS NOT NULL").all().map((r) => r.branch)
+    );
+    const found = /* @__PURE__ */ new Map();
+    for (const project of projects) {
+      if (!this.usesBranches(project)) continue;
+      for (const name of listBranchNames(project.repo_path)) {
+        if (taskBranches.has(name)) continue;
+        if (!found.has(name)) found.set(name, /* @__PURE__ */ new Set());
+        found.get(name).add(project.name);
+      }
+    }
+    return [...found.entries()].map(([name, where]) => ({ name, projects: [...where].sort() })).sort((a2, b) => b.projects.length - a2.projects.length || a2.name.localeCompare(b.name)).slice(0, 200);
   }
   /** Only projects whose repo_path is the root of a git work tree get task branches. */
   usesBranches(project) {
@@ -38185,8 +38411,9 @@ var BranchService = class {
     return normalizeMergePolicy(row?.merge_policy || this.settings.getBranchMergeSettings().merge_policy);
   }
   /**
-   * Make sure the task's branch exists (created from the base branch, or origin/<base> when
-   * there is no local base). Idempotent. Returns null for tasks without a branch (non-git).
+   * Make sure the task's branch exists: created from the requirement's target branch (created first,
+   * from the repository's base, when this repository lacks it) or from the base branch. Idempotent.
+   * Returns null for tasks without a branch (non-git).
    */
   ensureTaskBranch(taskId) {
     const task = this.db.prepare("SELECT * FROM bridge_tasks WHERE id = ?").get(taskId);
@@ -38200,14 +38427,54 @@ var BranchService = class {
       if (!task.base_sha) this.recordBase(taskId, baseSha);
       return { branch: task.branch, baseSha };
     }
-    const base = this.baseBranchFor(project);
-    const start = resolveCommit(repo, `refs/heads/${base}`) ?? resolveCommit(repo, `refs/remotes/origin/${base}`);
+    const created = [];
+    const base = this.baseBranchFor(project, task.req_id);
+    let start = resolveCommit(repo, `refs/heads/${base}`) ?? resolveCommit(repo, `refs/remotes/origin/${base}`);
+    const projectBase = this.projectBaseBranch(project);
+    if (!start && base !== projectBase) {
+      const from = resolveCommit(repo, `refs/heads/${projectBase}`) ?? resolveCommit(repo, `refs/remotes/origin/${projectBase}`);
+      if (!from) throw new Error(`Base branch "${projectBase}" was not found in ${repo}`);
+      createBranch(repo, base, from);
+      created.push(base);
+      this.recordEvent("target_branch_created", task.req_id, task.id, { reqId: task.req_id, project: project.name, branch: base, from: projectBase });
+      start = from;
+    }
     if (!start) {
       throw new Error(`Base branch "${base}" was not found in ${repo}`);
     }
     createBranch(repo, task.branch, start);
+    created.push(task.branch);
     this.recordBase(taskId, start);
+    this.afterCreate(repo, created, taskId);
     return { branch: task.branch, baseSha: start };
+  }
+  afterCreate(repo, branches, taskId) {
+    for (const branch of branches) this.queuePush(repo, branch, taskId);
+  }
+  /** Push a task's branch after it got new commits (a Local AI CLI run). */
+  pushTaskBranch(taskId) {
+    const task = this.db.prepare("SELECT * FROM bridge_tasks WHERE id = ?").get(taskId);
+    const project = task?.branch ? this.projectService.getProject(task.project) : void 0;
+    if (task?.branch && project) this.queuePush(project.repo_path, task.branch, taskId);
+  }
+  /** Push `branch` to origin when Settings → push branches is on and origin exists. Never forced, never blocking. */
+  queuePush(repo, branch, taskId) {
+    if (!this.settings.getBranchMergeSettings().push_branches || !hasRemote(repo)) return;
+    const sha = resolveCommit(repo, `refs/heads/${branch}`);
+    if (!sha) return;
+    const push = pushCommit(repo, sha, branch, "origin", PUSH_TIMEOUT_MS).then(() => this.log(taskId, `\u2191 Pushed ${branch} to origin`)).catch((err) => this.log(taskId, `Could not push ${branch} to origin: ${oneLine(err?.message || String(err), 300)}`)).finally(() => {
+      pendingPushes.delete(push);
+    });
+    pendingPushes.add(push);
+  }
+  log(taskId, message) {
+    try {
+      this.db.prepare("INSERT INTO task_logs (task_id, stream, message, created_at) VALUES (?, 'system', ?, ?)").run(taskId, message, (/* @__PURE__ */ new Date()).toISOString());
+    } catch {
+    }
+  }
+  recordEvent(type, reqId, taskId, payload) {
+    this.db.prepare("INSERT INTO events (req_id, task_id, type, payload, read, at) VALUES (?, ?, ?, ?, 0, ?)").run(reqId, taskId, type, JSON.stringify(payload), (/* @__PURE__ */ new Date()).toISOString());
   }
   recordBase(taskId, sha) {
     this.db.prepare("UPDATE bridge_tasks SET base_sha = ? WHERE id = ? AND base_sha IS NULL").run(sha, taskId);
@@ -38388,24 +38655,29 @@ async function stopEngineTask(adapter, engineTaskId, stopped) {
 function resolveAgentProfile(db2, taskId) {
   const row = db2.prepare(`
       SELECT t.model_override, t.effort_override,
-             r.agent_model AS req_model, r.agent_effort AS req_effort,
+             r.agent_model AS req_model, r.agent_effort AS req_effort, r.agent_cli AS req_cli,
              w.agent_model AS ws_model, w.agent_effort AS ws_effort
       FROM bridge_tasks t
       JOIN requirements r ON r.id = t.req_id
       LEFT JOIN workspaces w ON w.id = r.workspace_id
       WHERE t.id = ?
     `).get(taskId);
-  if (!row) return { model: null, effort: null };
+  if (!row) return { model: null, effort: null, cli: null };
   return {
     model: row.model_override ?? row.req_model ?? row.ws_model ?? null,
-    effort: row.effort_override ?? row.req_effort ?? row.ws_effort ?? null
+    effort: row.effort_override ?? row.req_effort ?? row.ws_effort ?? null,
+    cli: row.req_cli ?? null
   };
 }
 function engineProfile(profile) {
-  return { ...profile.model ? { model: profile.model } : {}, ...profile.effort ? { effort: profile.effort } : {} };
+  return {
+    ...profile.model ? { model: profile.model } : {},
+    ...profile.effort ? { effort: profile.effort } : {},
+    ...profile.cli ? { cli: profile.cli } : {}
+  };
 }
 function recordedProfile(profile, engineType) {
-  return engineType === "manual" ? { model: null, effort: null } : profile;
+  return engineType === "manual" ? { model: null, effort: null, cli: null } : profile;
 }
 
 // packages/server/src/services/fanOutService.ts
@@ -38420,7 +38692,7 @@ var FanOutService = class {
   }
   branches;
   formatGoalBody(reqId, title, project, requirementMd, baseBranch = "develop", mergePolicy = "manual_review_merge", sharedAssets = [], branch) {
-    const mergePolicyDesc = normalizeMergePolicy(mergePolicy) === "auto_merge" ? "Changes on develop branch will be automatically merged to main upon task completion & green tests." : "All changes remain on develop branch and require human operator review and manual approval before merging into main.";
+    const mergePolicyDesc = normalizeMergePolicy(mergePolicy) === "auto_merge" ? `Your work is merged into \`${baseBranch}\` automatically once all work for the requirement is in review and the tests pass.` : `Your work stays on its branch until a person reviews it; it is then merged into \`${baseBranch}\`.`;
     const assetsBlock = sharedAssets.length > 0 ? `
 ## Shared Workspace Assets & Contracts
 ` + sharedAssets.map((a2) => `- **${oneLine(a2.name)}**${a2.notes ? `: ${oneLine(a2.notes)}` : ""}`).join("\n") + "\n" : "";
@@ -38467,13 +38739,11 @@ ${wrapUntrusted("requirement", requirementMd)}
     if (!FANOUT_FROM.includes(req.status)) {
       throw conflict(`Requirement ${reqId} is ${req.status}; fan-out is only allowed from draft, ready, in_progress or qa`);
     }
-    let defaultBaseBranch = "develop";
     let mergePolicy = "manual_review_merge";
     try {
       const row = this.db.prepare("SELECT value FROM settings WHERE key = 'branch_merge_settings'").get();
       if (row?.value) {
         const parsed = JSON.parse(row.value);
-        if (parsed.default_base_branch) defaultBaseBranch = parsed.default_base_branch;
         if (parsed.merge_policy) mergePolicy = parsed.merge_policy;
       }
     } catch {
@@ -38505,14 +38775,14 @@ ${wrapUntrusted("requirement", requirementMd)}
     const nameBranch = this.db.prepare("UPDATE bridge_tasks SET branch = ?, body_md = ? WHERE id = ?");
     this.db.transaction(() => {
       for (const project of projects) {
-        const baseBranch = project.base_branch || defaultBaseBranch;
+        const baseBranch = this.branches.baseBranchFor(project, req.id);
         const title = `${req.id}: ${req.title}`;
         const bodyMd = this.formatGoalBody(req.id, req.title, project.name, req.body_md, baseBranch, mergePolicy, sharedAssets);
         const inserted = reserve.run(req.id, project.name, title, bodyMd, req.revision, now, now);
         if (inserted.changes === 1) {
           const id = Number(inserted.lastInsertRowid);
           if (branching.get(project.name)) {
-            const branch = taskBranchName(req.id, id);
+            const branch = this.branches.nameTaskBranch(project, req.id, id, "goal");
             nameBranch.run(
               branch,
               this.formatGoalBody(req.id, req.title, project.name, req.body_md, baseBranch, mergePolicy, sharedAssets, branch),
@@ -38907,10 +39177,10 @@ ${input.body}`)}
       ownsEngineCall = reserved.changes === 1;
       if (ownsEngineCall && this.branches.usesBranches(targetProject)) {
         const id = Number(reserved.lastInsertRowid);
-        const name = taskBranchName(reqId, id);
+        const name = this.branches.nameTaskBranch(targetProject, reqId, id, "ticket");
         const body = this.formatTicketBody(sourceProject, reqId, input, {
           name,
-          base: this.branches.baseBranchFor(targetProject),
+          base: this.branches.baseBranchFor(targetProject, reqId),
           policy: this.branches.policyFor(reqId)
         });
         this.db.prepare("UPDATE bridge_tasks SET branch = ?, body_md = ? WHERE id = ?").run(name, body, id);
@@ -39278,82 +39548,6 @@ var EngineWatcher = class {
 // packages/server/src/watcher/outboxScanner.ts
 import fs5 from "node:fs";
 import path4 from "node:path";
-
-// packages/server/src/localEngine/worktrees.ts
-import fs4 from "node:fs";
-import os from "node:os";
-import path3 from "node:path";
-var real = (p) => {
-  try {
-    return fs4.realpathSync(p);
-  } catch {
-    return path3.resolve(p);
-  }
-};
-function insideGitWorkTree(dir) {
-  let probe = path3.resolve(dir);
-  while (!fs4.existsSync(probe) && path3.dirname(probe) !== probe) probe = path3.dirname(probe);
-  try {
-    return runGit(probe, ["rev-parse", "--is-inside-work-tree"]).trim() === "true";
-  } catch {
-    return false;
-  }
-}
-function defaultWorktreeRoot(workspaceDir, homeDir = os.homedir()) {
-  return insideGitWorkTree(workspaceDir) ? path3.join(homeDir, ".sp-kickstack", "agent-worktrees") : path3.join(workspaceDir, "agent-worktrees");
-}
-function folderName(project) {
-  return project.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+|-+$/g, "") || "project";
-}
-var AgentWorktrees = class {
-  constructor(root) {
-    this.root = root;
-  }
-  pathFor(project, taskId) {
-    return path3.join(this.root(), folderName(project), `task-${taskId}`);
-  }
-  /** Create the worktree for `branch` at `dir`, or reuse it. Throws an Error a person can act on. */
-  ensure(repo, branch, dir) {
-    if (!isGitWorkTree(repo)) throw new Error(`Local AI CLI needs a git repository: ${repo} is not the top of a git work tree`);
-    runGit(repo, ["worktree", "prune"]);
-    const checkout = checkoutPathOf(repo, branch);
-    if (checkout && real(checkout) === real(dir)) return;
-    if (checkout) throw new Error(`Branch ${branch} is checked out in ${checkout}; switch that checkout to another branch, then Retry`);
-    if (fs4.existsSync(dir)) {
-      if (fs4.readdirSync(dir).length > 0) throw new Error(`Folder ${dir} already exists and is not the worktree of ${branch}; move it away, then Retry`);
-      fs4.rmdirSync(dir);
-    }
-    fs4.mkdirSync(path3.dirname(dir), { recursive: true });
-    runGit(repo, ["worktree", "add", "--quiet", dir, branch]);
-  }
-  /** Remove a worktree that has no uncommitted changes. */
-  removeIfClean(repo, dir) {
-    if (!fs4.existsSync(dir)) {
-      try {
-        runGit(repo, ["worktree", "prune"]);
-      } catch {
-      }
-      return "missing";
-    }
-    if (!isClean(dir)) return "dirty";
-    runGit(repo, ["worktree", "remove", dir]);
-    return "removed";
-  }
-  /** Paths with uncommitted changes, as `git status --porcelain` lists them. */
-  uncommitted(dir) {
-    try {
-      return runGit(dir, ["status", "--porcelain"]).split("\n").map((l) => l.slice(3).trim()).filter(Boolean);
-    } catch {
-      return [];
-    }
-  }
-  /** The repository's shared .git folder (absolute). */
-  gitCommonDir(repo) {
-    return path3.resolve(repo, runGit(repo, ["rev-parse", "--git-common-dir"]).trim());
-  }
-};
-
-// packages/server/src/watcher/outboxScanner.ts
 function isPermanent(err) {
   const status = err?.status;
   return Array.isArray(err?.issues) || status === 400 || status === 404 || status === 409 || status === 429;
@@ -39793,7 +39987,8 @@ var LocalCliAdapter = class {
       title: input.title,
       bodyMd: input.bodyMd,
       model: input.model ?? null,
-      effort: input.effort ?? null
+      effort: input.effort ?? null,
+      preferredCli: input.cli ?? null
     });
     this.engine.nudge();
     return toEngineTask(run);
@@ -50975,7 +51170,7 @@ var MergeGateService = class {
     const project = this.projectService.getProject(name);
     if (!project) throw new GateFailure(`${name}: project not found`);
     const repo = project.repo_path;
-    const base = this.branches.baseBranchFor(project);
+    const base = this.branches.baseBranchFor(project, reqId);
     const remote = hasRemote(repo);
     const gitTimeout = this.options.gitTimeoutMs;
     let startSha = null;
@@ -51944,6 +52139,7 @@ function safeEqual(a2, b) {
 function createApp(deps) {
   const app2 = (0, import_express.default)();
   const settingsService2 = deps.settingsService || new SettingsService(deps.db);
+  const branchService2 = deps.branchService || new BranchService(deps.db, deps.projectService, settingsService2);
   const ideService = deps.ideService || new IdeService(settingsService2, deps.projectService);
   const gitReviewService = new GitReviewService(deps.projectService);
   const terminalService = deps.terminalService || new TerminalService(deps.projectService);
@@ -52141,6 +52337,24 @@ function createApp(deps) {
       const updated = deps.requirementService.updateRequirement(req.params.id, validated);
       deps.broadcaster.broadcast({ type: "requirement_updated", payload: updated });
       res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  });
+  app2.put("/api/requirements/:id/run-settings", (req, res, next) => {
+    try {
+      const updated = deps.requirementService.updateRunSettings(req.params.id, req.body ?? {});
+      deps.broadcaster.broadcast({ type: "requirement_updated", payload: updated });
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  });
+  app2.get("/api/branches", (req, res, next) => {
+    try {
+      const raw = req.query.projects;
+      if (typeof raw !== "string" || !raw.trim()) throw badRequest("projects is required, e.g. ?projects=backend,frontend");
+      res.json(branchService2.listBranches(raw.split(",").map((p) => p.trim()).filter(Boolean)));
     } catch (err) {
       next(err);
     }
@@ -53265,8 +53479,8 @@ var RunStore = class {
         this.db.prepare("UPDATE local_runs SET notes_md = '', updated_at = ? WHERE bridge_task_id = ? AND notes_md <> ''").run(now, input.bridgeTaskId);
       }
       this.db.prepare(`
-          INSERT INTO local_runs (id, bridge_task_id, project, title, body_md, model, effort, status, notes_md, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)
+          INSERT INTO local_runs (id, bridge_task_id, project, title, body_md, model, effort, preferred_cli, status, notes_md, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)
         `).run(
         id,
         input.bridgeTaskId,
@@ -53275,6 +53489,7 @@ var RunStore = class {
         input.bodyMd,
         input.model ?? null,
         input.effort ?? null,
+        input.preferredCli ?? null,
         pending.map((r) => r.notes_md).join("\n\n"),
         now,
         now
@@ -53981,15 +54196,32 @@ var AgentRunner = class {
     const settings = this.settings();
     if (!settings.enabled) return;
     const ai = this.ai();
-    const choice = chooseCli(settings, ai, this.find);
-    if (!choice.cli || !choice.bin) return;
-    if (this.runs.pausedClis(this.now()).has(choice.cli)) return;
+    const fallback = chooseCli(settings, ai, this.find);
+    const paused = this.runs.pausedClis(this.now());
     let running = this.runs.count("running");
     for (const run of this.runs.queued()) {
       if (running >= settings.maxParallel) break;
       if (this.taskBusy(run)) continue;
+      const choice = this.cliFor(run, ai, fallback);
+      if (choice.problem) {
+        if (this.runs.transition(run.id, ["queued"], { status: "failed", error: choice.problem, finished_at: this.iso() })) {
+          this.log(run.bridge_task_id, "system", `\u2717 ${choice.problem}`);
+        }
+        continue;
+      }
+      if (!choice.cli || !choice.bin || paused.has(choice.cli)) continue;
       if (this.start(run, choice.cli, choice.bin, ai, settings)) running++;
     }
+  }
+  /** The requirement's CLI when it chose one (it must be enabled and installed), else the engine's choice. */
+  cliFor(run, ai, fallback) {
+    if (!run.preferred_cli) return fallback.cli ? fallback : { cli: null, bin: null, problem: null };
+    const cli = run.preferred_cli;
+    const bin = cliEnabled(cli, ai) ? cliBinary(cli, ai, this.find) : null;
+    if (bin) return { cli, bin, problem: null };
+    const reqId = this.task(run.bridge_task_id)?.req_id ?? "this requirement";
+    const why = cliEnabled(cli, ai) ? "is not installed on this PC" : "is turned off in Settings \u2192 AI & Local Engines";
+    return { cli: null, bin: null, problem: `${CLI_LABELS[cli]} is chosen for ${reqId} but ${why}` };
   }
   taskBusy(run) {
     if (this.active.has(run.id)) return true;
@@ -54159,6 +54391,7 @@ var AgentRunner = class {
     const task = this.task(taskId);
     if (!run || !task) return;
     const endSha = task.branch ? resolveCommit(repo, `refs/heads/${task.branch}`) : null;
+    if (endSha && endSha !== run.start_sha) this.opts.onCommits?.(taskId);
     const base = { pid: null, exit_code: exit.code, end_sha: endSha, finished_at: this.iso() };
     const label = CLI_LABELS[cli];
     if (run.cancel_requested_at) {
@@ -54321,7 +54554,8 @@ var localEngine = new AgentRunner({
   settingsService,
   workspaceDir: WORKSPACE_DIR,
   bridgeUrl: `http://${HOST === "0.0.0.0" || HOST === "::" ? "127.0.0.1" : HOST}:${PORT}`,
-  agentToken: process.env.AGENT_TOKEN || void 0
+  agentToken: process.env.AGENT_TOKEN || void 0,
+  onCommits: (taskId) => branchService.pushTaskBranch(taskId)
 });
 var engineThrottle = new EngineThrottle({
   onTrip: (project, until) => {
@@ -54399,6 +54633,7 @@ var app = createApp({
   settingsService,
   notificationService,
   localEngine,
+  branchService,
   demoMode: process.env.DEMO_MODE === "1",
   agentToken: process.env.AGENT_TOKEN || void 0,
   webhookSecret: process.env.GITHUB_WEBHOOK_SECRET || void 0

@@ -44,7 +44,7 @@ waiting for a person and rate limited; and for each CLI **Installed on PC** / **
 
 | Setting | Default | Meaning |
 |---|---|---|
-| **Task branch name** | `{req}` | Name of new task branches. `{req}`, `{task}` and `{project}` are filled in; a ticket adds `-ticket-<task>`; a taken name gets `-2`. Existing branches keep their names. |
+| **Task branch name** | `{req}` | Name of new task branches. `{req}`, `{task}` and `{project}` are filled in; a ticket adds `-ticket-<task>`; a taken name gets `-2`. Existing branches keep their names. A pattern that puts the branch under an existing branch (`REQ-007/backend` while `REQ-007` exists) stops the fan-out with the reason. |
 | **Push branches to origin** | on | The bridge pushes new task and target branches, and agents' new commits, to `origin`. Never forced: a failed push only adds `Could not push <branch> to origin: <reason>` to the task's Logs. |
 
 One more setting has no control in the app: `auto_delete_branch` (off by default). When on, the

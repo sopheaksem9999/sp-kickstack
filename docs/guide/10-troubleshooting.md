@@ -46,6 +46,9 @@ messages appear as red toasts in the app; `<REQ-ID>`, `<id>` and similar parts a
 | `Interrupted 3 times (the server stopped while the agent was running); Retry starts it again` | The server crashed three times during this run. | **Retry**. |
 | `<REQ> was already fanned out to <branch>; the target branch cannot change (create a new requirement for another branch)` | Tasks were branched from the target branch. | Keep it, or create a new requirement for the other branch. |
 | `<branch> is the branch of task #<id>; choose another target branch` | A task's own branch cannot be a target. | Pick another branch. |
+| `Git cannot create <branch> in <repo>: the branch <other> exists there; choose another target branch` | Git stores branch names as paths, so `release` and `release/1.3` cannot both exist. Checked when you save and at fan-out. | Pick another name, for example `release-1.3`. |
+| `Git cannot create the task branch <name> in <repo>: the branch <other> exists there. Change Settings → Git & Branch Rules → Task branch name.` | The **Task branch name** pattern puts the task branch under an existing branch. | Change the pattern (for example back to `{req}`), then start the fan-out again. |
+| `No agent started. <repo>: <reason>` (fan-out dialog) | No goal reached its engine. | Fix the reason shown for each repository, then **Start Fan-Out** again. |
 | `<CLI> is chosen for <REQ> but is not installed on this PC` | The requirement's CLI cannot run here. | Install it, or change the CLI in **Run settings**, then **Retry**. |
 | `Could not push <branch> to origin: <reason>` (in Logs) | The push was refused or `origin` was unreachable; the task carries on. | Fix the credentials or the network; the next push tries again. |
 

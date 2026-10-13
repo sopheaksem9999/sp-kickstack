@@ -16,7 +16,9 @@ this rule.
   repository name).
 - A ticket is named with the pattern plus `-ticket-{task}`.
 - A name that is taken gets `-2`, `-3`, …. "Taken" means it exists as a local branch, as
-  `origin/<name>`, as another task's branch, or as a branch living under `<name>/`.
+  `origin/<name>`, as another task's branch, as an open requirement's target branch, or as a branch
+  living under `<name>/`. A name that would live under an existing branch (`REQ-008/backend` while
+  `REQ-008` exists) cannot be fixed by a suffix: `nameTaskBranch` refuses it with the reason (409).
 - Never rename an existing task branch: tasks keep the name recorded in `bridge_tasks.branch`. Older
   tasks keep `req/<REQ-ID>/task-<id>`.
 
@@ -26,9 +28,13 @@ this rule.
   `project.base_branch` directly for task or merge work.
 - A missing target branch is created by `ensureTaskBranch`, from the repository's own base branch,
   and records a `target_branch_created` event.
-- Target branch names are validated with `branchNameProblem` (`@sp-kickstack/shared`). A target branch
-  must not be a task branch, and it is locked once the requirement has been fanned out
-  (`RequirementService.updateRunSettings`).
+- Target branch names are validated with `branchNameProblem` (`@sp-kickstack/shared`) and
+  `targetBranchProblem` (`branchService.ts`): not a task branch, and no clash with an existing branch
+  path in the requirement's repositories (`release` beside `release/1.3`). The check runs when the
+  target is saved (`RequirementService.updateRunSettings`) and again before fan-out reserves goals.
+  The target is locked once the requirement has been fanned out.
+- Prompts that name where work merges (goal, ticket and dependency prompts) use `baseBranchFor`
+  too.
 
 ## 3. Pushing
 - Only the bridge pushes, through the `BranchService` push queue (`pushCommit`). Pushes are never

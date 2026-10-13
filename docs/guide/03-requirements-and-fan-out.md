@@ -118,8 +118,8 @@ policy. Click **Edit** to change them; they apply to agent runs started afterwar
 | Setting | Meaning |
 |---|---|
 | **CLI** | Claude Code, AGY or Codex for this requirement's agents, on Local AI CLI repositories. **Use default** follows Settings → AI & Local Engines. If the chosen CLI is not installed or is turned off, its runs fail with `<CLI> is chosen for <REQ> but …`. |
-| **Model / effort** | The suggestions follow the CLI (`opus`, `sonnet`… for Claude Code; `gemini-3.8-flash`… for AGY). Empty = the CLI's model and effort in Settings. |
-| **Target branch** | Tasks start from this branch and are merged into it, for example `release/1.3` for the next release. Pick an existing branch (the list shows which repositories have it) or type a new name: it is created from each repository's base branch at fan-out, and pushed. Empty = each repository's base branch. It cannot change after fan-out. |
+| **Model / effort** | The suggestions follow the CLI (`opus`, `sonnet`… for Claude Code; `gemini-3.8-flash`… for AGY). Empty model: with **Use default** CLI, the workspace model, else the CLI's model in Settings; with a chosen CLI, that CLI's model in Settings (model names differ per CLI). Empty effort: the workspace effort, else the CLI's effort in Settings. |
+| **Target branch** | Tasks start from this branch and are merged into it, for example `release/1.3` for the next release. Pick an existing branch (the list shows which repositories have it) or type a new name: it is created from each repository's base branch at fan-out, and pushed. Empty = each repository's base branch. It cannot change after fan-out. A name git cannot create next to an existing branch (`release` while `release/1.3` exists) is refused when you save and again at fan-out. A target branch is never used as a task branch: with target `REQ-007`, REQ-007's task branch is `REQ-007-2`. |
 | **Merge policy** | Review first or auto-merge; Default = the workspace setting. |
 
 ## Start the fan-out
@@ -130,10 +130,13 @@ policy. Click **Edit** to change them; they apply to agent runs started afterwar
 2. Click **Start Fan-Out**. It is shown while the requirement is To Do or Ready. The **Start fan-out**
    dialog opens with the repositories and the [run settings](#run-settings); check or change them.
 3. Click **Start Fan-Out** in the dialog. Nothing starts before that; an error (for example
-   `No enabled projects`) shows in the dialog.
+   `No enabled projects`) shows in the dialog. If no agent could start, the dialog stays open with
+   each repository's reason; if only some failed, a warning names them.
+
+While the dialog is open, live updates do not reset what you have changed.
 
 On the **Requirements** board, dragging a To Do or Ready card to **In Progress** opens the same
-dialog. The card moves once fan-out has started; **Cancel** leaves it where it was.
+dialog, and so does choosing **In Progress** in the **State** select of a To Do or Ready requirement. The card moves once fan-out has started; **Cancel** leaves it where it was.
 
 ### What happens next
 
@@ -142,7 +145,8 @@ For each affected project that is enabled, the bridge:
 1. Creates one **goal** task.
 2. For git projects, creates the branch `<REQ-ID>` (for example `REQ-007`) from the requirement's
    target branch, else the project's base branch, and pushes it to `origin` (Settings → Git & Branch
-   Rules). A ticket gets `<REQ-ID>-ticket-<id>`; a taken name gets `-2`. Tasks created before
+   Rules). A ticket gets `<REQ-ID>-ticket-<id>`; a taken name (an existing branch, another task's
+   branch or an open requirement's target branch) gets `-2`. Tasks created before
    2026-10-13 keep `req/<REQ-ID>/task-<id>`.
 3. Sends the goal to the project's engine, with a prompt that contains:
    - your requirement text (marked as untrusted input, so instructions inside it are treated as
@@ -287,7 +291,7 @@ and tries again on its own; start the bridge (`npm run dev`) and press **Refresh
 ## Change the requirement status by hand
 
 Before fan-out, you can move a requirement freely (board drag, or the **State** select on its
-page), except that dragging it to **In Progress** opens the fan-out dialog (see
+page), except that moving it to **In Progress** (drag or **State** select) opens the fan-out dialog (see
 [Start the fan-out](#start-the-fan-out)). Once any task exists, the status follows the tasks and only these moves are allowed:
 
 | Move | Allowed when | Otherwise you see |

@@ -20,6 +20,7 @@ import {
   Sparkles,
   CheckCircle2,
   FolderGit2,
+  GitBranch,
   ArrowRight,
   Layers,
   Paperclip,
@@ -64,6 +65,8 @@ import {
   DraftRequirementResult,
 } from '@sp-kickstack/shared';
 import { sendAiChatMessage } from '../lib/api.js';
+import { fetchBranches } from '../lib/runSettingsApi.js';
+import { BranchPicker } from './BranchPicker.js';
 import { Sheet, SheetContent } from './ui/sheet.js';
 
 export function CreateRequirementSheet() {
@@ -97,6 +100,13 @@ export function CreateRequirementSheet() {
   const [sprintId, setSprintId] = useState<string | null>(null);
   const [mergePolicy, setMergePolicy] = useState<'inherit' | BranchMergePolicy>('inherit');
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
+  /** '' = each repository's base branch. */
+  const [targetBranch, setTargetBranch] = useState('');
+  const { data: branches = [] } = useQuery({
+    queryKey: ['branches', [...selectedProjects].sort().join(',')],
+    queryFn: () => fetchBranches(selectedProjects),
+    enabled: isOpen && selectedProjects.length > 0,
+  });
   const [criteria, setCriteria] = useState<string[]>(['']);
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [activeGoalTab, setActiveGoalTab] = useState<'write' | 'preview'>('write');
@@ -141,6 +151,7 @@ export function CreateRequirementSheet() {
     setStatus('draft');
     setSprintId(null);
     setMergePolicy('inherit');
+    setTargetBranch('');
     setSelectedProjects([]);
     setCriteria(['']);
     setAttachments([]);
@@ -377,6 +388,7 @@ What feature, solution, or refactoring would you like to design today? You can s
         status: andStart ? 'ready' : status,
         sprint_id: sprintId || undefined,
         merge_policy: mergePolicy !== 'inherit' ? mergePolicy : undefined,
+        target_branch: targetBranch.trim() || undefined,
         affected_projects: selectedProjects,
         acceptance_criteria: filteredCriteria,
         attachments,
@@ -760,6 +772,25 @@ What feature, solution, or refactoring would you like to design today? You can s
                   })}
                 </div>
               )}
+            </div>
+
+            {/* Target Branch */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <GitBranch className="w-3.5 h-3.5" />
+                <span>Target Branch</span>
+              </label>
+              <BranchPicker
+                value={targetBranch}
+                onChange={setTargetBranch}
+                entries={branches}
+                chosenProjects={selectedProjects}
+                disabled={selectedProjects.length === 0}
+              />
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Tasks start from it and are merged into it, for example <span className="font-mono">release/1.3</span>. A new name is
+                created from each repository's base branch at fan-out. Empty = each repository's base branch.
+              </p>
             </div>
 
             {/* Goal & Problem Context (Rich Text Editor + Attachments) */}

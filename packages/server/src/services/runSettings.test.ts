@@ -8,6 +8,7 @@ import { ProjectService } from './projectService.js';
 import { RequirementService } from './requirementService.js';
 import { SettingsService } from './settingsService.js';
 import { RunStore } from '../localEngine/runStore.js';
+import { CreateRequirementInputSchema } from '@sp-kickstack/shared';
 
 let db: AppDatabase;
 let requirements: RequirementService;
@@ -34,6 +35,14 @@ describe('requirement run settings: storage', () => {
 
   it('defaults the task branch pattern to the requirement ID and pushing to on', () => {
     expect(new SettingsService(db).getBranchMergeSettings()).toMatchObject({ task_branch_pattern: '{req}', push_branches: true });
+  });
+
+  it('keeps a target branch given at creation, and checks its name', () => {
+    const req = requirements.createRequirement({
+      title: 'Rides', goal: 'g', acceptance_criteria: ['a'], affected_projects: ['backend'], priority: 'normal', target_branch: 'release/1.3',
+    });
+    expect(req.target_branch).toBe('release/1.3');
+    expect(() => CreateRequirementInputSchema.parse({ title: 'T', goal: 'g', affected_projects: ['backend'], target_branch: 'bad..name' })).toThrow();
   });
 
   it('remembers the preferred CLI of a local run', () => {

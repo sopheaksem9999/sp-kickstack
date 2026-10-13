@@ -170,6 +170,8 @@ export const CreateRequirementInputSchema = z.object({
   priority: PrioritySchema.default('normal'),
   status: RequirementStatusSchema.optional().default('draft'),
   merge_policy: BranchMergePolicySchema.optional(),
+  /** Where the tasks start and merge; empty = each repository's base branch. */
+  target_branch: TargetBranchSchema.nullable().optional(),
   sprint_id: z.string().nullable().optional(),
   attachments: z.array(AttachmentItemSchema).optional().default([]),
   api_hints: z.string().optional(),

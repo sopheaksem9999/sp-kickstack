@@ -79,6 +79,8 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
 
   public createRequirement(input: CreateRequirementInput): Requirement {
     const scoped = { ...input, affected_projects: this.ownWorkspaceProjects(input.workspace_id || 'default', input.affected_projects) };
+    const targetBranch = input.target_branch?.trim() || null;
+    if (targetBranch) this.assertTargetBranch(targetBranch, scoped.affected_projects);
     const now = new Date().toISOString();
     const status: RequirementStatus = input.status || 'draft';
     const revision = 1;
@@ -94,8 +96,8 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
       const bodyMd = this.renderMarkdown(id, scoped, status, revision);
 
       this.db.prepare(`
-        INSERT INTO requirements (id, workspace_id, session_id, seq, title, status, priority, body_md, file_path, revision, attachments, merge_policy, sprint_id, created_at, updated_at)
-        VALUES (@id, @workspace_id, @session_id, @seq, @title, @status, @priority, @body_md, @file_path, @revision, @attachments, @merge_policy, @sprint_id, @created_at, @updated_at)
+        INSERT INTO requirements (id, workspace_id, session_id, seq, title, status, priority, body_md, file_path, revision, attachments, merge_policy, target_branch, sprint_id, created_at, updated_at)
+        VALUES (@id, @workspace_id, @session_id, @seq, @title, @status, @priority, @body_md, @file_path, @revision, @attachments, @merge_policy, @target_branch, @sprint_id, @created_at, @updated_at)
       `).run({
         id,
         workspace_id: input.workspace_id || 'default',
@@ -109,6 +111,7 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
         revision,
         attachments: JSON.stringify(attachments),
         merge_policy: input.merge_policy || null,
+        target_branch: targetBranch,
         sprint_id: input.sprint_id || null,
         created_at: now,
         updated_at: now,
@@ -352,14 +355,7 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
           `${id} was already fanned out to ${current ?? "each repository's base branch"}; the target branch cannot change (create a new requirement for another branch)`
         );
       }
-      if (target) {
-        const names = req.affected_projects;
-        const repos = names.length
-          ? (this.db.prepare(`SELECT name, repo_path FROM projects WHERE name IN (${names.map(() => '?').join(', ')})`).all(...names) as Array<{ name: string; repo_path: string }>)
-          : [];
-        const problem = targetBranchProblem(this.db, target, repos);
-        if (problem) throw badRequest(problem);
-      }
+      if (target) this.assertTargetBranch(target, req.affected_projects);
     }
 
     const keep = <T>(next: T | null | undefined, value: T | null | undefined) => (next === undefined ? value ?? null : next);
@@ -374,6 +370,17 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
         target, keep(parsed.merge_policy, req.merge_policy), id
       );
     return this.getRequirement(id)!;
+  }
+
+  /** 400 when `target` cannot be the target branch of a requirement in these repositories. */
+  private assertTargetBranch(target: string, projectNames: string[]) {
+    const repos = projectNames.length
+      ? (this.db
+          .prepare(`SELECT name, repo_path FROM projects WHERE name IN (${projectNames.map(() => '?').join(', ')})`)
+          .all(...projectNames) as Array<{ name: string; repo_path: string }>)
+      : [];
+    const problem = targetBranchProblem(this.db, target, repos);
+    if (problem) throw badRequest(problem);
   }
 
   public updateStatus(id: string, status: RequirementStatus) {

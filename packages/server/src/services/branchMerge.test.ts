@@ -987,6 +987,19 @@ describe('Target and task branches never collide', () => {
     expect(h.requirementService.updateRunSettings(req.id, { target_branch: 'hotfix-2' }).target_branch).toBe('hotfix-2');
   });
 
+  it('refuses at creation a target that git cannot create or that is a task branch, and creates nothing', async () => {
+    h = makeGitHarness();
+    sh(h.backendRepo.repo, ['branch', 'release/1.3']);
+    const create = (target_branch: string) =>
+      h.requirementService.createRequirement({
+        title: 'T', goal: 'g', acceptance_criteria: ['a'], affected_projects: ['backend'], priority: 'normal', target_branch,
+      });
+    expect(() => create('release')).toThrow('release/1.3');
+    const [goal] = await h.fanOutService.execute(h.createRequirement(['backend']).id);
+    expect(() => create(h.task(goal.id).branch)).toThrow(`is the branch of task #${goal.id}`);
+    expect(h.db.prepare('SELECT COUNT(*) AS n FROM requirements').get()).toEqual({ n: 1 });
+  });
+
   it('a task branch pattern that puts the branch under an existing branch fails with the reason', async () => {
     h = makeGitHarness();
     const req = h.createRequirement(['backend']);

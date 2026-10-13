@@ -1,4 +1,6 @@
-import type { QaRunView, QaSeverity, RequirementQa, RequirementStatus, ReviewComment } from '@sp-kickstack/shared';
+import type { AiQaSettings, LocalEngineStatus, QaRunView, QaSeverity, RequirementQa, RequirementStatus, ReviewComment } from '@sp-kickstack/shared';
+import { isValidModel } from './agentProfile.js';
+import { installBadge, limitBadge } from './localEngineText.js';
 
 export type QaTone = 'running' | 'passed' | 'findings' | 'failed';
 
@@ -66,4 +68,28 @@ export function runAiQaBlocked(status: RequirementStatus, qa: RequirementQa | un
   if (status !== 'qa') return 'AI QA runs while the requirement is in QA';
   if (qa?.running) return 'AI QA is running';
   return null;
+}
+
+/** What is wrong with an AI QA settings draft before saving (the server checks the same), or null. */
+export function aiQaDraftProblem(draft: AiQaSettings): string | null {
+  if (!Number.isInteger(draft.timeLimitMinutes) || draft.timeLimitMinutes < 5 || draft.timeLimitMinutes > 240) {
+    return 'Time limit must be a whole number of minutes from 5 to 240.';
+  }
+  if (!Number.isInteger(draft.maxFindings) || draft.maxFindings < 1 || draft.maxFindings > 200) return 'Maximum findings must be a whole number from 1 to 200.';
+  if (draft.model !== null && !isValidModel(draft.model)) return 'Model ids use letters, digits and . _ : / - (up to 80 characters), e.g. opus';
+  return null;
+}
+
+/** Which CLI runs AI QA, with its live badges (Installed on PC / Not Detected, HEALTHY / PAUSED). */
+export function qaCliStatus(agentCli: AiQaSettings['agentCli'], status: LocalEngineStatus | undefined): { text: string; good: boolean } | null {
+  if (!status) return null;
+  if (!status.enabled) return { text: 'The Local AI CLI engine is turned off: AI QA cannot run', good: false };
+  const id = agentCli === 'default' ? status.cli : agentCli;
+  const cli = id ? status.clis.find((c) => c.id === id) : undefined;
+  if (!cli) return { text: status.problem ?? 'No AI CLI can run AI QA', good: false };
+  const limit = limitBadge(cli);
+  return {
+    text: `AI QA runs with ${cli.label} · ${installBadge(cli)} · ${limit}${cli.enabled ? '' : ' · turned off'}`,
+    good: cli.installed && cli.enabled && limit === 'HEALTHY',
+  };
 }

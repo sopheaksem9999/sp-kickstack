@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findingsText, qaBadge, qaRunText, qaStatusLine, runAiQaBlocked } from './aiQa';
+import { aiQaDraftProblem, findingsText, qaBadge, qaCliStatus, qaRunText, qaStatusLine, runAiQaBlocked } from './aiQa';
 
 const run = (project: string, status: string, extra: Record<string, unknown> = {}) =>
   ({ task: { id: 1 }, project, status, passed: null, summary: null, error: null, findings: 0, ...extra }) as any;
@@ -55,5 +55,32 @@ describe('AI QA header', () => {
     expect(runAiQaBlocked('qa', qa([run('backend', 'running')]))).toBe('AI QA is running');
     expect(runAiQaBlocked('qa', qa([run('backend', 'done')]))).toBeNull();
     expect(runAiQaBlocked('qa', undefined)).toBeNull();
+  });
+});
+
+describe('AI QA settings', () => {
+  const draft = { runAutomatically: true, agentCli: 'default', model: null, effort: null, timeLimitMinutes: 30, maxFindings: 30 } as const;
+
+  it('checks a draft like the server', () => {
+    expect(aiQaDraftProblem({ ...draft })).toBeNull();
+    expect(aiQaDraftProblem({ ...draft, timeLimitMinutes: 2 })).toBe('Time limit must be a whole number of minutes from 5 to 240.');
+    expect(aiQaDraftProblem({ ...draft, maxFindings: 0 })).toBe('Maximum findings must be a whole number from 1 to 200.');
+    expect(aiQaDraftProblem({ ...draft, model: 'bad model' })).toBe('Model ids use letters, digits and . _ : / - (up to 80 characters), e.g. opus');
+  });
+
+  it('shows which CLI runs QA, with its live badges', () => {
+    const status = {
+      enabled: true, cli: 'claude-cli', problem: null, maxParallel: 2, worktreeRoot: '/w',
+      counts: { running: 0, queued: 0, held: 0, rate_limited: 0 },
+      clis: [
+        { id: 'claude-cli', label: 'Claude Code', installed: true, enabled: true, pausedUntil: null },
+        { id: 'codex-cli', label: 'Codex', installed: false, enabled: true, pausedUntil: null },
+      ],
+    } as any;
+    expect(qaCliStatus('default', status)).toEqual({ text: 'AI QA runs with Claude Code · Installed on PC · HEALTHY', good: true });
+    expect(qaCliStatus('codex-cli', status)).toEqual({ text: 'AI QA runs with Codex · Not Detected · HEALTHY', good: false });
+    expect(qaCliStatus('default', { ...status, enabled: false })).toEqual({ text: 'The Local AI CLI engine is turned off: AI QA cannot run', good: false });
+    expect(qaCliStatus('default', { ...status, cli: null, problem: 'No AI CLI is installed' })).toEqual({ text: 'No AI CLI is installed', good: false });
+    expect(qaCliStatus('default', undefined)).toBeNull();
   });
 });

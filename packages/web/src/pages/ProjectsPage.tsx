@@ -71,6 +71,8 @@ export function ProjectsPage() {
   const [baseBranch, setBaseBranch] = useState('main');
   const [contractPath, setContractPath] = useState('');
   const [testCommand, setTestCommand] = useState('');
+  const [buildCommand, setBuildCommand] = useState('');
+  const [lintCommand, setLintCommand] = useState('');
 
   // Open Details modal state
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -87,6 +89,8 @@ export function ProjectsPage() {
   const [editBaseBranch, setEditBaseBranch] = useState('main');
   const [editContractPath, setEditContractPath] = useState('');
   const [editTestCommand, setEditTestCommand] = useState('');
+  const [editBuildCommand, setEditBuildCommand] = useState('');
+  const [editLintCommand, setEditLintCommand] = useState('');
 
   // Delete Project dialog state
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
@@ -161,6 +165,8 @@ export function ProjectsPage() {
     setEditBaseBranch(proj.base_branch || 'main');
     setEditContractPath(proj.contract_path || '');
     setEditTestCommand(proj.test_command || '');
+    setEditBuildCommand(proj.build_command || '');
+    setEditLintCommand(proj.lint_command || '');
   };
 
   const handleCopyPath = (path: string) => {
@@ -193,6 +199,8 @@ export function ProjectsPage() {
       setEngineUrl('');
       setContractPath('');
       setTestCommand('');
+      setBuildCommand('');
+      setLintCommand('');
       queryClient.invalidateQueries();
     },
     onError: (err: any) => toast.error(err.message || 'Failed to create project'),
@@ -254,6 +262,8 @@ export function ProjectsPage() {
       base_branch: baseBranch.trim() || 'main',
       contract_path: contractPath.trim() || undefined,
       test_command: testCommand.trim() || undefined,
+      build_command: buildCommand.trim() || undefined,
+      lint_command: lintCommand.trim() || undefined,
       done_means: 'merged',
       enabled: true,
     });
@@ -274,6 +284,9 @@ export function ProjectsPage() {
         base_branch: editBaseBranch.trim() || 'main',
         contract_path: editContractPath.trim() || undefined,
         test_command: editTestCommand.trim() || undefined,
+        // null clears a command; undefined would keep the old one.
+        build_command: editBuildCommand.trim() || null,
+        lint_command: editLintCommand.trim() || null,
       },
     });
   };
@@ -876,6 +889,14 @@ export function ProjectsPage() {
                   <p className="font-semibold text-slate-800 dark:text-slate-200 font-mono">{selectedProject.test_command}</p>
                 </div>
               )}
+              {(['build_command', 'lint_command'] as const).map((field) =>
+                selectedProject[field] ? (
+                  <div key={field} className="p-3 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-200 dark:border-[#2d2d2d] space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500">{field === 'build_command' ? 'Build Command' : 'Lint Command'}</span>
+                    <p className="font-semibold text-slate-800 dark:text-slate-200 font-mono">{selectedProject[field]}</p>
+                  </div>
+                ) : null
+              )}
 
               <div className="flex items-center justify-between pt-2 text-[11px] text-slate-400">
                 <span>Created: {new Date(selectedProject.created_at).toLocaleDateString()}</span>
@@ -1112,6 +1133,32 @@ export function ProjectsPage() {
                 />
               </div>
 
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Build Command (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={editBuildCommand}
+                  onChange={(e) => setEditBuildCommand(e.target.value)}
+                  placeholder="npm ci && npm run build"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Lint Command (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={editLintCommand}
+                  onChange={(e) => setEditLintCommand(e.target.value)}
+                  placeholder="npm ci && npm run lint"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
+                />
+              </div>
+
               <div className="pt-3 border-t border-slate-200 dark:border-[#2d2d2d] flex justify-end gap-2.5">
                 <button
                   type="button"
@@ -1306,6 +1353,32 @@ export function ProjectsPage() {
                   value={testCommand}
                   onChange={(e) => setTestCommand(e.target.value)}
                   placeholder="npm ci && npm test"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Build Command (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={buildCommand}
+                  onChange={(e) => setBuildCommand(e.target.value)}
+                  placeholder="npm ci && npm run build"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Lint Command (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={lintCommand}
+                  onChange={(e) => setLintCommand(e.target.value)}
+                  placeholder="npm ci && npm run lint"
                   className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
                 />
               </div>

@@ -53,6 +53,7 @@ import { NotificationSettingsSection } from '../components/NotificationSettingsS
 import { WorkspacesSettingsSection } from '../components/WorkspacesSettingsSection.js';
 import { branchPatternExamples, optionalBranchProblem } from '../lib/runSettings.js';
 import { LocalEngineSettingsSection } from '../components/LocalEngineSettingsSection.js';
+import { AiQaSettingsSection } from '../components/AiQaSettingsSection.js';
 import { BranchMergePolicy, ReasoningEffort, EngineId, DecisionEngineId } from '@sp-kickstack/shared';
 import { RadixSelect } from '../components/ui/select.js';
 
@@ -2411,6 +2412,7 @@ export function SettingsPage() {
               <LocalEngineSettingsSection />
             </div>
           )}
+          {activeTab === 'ai' && <AiQaSettingsSection />}
 
           {/* ========================================================= */}
           {/* Workspaces Management */}

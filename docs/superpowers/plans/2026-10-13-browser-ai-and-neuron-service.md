@@ -83,9 +83,10 @@ git commit -m "feat(shared): add types and schemas for Neuron rules, Jev, Clef, 
 
 ---
 
-### Task 2: Database Migration 9 & Neuron Storage (`@sp-kickstack/server`)
+### Task 2: Database Migration 9 & Neuron Storage with MiniSearch (`@sp-kickstack/server`)
 
 **Files:**
+- Modify: `packages/server/package.json` (add `minisearch`)
 - Modify: `packages/server/src/db/migrations.ts`
 - Create: `packages/server/src/services/neuronService.ts`
 - Test: `packages/server/src/services/neuronService.test.ts`
@@ -98,10 +99,16 @@ git commit -m "feat(shared): add types and schemas for Neuron rules, Jev, Clef, 
     - `createRule(input: CreateNeuronRuleInput): NeuronRule`
     - `updateRule(id: string, patch: Partial<NeuronRule>): NeuronRule | null`
     - `deleteRule(id: string): boolean`
-    - `enrichPrompt(basePrompt: string, project: string): string`
+    - `enrichPrompt(basePrompt: string, project: string): string` (indexed via `minisearch`)
+    - `syncMarkdown(workspaceDir: string): void` (writes `.agents/rules/learned-patterns.md`)
     - `reflectOnRun(runId: string): Promise<NeuronRule[]>`
 
-- [ ] **Step 1: Write failing migration and NeuronService test**
+- [ ] **Step 1: Install `minisearch` in server workspace**
+
+Run: `export PATH="$HOME/.nvm/versions/node/v22.19.0/bin:$PATH"; npm install minisearch --workspace=@sp-kickstack/server`
+Expected: `minisearch` added to `packages/server/package.json`.
+
+- [ ] **Step 2: Write failing migration and NeuronService test**
 
 Create `packages/server/src/services/neuronService.test.ts`:
 ```typescript
@@ -120,7 +127,7 @@ describe('NeuronService', () => {
     service = new NeuronService(db);
   });
 
-  it('creates, lists, and enriches prompts with learned rules', () => {
+  it('creates, lists, and enriches prompts with learned rules using MiniSearch', () => {
     const rule = service.createRule({
       workspace_id: 'default',
       project: 'backend',
@@ -133,33 +140,33 @@ describe('NeuronService', () => {
     const rules = service.listRules('default', 'backend');
     expect(rules).toHaveLength(1);
 
-    const enriched = service.enrichPrompt('Implement feature', 'backend');
+    const enriched = service.enrichPrompt('Implement backend migration and tests', 'backend');
     expect(enriched).toContain('Learned Repository Patterns');
     expect(enriched).toContain('Run migrations before executing integration tests');
   });
 });
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [ ] **Step 3: Run test to verify failure**
 
 Run: `export PATH="$HOME/.nvm/versions/node/v22.19.0/bin:$PATH"; npx vitest run packages/server/src/services/neuronService.test.ts`
 Expected: FAIL with missing table or service
 
-- [ ] **Step 3: Implement Migration 9 and NeuronService**
+- [ ] **Step 4: Implement Migration 9 and NeuronService with MiniSearch**
 
 In `packages/server/src/db/migrations.ts`, add migration 9 (`neuron_rules` table).
-Implement `packages/server/src/services/neuronService.ts`.
+Implement `packages/server/src/services/neuronService.ts` utilizing `MiniSearch` for in-memory indexing, search, and `.agents/rules/learned-patterns.md` file sync.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 5: Run test to verify it passes**
 
 Run: `export PATH="$HOME/.nvm/versions/node/v22.19.0/bin:$PATH"; npx vitest run packages/server/src/services/neuronService.test.ts packages/server/src/db/migrations.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit changes**
+- [ ] **Step 6: Commit changes**
 
 ```bash
-git add packages/server/src/db/migrations.ts packages/server/src/services/neuronService.ts packages/server/src/services/neuronService.test.ts packages/server/src/db/migrations.test.ts
-git commit -m "feat(server): add migration 9 and NeuronService for learned rules storage and prompt enrichment"
+git add packages/server/
+git commit -m "feat(server): add migration 9 and NeuronService with minisearch indexing and markdown sync"
 ```
 
 ---

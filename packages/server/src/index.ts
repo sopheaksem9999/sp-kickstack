@@ -25,6 +25,7 @@ import { QuestionService } from './services/questionService.js';
 import { SettingsService } from './services/settingsService.js';
 import { NotificationService } from './notify/notificationService.js';
 import { startScheduler } from './services/scheduler.js';
+import { AgentRunner } from './localEngine/agentRunner.js';
 
 const PORT = Number(process.env.PORT || 4100);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -41,6 +42,17 @@ const workspaceService = new WorkspaceService(db);
 const projectService = new ProjectService(db);
 const requirementService = new RequirementService(db, WORKSPACE_DIR);
 const sprintService = new SprintService(db);
+const settingsService = new SettingsService(db);
+
+// The Local AI CLI engine runs agents on this PC for repositories whose engine is 'local'.
+const localEngine = new AgentRunner({
+  db,
+  projectService,
+  settingsService,
+  workspaceDir: WORKSPACE_DIR,
+  bridgeUrl: `http://${HOST === '0.0.0.0' || HOST === '::' ? '127.0.0.1' : HOST}:${PORT}`,
+  agentToken: process.env.AGENT_TOKEN || undefined,
+});
 
 // Per-engine rate-limit handling: circuit breaker + start limit around every adapter call.
 const engineThrottle = new EngineThrottle({
@@ -57,7 +69,7 @@ const engineThrottle = new EngineThrottle({
 const getAdapter = engineThrottle.wrap((projectName: string) => {
   const proj = projectService.getProject(projectName);
   if (!proj) throw new Error(`Project ${projectName} not found`);
-  return createAdapter(proj);
+  return createAdapter(proj, { local: localEngine });
 });
 
 const branchService = new BranchService(db, projectService);
@@ -67,10 +79,12 @@ const fanOutService = new FanOutService(db, projectService, requirementService, 
 const broadcaster = new SseBroadcaster();
 const questionService = new QuestionService(db, linkService, getAdapter, (evt) => broadcaster.broadcast(evt));
 const notifier = new Notifier();
-const settingsService = new SettingsService(db);
 const notificationService = new NotificationService(db, settingsService, notifier);
 const reactor = new TaskReactor(db, requirementService, linkService, (evt) => broadcaster.broadcast(evt));
-const mergeGate = new MergeGateService(db, projectService, requirementService, reactor, { getAdapter });
+const mergeGate = new MergeGateService(db, projectService, requirementService, reactor, {
+  getAdapter,
+  releaseWorktree: (taskId) => localEngine.releaseWorktree(taskId),
+});
 // Auto-merge policy: start the merge gate when all of a requirement's work is in review.
 reactor.setHooks({ onRequirementInReview: (id) => mergeGate.autoStart(id) });
 mergeGate.resetInterrupted();
@@ -124,6 +138,7 @@ const app = createApp({
   questionService,
   settingsService,
   notificationService,
+  localEngine,
   demoMode: process.env.DEMO_MODE === '1',
   agentToken: process.env.AGENT_TOKEN || undefined,
   webhookSecret: process.env.GITHUB_WEBHOOK_SECRET || undefined,
@@ -134,15 +149,28 @@ const server = app.listen(PORT, HOST, () => {
   // Each tick starts every job that is not still running: sync engine state, retry failed
   // side effects (also recovers reservations left pending by a crash), pick up outbox tickets.
   // A slow job never delays the others.
+  void localEngine.recoverOnStartup().then(() => localEngine.nudge());
   startScheduler(
     [
       ['watcher', () => watcher.scanOnce()],
       ['retry', () => retrySweeper.sweepOnce()],
       ['outbox', () => outboxScanner.scanOnce()],
       ['notify', () => notificationService.dispatchPending()],
+      ['local-engine', () => localEngine.tick()],
     ],
     TICK_MS
   );
 });
+
+// Stop agents on the way out (npm run dev restarts on every server change); their runs continue
+// from their branch when the server is back.
+let exiting = false;
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(signal, () => {
+    if (exiting) return;
+    exiting = true;
+    void localEngine.shutdown().finally(() => process.exit(0));
+  });
+}
 
 export { app, server };

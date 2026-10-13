@@ -52,6 +52,9 @@ import { DEDUPE_NOTE } from '../db/migrations.js';
 import { QuestionService } from '../services/questionService.js';
 import { ReviewService } from '../services/reviewService.js';
 import { registerHumanLoopRoutes } from './humanLoopRoutes.js';
+import { registerLocalEngineRoutes } from './localEngineRoutes.js';
+import { handOverManualTasks } from '../localEngine/handover.js';
+import type { LocalEngineStatus } from '@sp-kickstack/shared';
 import { NotificationService } from '../notify/notificationService.js';
 import type { AdapterFactory } from '../services/fanOutService.js';
 import { HttpError } from '../lib/httpError.js';
@@ -81,6 +84,8 @@ export interface AppDependencies {
   questionService?: QuestionService;
   reviewService?: ReviewService;
   notificationService?: NotificationService;
+  /** The in-server Local AI CLI engine (settings nudges it; Settings shows its status). */
+  localEngine?: { status(): LocalEngineStatus; nudge(): void };
   /** DEMO_MODE=1: enables the simulated CLI runner, seeded logs and the demo "merge to main". */
   demoMode?: boolean;
   agentToken?: string;
@@ -254,9 +259,18 @@ export function createApp(deps: AppDependencies): Express {
     }
   });
 
-  app.put('/api/projects/:name', (req, res, next) => {
+  app.put('/api/projects/:name', async (req, res, next) => {
     try {
+      const before = deps.projectService.getProject(req.params.name);
       const updated = deps.projectService.updateProject(req.params.name, req.body);
+      // Manual → Local AI CLI: tasks waiting on Manual (nobody works on them) start now.
+      if (before?.engine_type === 'manual' && updated.engine_type === 'local') {
+        const handedOver = await handOverManualTasks(deps.db, updated.name, {
+          dispatchGoal: (id) => deps.fanOutService.dispatchGoal(id),
+          dispatchTicket: (id) => deps.ticketService.dispatchTicket(id),
+        });
+        for (const taskId of handedOver) deps.broadcaster.broadcast({ type: 'task_updated', payload: { taskId } });
+      }
       res.json(updated);
     } catch (err) {
       next(err);
@@ -851,6 +865,7 @@ export function createApp(deps: AppDependencies): Express {
   app.post('/api/tickets', requireAgentToken, handleCreateTicket);
   app.post('/api/agent/tickets', requireAgentToken, handleCreateTicket);
   registerHumanLoopRoutes(app, { questionService, reviewService, requirementService: deps.requirementService, settingsService, notificationService, broadcaster: deps.broadcaster, requireAgentToken });
+  registerLocalEngineRoutes(app, { settingsService, broadcaster: deps.broadcaster, localEngine: deps.localEngine });
 
   // VCS Webhooks Sync
   const hasValidGitHubSignature = (req: Request): boolean => {

@@ -19,6 +19,8 @@ export type MergeOutcome =
 export interface MergeGateOptions {
   /** Used to leave merge / conflict notes on engine tasks. */
   getAdapter?: AdapterFactory;
+  /** Free a task's agent worktree (Local AI CLI), so its merged branch can be deleted. */
+  releaseWorktree?: (taskId: number) => boolean;
   settingsService?: SettingsService;
   testTimeoutMs?: number;
   /** Limit for fetch, push, merge and worktree operations (default 2 min). */
@@ -390,7 +392,10 @@ export class MergeGateService {
             ? `## Merged into \`${p.base}\`\nYour branch \`${m.task.branch}\` was merged at ${sha}.`
             : `## Merged into \`${p.base}\`\nYour branch \`${m.task.branch}\` had no new commits, so nothing changed.`
         );
-        if (deleteBranches) git.deleteMergedBranch(p.repo, m.task.branch!, p.resultSha);
+        if (deleteBranches) {
+          this.options.releaseWorktree?.(m.task.id);
+          git.deleteMergedBranch(p.repo, m.task.branch!, p.resultSha);
+        }
       }
     }
 

@@ -1,5 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import fs from 'node:fs';
+import path from 'node:path';
 import { sh } from '../testing/gitFixture.js';
 import { cleanLocalHarnesses, makeLocalHarness, waitFor, type LocalHarness } from '../testing/localEngineFixture.js';
 
@@ -92,5 +93,23 @@ describe('AgentRunner: AI QA runs', () => {
     expect(qaTask(h, taskId).status).toBe('cancelled');
     expect(h.logText(taskId)).toContain(`■ ${h.req.id} is no longer in QA; AI QA stops`);
     expect(h.logText(taskId)).toContain('■ AI QA stopped');
+  });
+
+  it('finishes and keeps scheduling when an AI QA checkout cannot be deleted', async () => {
+    const h = makeLocalHarness();
+    const { run, taskId } = h.queueQaRun('FAKE: readonly locked');
+    await h.settle();
+    const checkout = h.invocations(run.id)[0].cwd as string;
+    try {
+      expect(h.run(run.id)).toMatchObject({ status: 'done', worktree: null });
+      expect(qaTask(h, taskId).status).toBe('done');
+      expect(h.logText(taskId)).toMatch(/⚠ Could not delete the AI QA checkout .*task-\d+ \(.*\); delete it yourself/);
+
+      const next = h.queueRun('FAKE: commit a.txt');
+      await h.settle();
+      expect(h.run(next.run.id).status).toBe('review');
+    } finally {
+      fs.chmodSync(path.join(checkout, 'locked'), 0o755);
+    }
   });
 });

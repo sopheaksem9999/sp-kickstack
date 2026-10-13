@@ -28,7 +28,13 @@ describe('AI QA header', () => {
   });
 
   it('says passed when every run passed without findings', () => {
-    expect(qaStatusLine(qa([run('backend', 'done', { passed: true }), run('frontend', 'done')]))).toEqual({ text: 'AI QA passed', tone: 'passed' });
+    expect(qaStatusLine(qa([run('backend', 'done', { passed: true }), run('frontend', 'done', { passed: true })]))).toEqual({ text: 'AI QA passed', tone: 'passed' });
+  });
+
+  it('never says passed for a run that ended without a result', () => {
+    expect(qaStatusLine(qa([run('backend', 'done', { passed: true }), run('frontend', 'done', { summary: 'Finished without a result' })]))).toEqual({
+      text: 'AI QA: frontend finished without a result', tone: 'findings',
+    });
   });
 
   it('says why a run could not finish, and which repositories were skipped', () => {
@@ -39,7 +45,7 @@ describe('AI QA header', () => {
 
   it('describes one repository run', () => {
     expect(qaRunText(run('backend', 'done', { passed: false, summary: '1 blocker', findings: 1 }))).toBe('Found problems: 1 blocker · 1 finding');
-    expect(qaRunText(run('backend', 'done'))).toBe('Done');
+    expect(qaRunText(run('backend', 'done', { summary: 'Finished without a result' }))).toBe('Finished without a result');
     expect(qaRunText(run('backend', 'queued'))).toBe('Waiting to start');
     expect(qaRunText(run('backend', 'cancelled'))).toBe('Stopped');
     expect(qaRunText(run('backend', 'failed', { error: 'No AI CLI can run QA: off' }))).toBe('Failed: No AI CLI can run QA: off');

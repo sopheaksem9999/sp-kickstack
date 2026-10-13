@@ -654,10 +654,15 @@ export class AgentRunner {
       .run(status, status === 'failed' ? run.error : null, new Date().toISOString(), run.bridge_task_id);
   }
 
-  /** Remove an AI QA checkout; whatever the agent left in it is thrown away. */
+  /** Remove an AI QA checkout; whatever the agent left in it is thrown away. Never throws: it must not stop a run's finish or the engine. */
   private dropQaCheckout(taskId: number, repo: string, worktree: string | null) {
     if (!worktree) return;
-    removeWorktree(repo, worktree);
+    try {
+      removeWorktree(repo, worktree);
+    } catch (err: any) {
+      // E.g. a read-only folder the agent's build left, or a file still open on Windows. Not retried: the folder is the person's to delete.
+      this.log(taskId, 'system', `⚠ Could not delete the AI QA checkout ${worktree} (${err?.message || err}); delete it yourself`);
+    }
     this.opts.db.prepare('UPDATE local_runs SET worktree = NULL, updated_at = ? WHERE bridge_task_id = ?').run(new Date().toISOString(), taskId);
   }
 

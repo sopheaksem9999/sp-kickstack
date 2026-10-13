@@ -5,6 +5,7 @@
 //   exit <code> · fail-unless-retry <code> · limit <epoch s> · limit-once <epoch s>
 //   stderr <text> · background <ms> · chatty-background · where (says HEAD <sha> and its branch, or (detached))
 //   qa-comment <severity>|<file>|<line>|<title> · qa-result passed|failed|<summary> (queued in XTICKET_OUTBOX like xticket's fallback)
+//   readonly <dir> (leaves a read-only folder with a file in the checkout, which then cannot be deleted)
 // With FAKE_AGENT_LOG_DIR set, each prompt is saved as <XTICKET_TASK>-<n>.md (and argv/env as .json).
 import fs from 'node:fs';
 import path from 'node:path';
@@ -80,6 +81,11 @@ for (const [action, arg] of actions) {
     tool(`xticket ${action === 'qa-comment' ? 'comment' : 'qa-result'} …`);
     fs.mkdirSync(process.env.XTICKET_OUTBOX, { recursive: true });
     fs.writeFileSync(path.join(process.env.XTICKET_OUTBOX, `${action}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.json`), JSON.stringify(payload));
+  } else if (action === 'readonly') {
+    const dir = path.join(process.cwd(), arg);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'kept.txt'), 'kept\n');
+    fs.chmodSync(dir, 0o555);
   } else if (action === 'sleep') await sleep(Number(arg));
   else if (action === 'wait-for-note') { if (!hasNotes) await sleep(Number(arg)); }
   else if (action === 'wait-once') { if (!continued) await sleep(Number(arg)); }

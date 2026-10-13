@@ -41,6 +41,9 @@ export function qaStatusLine(qa: RequirementQa | null | undefined): { text: stri
   if (findings) return line(`AI QA: ${findings}`, 'findings');
   const notPassed = qa.runs.find((r) => r.passed === false);
   if (notPassed) return line(`AI QA: ${notPassed.project} did not pass${notPassed.summary ? `: ${notPassed.summary}` : ''}`, 'findings');
+  // "Passed" only when every agent said so: one that ended without `xticket qa-result` gave no verdict.
+  const noVerdict = qa.runs.find((r) => r.passed !== true);
+  if (noVerdict) return line(`AI QA: ${noVerdict.project} finished without a result`, 'findings');
   return line('AI QA passed', 'passed');
 }
 
@@ -50,7 +53,7 @@ export function qaRunText(run: QaRunView): string {
   if (run.status === 'failed') return `Failed: ${(run.error ?? 'unknown error').split('\n')[0]}${findings}`;
   if (run.status === 'cancelled') return `Stopped${findings}`;
   if (run.status === 'done') {
-    const verdict = run.passed === true ? 'Passed' : run.passed === false ? 'Found problems' : 'Done';
+    const verdict = run.passed === true ? 'Passed' : run.passed === false ? 'Found problems' : 'Finished without a result';
     return `${verdict}${run.summary && run.passed !== null ? `: ${run.summary}` : ''}${findings}`;
   }
   if (run.status === 'rate_limited') return `Paused by a usage limit${findings}`;

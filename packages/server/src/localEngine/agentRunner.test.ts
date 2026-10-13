@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { sh } from '../testing/gitFixture.js';
-import { cleanLocalHarnesses, makeLocalHarness, waitFor } from '../testing/localEngineFixture.js';
+import { FAKE_AGENT_CLI, cleanLocalHarnesses, makeLocalHarness, waitFor } from '../testing/localEngineFixture.js';
 import { isAlive } from './processes.js';
 
 afterAll(() => cleanLocalHarnesses());
@@ -271,5 +271,44 @@ describe('AgentRunner: cancel', () => {
     expect(h.invocations(run.id)).toHaveLength(0);
     await h.runner.cancel(run.id);
     await h.runner.cancel('local-missing');
+  });
+});
+
+describe('AgentRunner: CLI per requirement', () => {
+  const useAgyToo = (h: ReturnType<typeof makeLocalHarness>) =>
+    h.settingsService.updateAiCliSettings({ agy: { enabled: true, customPath: FAKE_AGENT_CLI } } as any);
+
+  it('runs a requirement with its own CLI while other runs use the Settings choice', async () => {
+    const h = makeLocalHarness();
+    useAgyToo(h);
+    const task = h.addTask();
+    const agyRun = h.runner.runs.create({ bridgeTaskId: task.id, project: 'backend', title: 'T', bodyMd: 'FAKE: commit a.txt', preferredCli: 'agy-cli' });
+    const plain = h.queueRun('FAKE: commit b.txt');
+    await h.settle();
+    expect(h.run(agyRun.id)).toMatchObject({ status: 'review', cli: 'agy-cli' });
+    expect(h.run(plain.run.id)).toMatchObject({ status: 'review', cli: 'claude-cli' });
+  });
+
+  it('fails a run whose chosen CLI is not installed, naming the requirement', async () => {
+    const h = makeLocalHarness();
+    const task = h.addTask();
+    const run = h.runner.runs.create({ bridgeTaskId: task.id, project: 'backend', title: 'T', bodyMd: 'FAKE: commit a.txt', preferredCli: 'codex-cli' });
+    await h.settle();
+    const { req_id } = h.db.prepare('SELECT req_id FROM bridge_tasks WHERE id = ?').get(task.id) as { req_id: string };
+    expect(h.run(run.id)).toMatchObject({ status: 'failed', error: `Codex is chosen for ${req_id} but is not installed on this PC` });
+  });
+
+  it('a paused CLI holds back only its own runs', async () => {
+    let clock = Date.now();
+    const h = makeLocalHarness({ runner: { now: () => clock } });
+    useAgyToo(h);
+    h.queueRun(`FAKE: limit ${Math.floor(clock / 1000) + 600}`); // Claude Code reaches its limit
+    await h.settle();
+    const task = h.addTask();
+    const agyRun = h.runner.runs.create({ bridgeTaskId: task.id, project: 'backend', title: 'T', bodyMd: 'FAKE: commit a.txt', preferredCli: 'agy-cli' });
+    const claudeRun = h.queueRun('FAKE: commit b.txt');
+    await h.settle();
+    expect(h.run(agyRun.id).status).toBe('review');
+    expect(h.run(claudeRun.run.id).status).toBe('queued');
   });
 });

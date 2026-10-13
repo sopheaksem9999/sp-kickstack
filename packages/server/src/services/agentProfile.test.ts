@@ -115,7 +115,7 @@ describe('Agent model and effort', () => {
 
     expect(h.sent(goal.engine_task_id!)).toMatchObject({ model: 'sonnet', effort: 'high' });
     expect(h.task(goal.id)).toMatchObject({ model: 'sonnet', effort: 'high' });
-    expect(resolveAgentProfile(h.db, goal.id)).toEqual({ model: 'sonnet', effort: 'high' });
+    expect(resolveAgentProfile(h.db, goal.id)).toEqual({ model: 'sonnet', effort: 'high', cli: null });
   });
 
   it('a task pin wins over the requirement and the workspace', async () => {
@@ -125,7 +125,7 @@ describe('Agent model and effort', () => {
     const [goal] = await h.fanOutService.execute(req.id);
     h.db.prepare("UPDATE bridge_tasks SET model_override = 'opus' WHERE id = ?").run(goal.id);
 
-    expect(resolveAgentProfile(h.db, goal.id)).toEqual({ model: 'opus', effort: 'low' });
+    expect(resolveAgentProfile(h.db, goal.id)).toEqual({ model: 'opus', effort: 'low', cli: null });
   });
 
   it('keeps a value on undefined, clears it on null, and refuses bad values', () => {

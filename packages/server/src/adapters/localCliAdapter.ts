@@ -83,7 +83,7 @@ export class LocalCliAdapter implements EngineAdapter {
     if (!input.bridgeTaskId) throw new Error('The Local AI CLI engine needs the bridge task id');
     const run = this.engine.runs.create({
       bridgeTaskId: input.bridgeTaskId, project: this.project.name, title: input.title, bodyMd: input.bodyMd,
-      model: input.model ?? null, effort: input.effort ?? null,
+      model: input.model ?? null, effort: input.effort ?? null, preferredCli: input.cli ?? null,
     });
     this.engine.nudge();
     return toEngineTask(run);

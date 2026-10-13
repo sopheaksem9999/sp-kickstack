@@ -13,7 +13,7 @@ import { findCliBinary } from '../services/aiDraftService.js';
 import { FINISHED_RUN_STATUSES, RunStore, type LocalRun, type RunPatch, type RunStatus } from './runStore.js';
 import { AgentWorktrees, defaultWorktreeRoot, folderName } from './worktrees.js';
 import { agentEnvironment } from './agentEnv.js';
-import { buildCommand, chooseCli, CLI_LABELS, cliBinary, cliEnabled, quotaResetAt as defaultQuotaResetAt, runEffort, runModel, type FindBinary } from './cliProfiles.js';
+import { buildCommand, chooseCli, CLI_LABELS, cliBinary, cliEnabled, quotaResetAt as defaultQuotaResetAt, runEffort, runModel, type FindBinary, type CliChoice } from './cliProfiles.js';
 import { createParser, looksLikeRateLimit, resetFromText, type ParsedOutput } from './outputParsers.js';
 import { buildRunPrompt } from './prompt.js';
 import { findXticketScript, writeXticketLauncher } from './xticketLauncher.js';
@@ -252,15 +252,33 @@ export class AgentRunner {
     const settings = this.settings();
     if (!settings.enabled) return;
     const ai = this.ai();
-    const choice = chooseCli(settings, ai, this.find);
-    if (!choice.cli || !choice.bin) return;
-    if (this.runs.pausedClis(this.now()).has(choice.cli)) return;
+    const fallback = chooseCli(settings, ai, this.find);
+    const paused = this.runs.pausedClis(this.now());
     let running = this.runs.count('running');
     for (const run of this.runs.queued()) {
       if (running >= settings.maxParallel) break;
       if (this.taskBusy(run)) continue;
+      const choice = this.cliFor(run, ai, fallback);
+      if (choice.problem) {
+        if (this.runs.transition(run.id, ['queued'], { status: 'failed', error: choice.problem, finished_at: this.iso() })) {
+          this.log(run.bridge_task_id, 'system', `✗ ${choice.problem}`);
+        }
+        continue;
+      }
+      if (!choice.cli || !choice.bin || paused.has(choice.cli)) continue;
       if (this.start(run, choice.cli, choice.bin, ai, settings)) running++;
     }
+  }
+
+  /** The requirement's CLI when it chose one (it must be enabled and installed), else the engine's choice. */
+  private cliFor(run: LocalRun, ai: AiCliSettings, fallback: CliChoice): CliChoice {
+    if (!run.preferred_cli) return fallback.cli ? fallback : { cli: null, bin: null, problem: null };
+    const cli = run.preferred_cli;
+    const bin = cliEnabled(cli, ai) ? cliBinary(cli, ai, this.find) : null;
+    if (bin) return { cli, bin, problem: null };
+    const reqId = this.task(run.bridge_task_id)?.req_id ?? 'this requirement';
+    const why = cliEnabled(cli, ai) ? 'is not installed on this PC' : 'is turned off in Settings → AI & Local Engines';
+    return { cli: null, bin: null, problem: `${CLI_LABELS[cli]} is chosen for ${reqId} but ${why}` };
   }
 
   private taskBusy(run: LocalRun): boolean {

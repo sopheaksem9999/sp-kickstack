@@ -132,4 +132,15 @@ describe('Rate-limit signals from Stoneforge', () => {
     expect(parseRetryAfter(null, now)).toBeNull();
     expect(parseRetryAfter('soon', now)).toBeNull();
   });
+  it('sends Stoneforge only its own create fields (no bridge task id, no CLI)', async () => {
+    const bodies: unknown[] = [];
+    const fetchSpy = (async (_url: unknown, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ id: 'g-1', status: 'ready' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }) as typeof fetch;
+    const adapter = new StoneforgeAdapter('http://engine', '/repo', undefined, fetchSpy);
+    await adapter.createGoal({ title: 'T', bodyMd: 'B', model: 'opus', effort: 'high', bridgeTaskId: 7, cli: 'agy-cli' });
+    await adapter.createTask({ title: 'T', bodyMd: 'B', bridgeTaskId: 8 });
+    expect(bodies).toEqual([{ title: 'T', bodyMd: 'B', model: 'opus', effort: 'high' }, { title: 'T', bodyMd: 'B' }]);
+  });
 });

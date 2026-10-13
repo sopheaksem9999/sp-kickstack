@@ -5,7 +5,7 @@ import path from 'node:path';
 import { prepareRetry } from '../services/taskRetry.js';
 import { OutboxScanner } from '../watcher/outboxScanner.js';
 import { sh } from '../testing/gitFixture.js';
-import { cleanLocalHarnesses } from '../testing/localEngineFixture.js';
+import { FAKE_AGENT_CLI, cleanLocalHarnesses } from '../testing/localEngineFixture.js';
 import { makeE2E } from '../testing/localEngineE2E.js';
 
 afterAll(() => cleanLocalHarnesses());
@@ -113,6 +113,16 @@ describe('Local AI CLI engine through fan-out', () => {
     expect(h.task(goal.id).status).toBe('held');
     expect(fs.existsSync(path.join(outbox, 'processed', 'question-1.json'))).toBe(true);
     await h.runner.cancel(goal.engine_task_id!);
+  }, 15_000);
+
+  it("runs a requirement's agents with the CLI it chose", async () => {
+    const h = makeE2E();
+    h.settingsService.updateAiCliSettings({ agy: { enabled: true, customPath: FAKE_AGENT_CLI } } as any);
+    const req = h.createRequirement(['FAKE: commit cli.ts']);
+    h.requirementService.updateRunSettings(req.id, { agent_cli: 'agy-cli' });
+    const [goal] = await h.fanOut.execute(req.id);
+    await h.settle();
+    expect(h.runner.runs.get(goal.engine_task_id!)).toMatchObject({ preferred_cli: 'agy-cli', cli: 'agy-cli', status: 'review' });
   }, 15_000);
 
   it('shows the engine as down with the reason when no CLI can run', async () => {

@@ -1,4 +1,4 @@
-import { EngineTask, EngineType, NormStatus, ReasoningEffort } from '@sp-kickstack/shared';
+import { EngineTask, EngineType, NormStatus, ReasoningEffort, AgentCliId } from '@sp-kickstack/shared';
 
 export interface CreateEngineTaskInput {
   title: string;
@@ -11,6 +11,8 @@ export interface CreateEngineTaskInput {
   effort?: ReasoningEffort;
   /** The bridge task this belongs to (the Local AI CLI engine needs it; HTTP engines never receive it). */
   bridgeTaskId?: number;
+  /** The requirement's CLI (Local AI CLI only; HTTP engines never receive it). */
+  cli?: AgentCliId;
 }
 
 export interface EngineAdapter {

@@ -1,9 +1,11 @@
 import { AppDatabase } from '../db/index.js';
-import type { ReasoningEffort } from '@sp-kickstack/shared';
+import type { AgentCliId, ReasoningEffort } from '@sp-kickstack/shared';
 
 export interface AgentProfile {
   model: string | null;
   effort: ReasoningEffort | null;
+  /** The requirement's CLI for Local AI CLI runs (null = Settings default). */
+  cli: AgentCliId | null;
 }
 
 /**
@@ -15,7 +17,7 @@ export function resolveAgentProfile(db: AppDatabase, taskId: number): AgentProfi
   const row = db
     .prepare(`
       SELECT t.model_override, t.effort_override,
-             r.agent_model AS req_model, r.agent_effort AS req_effort,
+             r.agent_model AS req_model, r.agent_effort AS req_effort, r.agent_cli AS req_cli,
              w.agent_model AS ws_model, w.agent_effort AS ws_effort
       FROM bridge_tasks t
       JOIN requirements r ON r.id = t.req_id
@@ -23,19 +25,24 @@ export function resolveAgentProfile(db: AppDatabase, taskId: number): AgentProfi
       WHERE t.id = ?
     `)
     .get(taskId) as Record<string, string | null> | undefined;
-  if (!row) return { model: null, effort: null };
+  if (!row) return { model: null, effort: null, cli: null };
   return {
     model: row.model_override ?? row.req_model ?? row.ws_model ?? null,
     effort: (row.effort_override ?? row.req_effort ?? row.ws_effort ?? null) as ReasoningEffort | null,
+    cli: (row.req_cli ?? null) as AgentCliId | null,
   };
 }
 
 /** Fields for the engine create call: only what is set, so engines without support see no change. */
-export function engineProfile(profile: AgentProfile): { model?: string; effort?: ReasoningEffort } {
-  return { ...(profile.model ? { model: profile.model } : {}), ...(profile.effort ? { effort: profile.effort } : {}) };
+export function engineProfile(profile: AgentProfile): { model?: string; effort?: ReasoningEffort; cli?: AgentCliId } {
+  return {
+    ...(profile.model ? { model: profile.model } : {}),
+    ...(profile.effort ? { effort: profile.effort } : {}),
+    ...(profile.cli ? { cli: profile.cli } : {}),
+  };
 }
 
 /** What a run records: a manual project runs no agent, so no model or effort is claimed for it. */
 export function recordedProfile(profile: AgentProfile, engineType: string | undefined): AgentProfile {
-  return engineType === 'manual' ? { model: null, effort: null } : profile;
+  return engineType === 'manual' ? { model: null, effort: null, cli: null } : profile;
 }

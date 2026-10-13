@@ -14,7 +14,7 @@ for it. This page is for whoever sets up projects and engines.
    | **Workspace** | The workspace the project belongs to (`default` unless you made others). |
    | **Project Name** | A short name such as `backend` or `mobile`. It is saved in lower case. Agents use this name in `xticket create --to <project>`. |
    | **Repository Path (Absolute)** | The full path to the repository on this machine, for example `/Users/you/dev/backend`. |
-   | **Kind** | Backend, Frontend, Mobile or Other. Informational. |
+   | **Kind** | Backend, Frontend, Full-stack, Mobile or Other. Informational. |
    | **Engine Type** | **Local AI CLI** (the default), **Manual** or **Stoneforge** (see below). |
    | **Base Branch** | The branch work starts from and merges back into. The form uses `main` when you leave it empty. |
    | **Engine URL (Optional)** | Required for Stoneforge, for example `http://127.0.0.1:3457`. Leave empty for Manual. |

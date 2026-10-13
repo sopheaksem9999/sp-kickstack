@@ -105,7 +105,7 @@ export interface Workspace {
 export interface Project {
   name: string;
   workspace_id?: string;
-  kind: 'backend' | 'frontend' | 'mobile' | 'other';
+  kind: 'backend' | 'frontend' | 'full-stack' | 'mobile' | 'other';
   repo_path: string;
   engine_type: EngineType;
   engine_url?: string | null;

@@ -25,6 +25,12 @@ describe('Shared Schemas Validation', () => {
     expect(ProjectSchema.parse(base).test_command).toBeUndefined();
   });
 
+  it('accepts a full-stack project kind', () => {
+    const base = { name: 'app', repo_path: '/r', engine_type: 'local' as const };
+    expect(ProjectSchema.parse({ ...base, kind: 'full-stack' }).kind).toBe('full-stack');
+    expect(ProjectSchema.safeParse({ ...base, kind: 'fullstack-ish' }).success).toBe(false);
+  });
+
   it('validates a valid project schema', () => {
     const project = {
       name: 'backend',

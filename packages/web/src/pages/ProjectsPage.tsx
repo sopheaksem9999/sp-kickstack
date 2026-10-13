@@ -13,6 +13,7 @@ import {
 import { Project, EngineType } from '@sp-kickstack/shared';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { DEFAULT_ENGINE_TYPE, ENGINE_TYPE_OPTIONS } from '../lib/localEngineText.js';
+import { PROJECT_KIND_OPTIONS } from '../lib/projectKinds.js';
 import { toast } from 'sonner';
 import {
   RefreshCw,
@@ -33,6 +34,7 @@ import {
   Laptop,
   Server,
   Smartphone,
+  Layers,
   ExternalLink,
 } from 'lucide-react';
 import { Portal } from '../components/ui/portal.js';
@@ -61,7 +63,7 @@ export function ProjectsPage() {
     activeWorkspaceId || 'default'
   );
   const [name, setName] = useState('');
-  const [kind, setKind] = useState<'backend' | 'frontend' | 'mobile' | 'other'>('backend');
+  const [kind, setKind] = useState<Project['kind']>('backend');
   const [repoPath, setRepoPath] = useState('');
   const [engineType, setEngineType] = useState<EngineType>(DEFAULT_ENGINE_TYPE);
   const [engineUrl, setEngineUrl] = useState('');
@@ -77,7 +79,7 @@ export function ProjectsPage() {
   // Edit Project modal state
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editWorkspaceId, setEditWorkspaceId] = useState('');
-  const [editKind, setEditKind] = useState<'backend' | 'frontend' | 'mobile' | 'other'>('backend');
+  const [editKind, setEditKind] = useState<Project['kind']>('backend');
   const [editRepoPath, setEditRepoPath] = useState('');
   const [editEngineType, setEditEngineType] = useState<EngineType>('manual');
   const [editEngineUrl, setEditEngineUrl] = useState('');
@@ -132,6 +134,8 @@ export function ProjectsPage() {
         return <Laptop className="w-3.5 h-3.5 text-blue-400 shrink-0" />;
       case 'backend':
         return <Server className="w-3.5 h-3.5 text-emerald-400 shrink-0" />;
+      case 'full-stack':
+        return <Layers className="w-3.5 h-3.5 text-teal-400 shrink-0" />;
       case 'mobile':
         return <Smartphone className="w-3.5 h-3.5 text-purple-400 shrink-0" />;
       default:
@@ -1036,10 +1040,11 @@ export function ProjectsPage() {
                     onChange={(e) => setEditKind(e.target.value as any)}
                     className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee]"
                   >
-                    <option value="backend">Backend</option>
-                    <option value="frontend">Frontend</option>
-                    <option value="mobile">Mobile</option>
-                    <option value="other">Other</option>
+                    {PROJECT_KIND_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -1236,10 +1241,11 @@ export function ProjectsPage() {
                     onChange={(e) => setKind(e.target.value as any)}
                     className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee]"
                   >
-                    <option value="backend">Backend</option>
-                    <option value="frontend">Frontend</option>
-                    <option value="mobile">Mobile</option>
-                    <option value="other">Other</option>
+                    {PROJECT_KIND_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

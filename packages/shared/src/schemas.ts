@@ -128,7 +128,7 @@ export const UpdateWorkspaceInputSchema = z.object({
 export const ProjectSchema = z.object({
   name: z.string().min(1),
   workspace_id: z.string().default('default'),
-  kind: z.enum(['backend', 'frontend', 'mobile', 'other']).default('other'),
+  kind: z.enum(['backend', 'frontend', 'full-stack', 'mobile', 'other']).default('other'),
   repo_path: z.string().min(1),
   engine_type: EngineTypeSchema,
   engine_url: z.string().url().optional().nullable().or(z.literal('')),

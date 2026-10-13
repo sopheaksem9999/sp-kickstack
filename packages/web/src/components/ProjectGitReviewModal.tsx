@@ -37,6 +37,7 @@ import {
   Laptop,
   Server,
   Smartphone,
+  Layers,
   AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -224,6 +225,8 @@ export const ProjectGitReviewModal: React.FC<ProjectGitReviewModalProps> = ({
         return <Laptop className="w-3.5 h-3.5 text-blue-400 shrink-0" />;
       case 'backend':
         return <Server className="w-3.5 h-3.5 text-emerald-400 shrink-0" />;
+      case 'full-stack':
+        return <Layers className="w-3.5 h-3.5 text-teal-400 shrink-0" />;
       case 'mobile':
         return <Smartphone className="w-3.5 h-3.5 text-purple-400 shrink-0" />;
       default:

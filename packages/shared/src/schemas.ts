@@ -26,7 +26,7 @@ export const RequirementStatusSchema = z.enum([
 
 export const PrioritySchema = z.enum(['low', 'normal', 'high', 'urgent']);
 
-export const EngineTypeSchema = z.enum(['stoneforge', 'clinekanban', 'manual']);
+export const EngineTypeSchema = z.enum(['stoneforge', 'clinekanban', 'manual', 'local']);
 
 export const DoneMeansSchema = z.enum(['merged', 'pr_opened']);
 
@@ -365,6 +365,26 @@ export const AiCliSettingsSchema = z.object({
 });
 
 export type UpdateAiCliSettingsInput = z.input<typeof AiCliSettingsSchema>;
+
+/** AI CLIs that can edit code and run commands; the Local AI CLI engine runs one of them. */
+export const AGENT_CLI_IDS = ['claude-cli', 'agy-cli', 'codex-cli'] as const;
+
+const isAbsolutePath = (value: string) => value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value);
+
+export const LocalEngineSettingsSchema = z.object({
+  enabled: z.boolean().default(true),
+  agentCli: z.enum(['default', 'claude-cli', 'agy-cli', 'codex-cli']).default('default'),
+  maxParallel: z.number().int().min(1).max(8).default(2),
+  runTimeoutMinutes: z.number().int().min(5).max(480).default(60),
+  worktreeRoot: z
+    .string()
+    .trim()
+    .max(1000)
+    .refine((v) => v === '' || isAbsolutePath(v), 'must be an absolute path, or empty for the default')
+    .default(''),
+});
+
+export const UpdateLocalEngineSettingsInputSchema = LocalEngineSettingsSchema.partial().strict();
 
 export const DraftRequirementResultSchema = z.object({
   title: z.string(),

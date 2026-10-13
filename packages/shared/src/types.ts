@@ -23,7 +23,7 @@ export type RequirementStatus =
 
 export type Priority = 'low' | 'normal' | 'high' | 'urgent';
 
-export type EngineType = 'stoneforge' | 'clinekanban' | 'manual';
+export type EngineType = 'stoneforge' | 'clinekanban' | 'manual' | 'local';
 
 export type DoneMeans = 'merged' | 'pr_opened';
 
@@ -271,6 +271,45 @@ export interface AiCliSettings {
   codex?: SingleCliConfig;
   ollama: SingleCliConfig & { url: string };
   heuristic?: { enabled: boolean };
+}
+
+/** An AI CLI the Local AI CLI engine can run as a coding agent. */
+export type AgentCliId = 'claude-cli' | 'agy-cli' | 'codex-cli';
+
+/** Settings → AI & Local Engines → Local AI CLI engine. */
+export interface LocalEngineSettings {
+  /** Off: runs wait in QUEUED and the engine shows as down. */
+  enabled: boolean;
+  /** 'default' follows the AI default (falling back to the first usable agent CLI). */
+  agentCli: 'default' | AgentCliId;
+  /** Agents running at once, all workspaces together (1-8). */
+  maxParallel: number;
+  /** A run longer than this is stopped (5-480). */
+  runTimeoutMinutes: number;
+  /** Absolute folder for task worktrees; '' = <workspace>/agent-worktrees. */
+  worktreeRoot: string;
+}
+
+export interface LocalEngineCliStatus {
+  id: AgentCliId;
+  label: string;
+  installed: boolean;
+  enabled: boolean;
+  /** While a usage limit pauses this CLI: until when (ISO). */
+  pausedUntil: string | null;
+}
+
+/** Live state for the Settings card. */
+export interface LocalEngineStatus {
+  enabled: boolean;
+  /** The CLI the next run uses; null (with `problem`) when none can run. */
+  cli: AgentCliId | null;
+  problem: string | null;
+  clis: LocalEngineCliStatus[];
+  counts: { running: number; queued: number; held: number; rate_limited: number };
+  maxParallel: number;
+  /** The folder actually used (the default filled in). */
+  worktreeRoot: string;
 }
 
 export interface EngineRateLimitInfo {

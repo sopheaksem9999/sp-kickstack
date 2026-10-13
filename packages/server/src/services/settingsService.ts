@@ -6,6 +6,9 @@ import {
   AiCliSettingsSchema,
   IdeSettings,
   IdeSettingsSchema,
+  LocalEngineSettings,
+  LocalEngineSettingsSchema,
+  UpdateLocalEngineSettingsInputSchema,
   DEFAULT_NOTIFY_EVENTS,
   NotificationSettings,
   UpdateNotificationSettingsInputSchema,
@@ -107,6 +110,31 @@ export class SettingsService {
       ON CONFLICT(key) DO UPDATE SET value = excluded.value
     `).run(JSON.stringify(updated));
 
+    return updated;
+  }
+
+  public getLocalEngineSettings(): LocalEngineSettings {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'local_engine_settings'").get() as { value: string } | undefined;
+    if (row) {
+      try {
+        return LocalEngineSettingsSchema.parse(JSON.parse(row.value));
+      } catch {
+        // Fallback to defaults
+      }
+    }
+    return LocalEngineSettingsSchema.parse({});
+  }
+
+  /** Partial update; unknown fields and out-of-range values are refused (400 through the API). */
+  public updateLocalEngineSettings(updates: unknown): LocalEngineSettings {
+    const patch = UpdateLocalEngineSettingsInputSchema.parse(updates ?? {});
+    const updated = LocalEngineSettingsSchema.parse({ ...this.getLocalEngineSettings(), ...patch });
+    this.db
+      .prepare(`
+        INSERT INTO settings (key, value) VALUES ('local_engine_settings', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `)
+      .run(JSON.stringify(updated));
     return updated;
   }
 

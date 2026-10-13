@@ -214,8 +214,9 @@ and what needs you, without opening each requirement.
 - The most recently updated task is first.
 - A card shows the requirement id (a button), the priority when it is `urgent` or `high`, the
   project, `goal` or `ticket`, the branch, the status badge, the task title, the engine ID and
-  `Updated 5 minutes ago`. From the second start it also shows `Attempt <n>`. A RATE LIMITED task
-  shows when it resumes, and a stopped task shows its last error.
+  `Updated 5 minutes ago`. From the second try it also shows `Attempt <n>`, the number of automatic
+  dispatch tries; it starts again after a Retry. A RATE LIMITED task shows when it resumes, and a
+  stopped task shows its last error.
 
 ### Tabs
 

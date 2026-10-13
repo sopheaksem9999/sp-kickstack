@@ -194,7 +194,7 @@ export interface BridgeTask {
   /** Model / effort pinned for this task by Retry or Request changes (null = inherit). */
   model_override?: string | null;
   effort_override?: ReasoningEffort | null;
-  /** Engine dispatch attempts so far (the retry sweep and Retry restart it at 1). */
+  /** Engine dispatch attempts so far. The retry sweep adds one for each automatic try; only Retry and Request changes set it back to 1. */
   attempts?: number;
   created_at: string;
   updated_at: string;

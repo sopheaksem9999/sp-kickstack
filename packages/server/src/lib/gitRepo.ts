@@ -246,3 +246,12 @@ export function runShell(cwd: string, command: string, timeoutMs: number): Promi
     });
   });
 }
+
+/** Local and origin branch names (origin's without the prefix), each once. */
+export function listBranchNames(repo: string): string[] {
+  const refs = (prefix: string) =>
+    (tryGit(repo, ['for-each-ref', '--format=%(refname)', prefix]) || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  const local = refs('refs/heads').map((r) => r.slice('refs/heads/'.length));
+  const remote = refs('refs/remotes/origin').map((r) => r.slice('refs/remotes/origin/'.length)).filter((n) => n !== 'HEAD');
+  return [...new Set([...local, ...remote])];
+}

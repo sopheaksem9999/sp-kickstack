@@ -2,7 +2,8 @@ import { AppDatabase } from '../db/index.js';
 import { ProjectService } from './projectService.js';
 import { SettingsService } from './settingsService.js';
 import { BridgeTask, DEFAULT_TASK_BRANCH_PATTERN, Project, normalizeMergePolicy, renderTaskBranchPattern } from '@sp-kickstack/shared';
-import { createBranch, hasBranchesUnder, hasRemote, isGitWorkTree, pushCommit, resolveCommit } from '../lib/gitRepo.js';
+import { createBranch, hasBranchesUnder, hasRemote, isGitWorkTree, listBranchNames, pushCommit, resolveCommit } from '../lib/gitRepo.js';
+import { badRequest } from '../lib/httpError.js';
 import { oneLine } from '../lib/promptSafety.js';
 import { folderName } from '../localEngine/worktrees.js';
 
@@ -76,6 +77,32 @@ export class BranchService {
     const repo = project.repo_path;
     if (!isGitWorkTree(repo)) return false;
     return Boolean(resolveCommit(repo, `refs/heads/${name}`) || resolveCommit(repo, `refs/remotes/origin/${name}`) || hasBranchesUnder(repo, name));
+  }
+
+  /** Branches of the chosen repositories (one workspace) and which repositories have each; task branches excluded. */
+  public listBranches(projectNames: string[]): Array<{ name: string; projects: string[] }> {
+    const projects = projectNames.map((name) => {
+      const project = this.projectService.getProject(name);
+      if (!project) throw badRequest(`Unknown repository: ${name}`);
+      return project;
+    });
+    if (new Set(projects.map((p) => p.workspace_id || 'default')).size > 1) throw badRequest('Choose repositories of one workspace');
+    const taskBranches = new Set(
+      (this.db.prepare('SELECT DISTINCT branch FROM bridge_tasks WHERE branch IS NOT NULL').all() as Array<{ branch: string }>).map((r) => r.branch)
+    );
+    const found = new Map<string, Set<string>>();
+    for (const project of projects) {
+      if (!this.usesBranches(project)) continue;
+      for (const name of listBranchNames(project.repo_path)) {
+        if (taskBranches.has(name)) continue;
+        if (!found.has(name)) found.set(name, new Set());
+        found.get(name)!.add(project.name);
+      }
+    }
+    return [...found.entries()]
+      .map(([name, where]) => ({ name, projects: [...where].sort() }))
+      .sort((a, b) => b.projects.length - a.projects.length || a.name.localeCompare(b.name))
+      .slice(0, 200);
   }
 
   /** Only projects whose repo_path is the root of a git work tree get task branches. */

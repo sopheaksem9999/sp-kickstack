@@ -16,6 +16,11 @@ import { StoneforgeAdapter } from '../adapters/stoneforgeAdapter.js';
 import { makeRepo, headOf, commitOnBranch, sh } from '../testing/gitFixture.js';
 import { MergeGateService, tempDirPrefix } from './mergeGate.js';
 import { BranchService, pushesSettled } from './branchService.js';
+import { createApp } from '../api/app.js';
+import { testRequest } from '../api/testHelper.js';
+import { WorkspaceService } from './workspaceService.js';
+import { SseBroadcaster } from '../sse/broadcaster.js';
+import { Notifier } from '../notify/notifier.js';
 import { SettingsService } from './settingsService.js';
 import { prepareRetry } from './taskRetry.js';
 
@@ -873,5 +878,34 @@ describe('Pushing branches to origin', () => {
     const [goal] = await h.fanOutService.execute(other.id);
     await pushesSettled();
     expect(h.logText(goal.id)).not.toContain('origin');
+  });
+});
+
+describe('Branch list', () => {
+  let h: GitHarness;
+  beforeEach(() => { h = makeGitHarness(); });
+  afterEach(() => h.db.close());
+
+  it('lists the branches of the chosen repositories and where each exists, without task branches', async () => {
+    const req = h.createRequirement(['backend', 'mobile']);
+    await h.fanOutService.execute(req.id);
+    sh(h.backendRepo.repo, ['branch', 'release/1.3']);
+    sh(h.mobileRepo.repo, ['branch', 'feature/x']);
+    expect(h.branches.listBranches(['backend', 'mobile'])).toEqual([
+      { name: 'develop', projects: ['backend', 'mobile'] },
+      { name: 'feature/x', projects: ['mobile'] },
+      { name: 'release/1.3', projects: ['backend'] },
+    ]);
+    expect(() => h.branches.listBranches(['nope'])).toThrow('Unknown repository: nope');
+  });
+
+  it('answers GET /api/branches', async () => {
+    const app = createApp({
+      db: h.db, workspaceService: new WorkspaceService(h.db), projectService: h.projectService, requirementService: h.requirementService,
+      fanOutService: h.fanOutService, linkService: h.linkService, ticketService: h.ticketService, broadcaster: new SseBroadcaster(),
+      notifier: new Notifier(), branchService: h.branches,
+    });
+    expect((await testRequest(app, 'GET', '/api/branches?projects=backend')).body).toEqual([{ name: 'develop', projects: ['backend'] }]);
+    expect((await testRequest(app, 'GET', '/api/branches')).status).toBe(400);
   });
 });

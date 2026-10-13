@@ -53,11 +53,12 @@ import { QuestionService } from '../services/questionService.js';
 import { ReviewService } from '../services/reviewService.js';
 import { registerHumanLoopRoutes } from './humanLoopRoutes.js';
 import { registerLocalEngineRoutes } from './localEngineRoutes.js';
+import { BranchService } from '../services/branchService.js';
 import { handOverManualTasks } from '../localEngine/handover.js';
 import type { LocalEngineStatus } from '@sp-kickstack/shared';
 import { NotificationService } from '../notify/notificationService.js';
 import type { AdapterFactory } from '../services/fanOutService.js';
-import { HttpError } from '../lib/httpError.js';
+import { HttpError, badRequest } from '../lib/httpError.js';
 
 export interface AppDependencies {
   db: AppDatabase;
@@ -84,6 +85,7 @@ export interface AppDependencies {
   questionService?: QuestionService;
   reviewService?: ReviewService;
   notificationService?: NotificationService;
+  branchService?: BranchService;
   /** The in-server Local AI CLI engine (settings nudges it; Settings shows its status). */
   localEngine?: { status(): LocalEngineStatus; nudge(): void };
   /** DEMO_MODE=1: enables the simulated CLI runner, seeded logs and the demo "merge to main". */
@@ -104,6 +106,7 @@ export function createApp(deps: AppDependencies): Express {
   const app = express();
 
   const settingsService = deps.settingsService || new SettingsService(deps.db);
+  const branchService = deps.branchService || new BranchService(deps.db, deps.projectService, settingsService);
 
   const ideService =
     deps.ideService ||
@@ -374,6 +377,17 @@ export function createApp(deps: AppDependencies): Express {
       const updated = deps.requirementService.updateRunSettings(req.params.id, req.body ?? {});
       deps.broadcaster.broadcast({ type: 'requirement_updated', payload: updated });
       res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Target branch picker: branches of the chosen repositories (?projects=backend,frontend).
+  app.get('/api/branches', (req, res, next) => {
+    try {
+      const raw = req.query.projects;
+      if (typeof raw !== 'string' || !raw.trim()) throw badRequest('projects is required, e.g. ?projects=backend,frontend');
+      res.json(branchService.listBranches(raw.split(',').map((p) => p.trim()).filter(Boolean)));
     } catch (err) {
       next(err);
     }

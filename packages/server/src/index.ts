@@ -140,6 +140,7 @@ const app = createApp({
   settingsService,
   notificationService,
   localEngine,
+  branchService,
   demoMode: process.env.DEMO_MODE === '1',
   agentToken: process.env.AGENT_TOKEN || undefined,
   webhookSecret: process.env.GITHUB_WEBHOOK_SECRET || undefined,

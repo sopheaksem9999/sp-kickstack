@@ -59,6 +59,7 @@ import {
 } from 'lucide-react';
 import { LiveTaskLogsDrawer } from '../components/LiveTaskLogsDrawer.js';
 import { RequirementGitReviewButton } from '../components/RequirementGitReview.js';
+import { AiQaHeader } from '../components/AiQaHeader.js';
 import { MarkdownMessage } from '../components/MarkdownMessage.js';
 import { RadixSelect } from '../components/ui/select.js';
 import {
@@ -359,6 +360,12 @@ export function RequirementDetailPage() {
             req={req}
             tasks={graph?.tasks ?? []}
             className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold shadow-md shadow-blue-500/20 active:scale-[0.98] transition-all"
+          />
+
+          {/* AI QA: status of each repository's QA run, and Run AI QA (in QA) */}
+          <AiQaHeader
+            req={req}
+            buttonClassName="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white rounded-lg text-xs font-bold shadow-md shadow-violet-500/20 active:scale-[0.98] transition-all disabled:opacity-50"
           />
 
           {/* Merge gate: merge every task branch, run the project tests, push, move to QA */}

@@ -26,6 +26,7 @@ import { useDemoMode } from '../lib/useDemoMode.js';
 import { StatusBadge } from './StatusBadge.js';
 import { RequestChangesButton, TaskReviewComments } from './ReviewComments.js';
 import { RequirementGitReviewButton } from './RequirementGitReview.js';
+import { AiQaHeader } from './AiQaHeader.js';
 import { BridgeTask, RequirementStatus, BranchMergePolicy, Priority, UpdateRequirementInput } from '@sp-kickstack/shared';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { toast } from 'sonner';
@@ -569,6 +570,9 @@ export function RequirementDetailSheet({
 
                 {/* What the requirement's branches change, per repository */}
                 <RequirementGitReviewButton req={req} tasks={graph?.tasks ?? []} />
+
+                {/* AI QA: status of each repository's QA run, and Run AI QA (in QA) */}
+                <AiQaHeader req={req} />
 
                 {/* Merge gate: merge every task branch, run the project tests, push, move to QA */}
                 {mergeAction === 'merge' && (

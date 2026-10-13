@@ -14,6 +14,7 @@ import { hasPin, requestChangesProfile } from '../lib/agentProfile.js';
 import type { ProfileValue } from '../lib/agentProfile.js';
 import { AgentProfilePicker } from './AgentProfilePicker.js';
 import { MarkdownMessage } from './MarkdownMessage.js';
+import { SEVERITY_STYLE, qaBadge } from '../lib/aiQa.js';
 import { RichCommentEditor, type PendingFile } from './RichCommentEditor.js';
 import { TaskChangedFiles } from './TaskChangedFiles.js';
 
@@ -107,6 +108,11 @@ export function TaskReviewComments({ req, task }: { req: Requirement; task: Brid
               {c.state}
               {c.round ? ` · round ${c.round}` : ''}
             </span>
+            {qaBadge(c) && (
+              <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${SEVERITY_STYLE[c.severity ?? 'minor']}`} title="Found by the AI QA agent">
+                {qaBadge(c)}
+              </span>
+            )}
             <span className="flex-1" />
             {c.state !== 'resolved' ? (
               <button

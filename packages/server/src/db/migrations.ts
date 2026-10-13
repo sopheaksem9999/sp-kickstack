@@ -172,6 +172,44 @@ export const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 8,
+    name: 'Local AI CLI engine runs',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS local_runs (
+          id                  TEXT PRIMARY KEY,
+          bridge_task_id      INTEGER NOT NULL,
+          project             TEXT NOT NULL,
+          title               TEXT NOT NULL,
+          body_md             TEXT NOT NULL,
+          model               TEXT,
+          effort              TEXT,
+          cli                 TEXT,
+          status              TEXT NOT NULL DEFAULT 'queued',
+          notes_md            TEXT NOT NULL DEFAULT '',
+          continuation        INTEGER NOT NULL DEFAULT 0,
+          worktree            TEXT,
+          start_sha           TEXT,
+          end_sha             TEXT,
+          pid                 INTEGER,
+          pid_started_at      TEXT,
+          exit_code           INTEGER,
+          error               TEXT,
+          resume_at           TEXT,
+          interruptions       INTEGER NOT NULL DEFAULT 0,
+          hold_requested_at   TEXT,
+          cancel_requested_at TEXT,
+          created_at          TEXT NOT NULL,
+          started_at          TEXT,
+          finished_at         TEXT,
+          updated_at          TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_local_runs_status ON local_runs(status);
+        CREATE INDEX IF NOT EXISTS idx_local_runs_task ON local_runs(bridge_task_id);
+      `);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

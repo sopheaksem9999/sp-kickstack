@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CheckCircle2, MessageSquare, RotateCcw, Send, Trash2 } from 'lucide-react';
+import { CheckCircle2, MessageSquare, RotateCcw, Send, Sparkles, Trash2, Undo2 } from 'lucide-react';
 import type { BridgeTask, Requirement, ReviewComment } from '@sp-kickstack/shared';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog.js';
-import { addReviewComment, deleteReviewComment, fetchReviewComments, requestChanges, updateReviewComment } from '../lib/humanLoopApi.js';
-import { commentLocation, requestChangesOutcome, requestChangesState, reviewableTasks, taskReviewView } from '../lib/reviewActions.js';
+import { addReviewComment, deleteReviewComment, fetchReviewComments, improveReviewComment, requestChanges, updateReviewComment } from '../lib/humanLoopApi.js';
+import { applyImprovedComment, commentLocation, requestChangesOutcome, requestChangesState, reviewableTasks, taskReviewView } from '../lib/reviewActions.js';
+import type { CommentDraft } from '../lib/reviewActions.js';
 import { hasPin, requestChangesProfile } from '../lib/agentProfile.js';
 import type { ProfileValue } from '../lib/agentProfile.js';
 import { AgentProfilePicker } from './AgentProfilePicker.js';
@@ -39,18 +40,39 @@ export function TaskReviewComments({ req, task }: { req: Requirement; task: Brid
   const [filePath, setFilePath] = useState('');
   const [line, setLine] = useState('');
   const [body, setBody] = useState('');
+  // The text before "Improve with AI", for Undo; and which AI rewrote it.
+  const [undo, setUndo] = useState<CommentDraft | null>(null);
+  const [aiNote, setAiNote] = useState<string | null>(null);
+  const draftInput = () => ({
+    task_id: task.id,
+    body: body.trim(),
+    file_path: filePath.trim() || undefined,
+    line: filePath.trim() && line.trim() ? Number(line) : undefined,
+  });
+  const show = (d: CommentDraft) => {
+    setBody(d.body);
+    setFilePath(d.filePath);
+    setLine(d.line);
+  };
+
+  const improve = useMutation({
+    mutationFn: () => improveReviewComment(req.id, draftInput()),
+    onSuccess: (result) => {
+      const before = { body, filePath, line };
+      setUndo(before);
+      show(applyImprovedComment(before, result));
+      setAiNote(`Improved by ${result.provider_used}. Check it, then Add comment.`);
+    },
+    onError: fail,
+  });
 
   const add = useMutation({
-    mutationFn: () =>
-      addReviewComment(req.id, {
-        task_id: task.id,
-        body: body.trim(),
-        file_path: filePath.trim() || undefined,
-        line: filePath.trim() && line.trim() ? Number(line) : undefined,
-      }),
+    mutationFn: () => addReviewComment(req.id, draftInput()),
     onSuccess: () => {
       setBody('');
       setLine('');
+      setUndo(null);
+      setAiNote(null);
       refresh();
     },
     onError: fail,
@@ -141,20 +163,49 @@ export function TaskReviewComments({ req, task }: { req: Requirement; task: Brid
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            rows={2}
-            maxLength={4000}
+            rows={Math.min(12, Math.max(2, body.split('\n').length))}
+            maxLength={20000}
+            disabled={improve.isPending}
             aria-label={`Comment for ${task.project}`}
-            placeholder="What should the agent change?"
-            className={`w-full ${input}`}
+            placeholder="What should the agent change? You can paste an error from the logs and use Improve with AI."
+            className={`w-full ${input} disabled:opacity-60`}
           />
-          <button
-            type="button"
-            disabled={!body.trim() || add.isPending}
-            onClick={() => add.mutate()}
-            className="px-2.5 py-1 rounded-lg bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[11px] font-bold disabled:opacity-40"
-          >
-            Add comment
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              disabled={!body.trim() || body.trim().length > 4000 || add.isPending || improve.isPending}
+              onClick={() => add.mutate()}
+              title={body.trim().length > 4000 ? 'A comment can be up to 4000 characters; shorten it or use Improve with AI' : undefined}
+              className="px-2.5 py-1 rounded-lg bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[11px] font-bold disabled:opacity-40"
+            >
+              Add comment
+            </button>
+            <button
+              type="button"
+              disabled={!body.trim() || improve.isPending}
+              onClick={() => improve.mutate()}
+              title="Rewrite this into a clear point for the agent, using the requirement and the code on the task branch (AI CLI from Settings)"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#7b68ee]/40 text-[#7b68ee] dark:text-purple-300 text-[11px] font-bold hover:bg-[#7b68ee]/10 disabled:opacity-40"
+            >
+              <Sparkles className="w-3 h-3" />
+              <span>{improve.isPending ? 'Improving…' : 'Improve with AI'}</span>
+            </button>
+            {undo && !improve.isPending && (
+              <button
+                type="button"
+                onClick={() => {
+                  show(undo);
+                  setUndo(null);
+                  setAiNote(null);
+                }}
+                className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+              >
+                <Undo2 className="w-3 h-3" />
+                <span>Undo</span>
+              </button>
+            )}
+          </div>
+          {aiNote && <p className="text-[10px] text-slate-500 dark:text-slate-400">{aiNote}</p>}
         </div>
       )}
     </div>

@@ -522,6 +522,14 @@ export interface ReviewComment {
   sent_at: string | null;
 }
 
+/** "Improve with AI": the rewritten comment, and the file/line it names (null = keep the reviewer's). */
+export interface ImproveReviewCommentResult {
+  body: string;
+  file_path: string | null;
+  line: number | null;
+  provider_used: string;
+}
+
 export interface RequestChangesResult {
   round: number;
   results: Array<{ taskId: number; ok: boolean; status?: string; error?: string }>;

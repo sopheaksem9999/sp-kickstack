@@ -1,4 +1,4 @@
-import type { BridgeTask, Requirement, RequestChangesResult, ReviewComment } from '@sp-kickstack/shared';
+import type { BridgeTask, ImproveReviewCommentResult, Requirement, RequestChangesResult, ReviewComment } from '@sp-kickstack/shared';
 
 const REVIEW_STATUSES = ['in_review', 'qa'];
 
@@ -20,6 +20,21 @@ export function taskReviewView(
   const own = comments.filter((c) => c.task_id === task.id);
   const canAdd = REVIEW_STATUSES.includes(req.status);
   return { show: canAdd || own.length > 0, canAdd, comments: own };
+}
+
+/** What is typed in a task card's comment box. */
+export interface CommentDraft {
+  body: string;
+  filePath: string;
+  line: string;
+}
+
+/** The AI's rewrite replaces the text; its file and line fill only what the reviewer left empty. */
+export function applyImprovedComment(draft: CommentDraft, result: ImproveReviewCommentResult): CommentDraft {
+  const lineOf = (line: number | null) => (line ? String(line) : '');
+  if (!draft.filePath.trim()) return { body: result.body, filePath: result.file_path ?? '', line: result.file_path ? lineOf(result.line) : '' };
+  const sameFile = draft.filePath.trim() === result.file_path;
+  return { body: result.body, filePath: draft.filePath, line: !draft.line && sameFile ? lineOf(result.line) : draft.line };
 }
 
 /** "src/a.ts:4", "src/a.ts" or "General". */

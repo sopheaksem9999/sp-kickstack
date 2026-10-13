@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { commentLocation, requestChangesOutcome, requestChangesState, reviewableTasks, taskReviewView } from './reviewActions';
+import { applyImprovedComment, commentLocation, requestChangesOutcome, requestChangesState, reviewableTasks, taskReviewView } from './reviewActions';
 
 const c = (task_id: number, state: string) => ({ task_id, state }) as any;
 
@@ -48,5 +48,13 @@ describe('review actions', () => {
     expect(taskReviewView({ status: 'in_progress' }, goal, comments)).toEqual({ show: true, canAdd: false, comments: [comments[0]] });
     expect(taskReviewView({ status: 'in_progress' }, goal, [])).toMatchObject({ show: false });
     expect(taskReviewView({ status: 'in_review' }, { id: 7, role: 'waiting', status: 'held' } as any, [])).toMatchObject({ show: false });
+  });
+
+  it("puts the AI's rewrite in the comment box, and fills file and line only where the reviewer left them empty", () => {
+    const result = { body: 'Better', file_path: 'src/a.ts', line: 12, provider_used: 'Claude Code (sonnet)' };
+    expect(applyImprovedComment({ body: 'raw', filePath: '', line: '' }, result)).toEqual({ body: 'Better', filePath: 'src/a.ts', line: '12' });
+    expect(applyImprovedComment({ body: 'raw', filePath: 'src/a.ts', line: '' }, result)).toEqual({ body: 'Better', filePath: 'src/a.ts', line: '12' });
+    expect(applyImprovedComment({ body: 'raw', filePath: 'src/b.ts', line: '3' }, result)).toEqual({ body: 'Better', filePath: 'src/b.ts', line: '3' });
+    expect(applyImprovedComment({ body: 'raw', filePath: '', line: '' }, { ...result, file_path: null, line: null })).toEqual({ body: 'Better', filePath: '', line: '' });
   });
 });

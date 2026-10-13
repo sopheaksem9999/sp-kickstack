@@ -6,6 +6,8 @@ import type {
   BridgeEvent,
   BridgeTask,
   CreateReviewCommentInput,
+  ImproveReviewCommentInput,
+  ImproveReviewCommentResult,
   NotificationSettings,
   NotificationTestResult,
   QuestionStatus,
@@ -51,6 +53,11 @@ export function fetchReviewComments(reqId: string): Promise<ReviewComment[]> {
 
 export function addReviewComment(reqId: string, input: CreateReviewCommentInput): Promise<ReviewComment> {
   return request(`${BASE}/requirements/${encodeURIComponent(reqId)}/comments`, send('POST', input));
+}
+
+/** "Improve with AI": the draft rewritten by the AI CLI from Settings; nothing is saved. */
+export function improveReviewComment(reqId: string, input: ImproveReviewCommentInput): Promise<ImproveReviewCommentResult> {
+  return request(`${BASE}/requirements/${encodeURIComponent(reqId)}/comments/improve`, send('POST', input));
 }
 
 export function updateReviewComment(id: number, input: UpdateReviewCommentInput): Promise<ReviewComment> {

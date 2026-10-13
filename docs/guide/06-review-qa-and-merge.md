@@ -44,8 +44,16 @@ section: in the side panel under **Per-Repo Agent Engines**, and on the full pag
 1. Go to the card of the repository you tested (for example **BACKEND**).
 2. Optional: enter a **File** path relative to the repository (for example
    `src/api/users.ts`) and a **Line** number. A line needs a file.
-3. Write the comment in the box ("What should the agent change?"), up to 4000 characters.
-4. Click **Add comment**. Repeat in other cards as needed.
+3. Write the comment in the box ("What should the agent change?"). A comment can be up to 4000
+   characters. You can also paste an error or log lines as they are.
+4. Optional: click **Improve with AI**. It rewrites your text into one clear point for the agent:
+   the problem, the key error lines as **Evidence**, what you **Expected**, and **Where**. If you
+   left **File** and **Line** empty and the error names them, it fills them in. It reads the
+   requirement, the files changed on the task branch, and the code around the file and line (also
+   files named in a pasted stack trace). It uses the AI CLI from Settings → AI & Local Engines
+   (Claude Code, AGY or Codex), as text only: it changes no files. It can take up to 2 minutes.
+   Check the result; **Undo** brings your text back. Nothing is saved yet.
+5. Click **Add comment**. Repeat in other cards as needed.
 
 Each comment shows its location (`src/api/users.ts:42`, `src/api/users.ts` or `General`) and its
 state:

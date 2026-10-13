@@ -1,8 +1,9 @@
-import path from 'node:path';
 import { AppDatabase } from '../db/index.js';
 import {
   CreateReviewCommentInput,
   CreateReviewCommentInputSchema,
+  ImproveReviewCommentInput,
+  ImproveReviewCommentResult,
   RequestChangesInput,
   RequestChangesInputSchema,
   RequestChangesResult,
@@ -19,6 +20,7 @@ import type { AdapterFactory, FanOutService } from './fanOutService.js';
 import type { TicketService } from './ticketService.js';
 import type { RequirementService } from './requirementService.js';
 import { rerunTask, TaskRow } from './taskRetry.js';
+import { ReviewAssistService, isSafeRelativePath } from './reviewAssist.js';
 
 /** Task states that can be sent back to their agent. */
 const REVIEWABLE = ['in_review', 'done'];
@@ -41,10 +43,6 @@ function toComment(row: CommentRow): ReviewComment {
   };
 }
 
-function isSafeRelativePath(p: string): boolean {
-  return !path.isAbsolute(p) && !p.startsWith('\\') && !p.split(/[\\/]/).includes('..');
-}
-
 /** The prompt note for one review round. */
 export function reviewNote(round: number, branch: string | null | undefined, comments: ReviewComment[]): string {
   const where = branch ? `Keep working on \`${branch}\`` : 'Keep working on the same code';
@@ -58,14 +56,24 @@ export function reviewNote(round: number, branch: string | null | undefined, com
 
 /** Reviewer comments, "Request changes" (a new run on the same branch) and notes to running agents. */
 export class ReviewService {
+  private assist: ReviewAssistService;
+
   constructor(
     private db: AppDatabase,
     private requirementService: RequirementService,
     private fanOutService: FanOutService,
     private ticketService: TicketService,
     private getAdapter: AdapterFactory,
-    private emit?: ReviewEmit
-  ) {}
+    private emit?: ReviewEmit,
+    assist?: ReviewAssistService
+  ) {
+    this.assist = assist ?? new ReviewAssistService(db, requirementService);
+  }
+
+  /** "Improve with AI": the reviewer's draft rewritten for the agent; nothing is saved. */
+  public improveComment(reqId: string, input: ImproveReviewCommentInput): Promise<ImproveReviewCommentResult> {
+    return this.assist.improve(reqId, input);
+  }
 
   public listComments(reqId: string): ReviewComment[] {
     const rows = this.db

@@ -81,6 +81,15 @@ export function registerHumanLoopRoutes(app: Express, deps: HumanLoopRouteDeps) 
     }
   });
 
+  // "Improve with AI": a rewrite of the reviewer's draft; nothing is saved.
+  app.post('/api/requirements/:id/comments/improve', async (req, res, next) => {
+    try {
+      res.json(await reviewService.improveComment(req.params.id, req.body ?? {}));
+    } catch (err) {
+      next(err);
+    }
+  });
+
   app.patch('/api/comments/:id', (req, res, next) => {
     try {
       res.json(reviewService.updateComment(Number(req.params.id), req.body ?? {}));

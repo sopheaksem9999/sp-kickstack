@@ -303,6 +303,14 @@ export const CreateReviewCommentInputSchema = z.object({
   line: z.number().int().positive().optional(),
 });
 
+/** A reviewer's draft (often a pasted error) for "Improve with AI"; nothing is saved. */
+export const ImproveReviewCommentInputSchema = z.object({
+  task_id: z.number().int().positive(),
+  body: z.string().trim().min(1).max(20000),
+  file_path: z.string().trim().min(1).max(300).optional(),
+  line: z.number().int().positive().optional(),
+});
+
 export const UpdateReviewCommentInputSchema = z
   .object({
     body: z.string().trim().min(1).max(4000).optional(),
@@ -336,6 +344,7 @@ export type AskQuestionInput = z.input<typeof AskQuestionInputSchema>;
 export type AnswerQuestionInput = z.input<typeof AnswerQuestionInputSchema>;
 export type CreateReviewCommentInput = z.input<typeof CreateReviewCommentInputSchema>;
 export type UpdateReviewCommentInput = z.input<typeof UpdateReviewCommentInputSchema>;
+export type ImproveReviewCommentInput = z.input<typeof ImproveReviewCommentInputSchema>;
 export type RequestChangesInput = z.input<typeof RequestChangesInputSchema>;
 export type SendTaskNoteInput = z.input<typeof SendTaskNoteInputSchema>;
 export type AgentProfileInput = z.input<typeof AgentProfileInputSchema>;

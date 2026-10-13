@@ -106,6 +106,20 @@ export function createBranch(repo: string, name: string, startSha: string): void
   runGit(repo, ['branch', '--', name, startSha]);
 }
 
+/** Files changed on `branch` since it left `base` (`base...branch`), at most `limit`. */
+export function changedFiles(repo: string, base: string, branch: string, limit = 60): string[] {
+  return (tryGit(repo, ['diff', '--name-only', `${base}...${branch}`]) ?? '')
+    .split('\n')
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+/** A file's content at `ref`, or null when it does not exist there. */
+export function readFileAt(repo: string, ref: string, file: string): string | null {
+  return tryGit(repo, ['show', `${ref}:${file}`]);
+}
+
 /** A branch living under `<name>/` locally or on origin (git then refuses a branch named `name`), or null. */
 export function branchUnder(repo: string, name: string): string | null {
   const ref = tryGit(repo, ['for-each-ref', '--count=1', '--format=%(refname)', `refs/heads/${name}/`, `refs/remotes/origin/${name}/`])?.trim();

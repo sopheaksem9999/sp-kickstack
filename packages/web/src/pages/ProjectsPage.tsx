@@ -12,6 +12,7 @@ import {
 } from '../lib/api.js';
 import { Project, EngineType } from '@sp-kickstack/shared';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
+import { ENGINE_TYPE_OPTIONS } from '../lib/localEngineText.js';
 import { toast } from 'sonner';
 import {
   RefreshCw,
@@ -1051,9 +1052,11 @@ export function ProjectsPage() {
                     onChange={(e) => setEditEngineType(e.target.value as EngineType)}
                     className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee]"
                   >
-                    <option value="manual">Manual</option>
-                    <option value="stoneforge">Stoneforge</option>
-                    <option value="command">Command</option>
+                    {ENGINE_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -1249,9 +1252,11 @@ export function ProjectsPage() {
                     onChange={(e) => setEngineType(e.target.value as EngineType)}
                     className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee]"
                   >
-                    <option value="manual">Manual</option>
-                    <option value="stoneforge">Stoneforge</option>
-                    <option value="command">Command</option>
+                    {ENGINE_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>

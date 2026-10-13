@@ -43,6 +43,7 @@ import {
   Activity,
 } from 'lucide-react';
 import { NotificationSettingsSection } from '../components/NotificationSettingsSection.js';
+import { LocalEngineSettingsSection } from '../components/LocalEngineSettingsSection.js';
 import { BranchMergePolicy, ReasoningEffort, EngineId } from '@sp-kickstack/shared';
 
 export interface ModelPreset {
@@ -2011,6 +2012,21 @@ export function SettingsPage() {
                   <span>{updateAiMutation.isPending ? 'Saving...' : 'Save AI Configuration'}</span>
                 </button>
               </div>
+            </div>
+          )}
+
+          {activeTab === 'ai' && (
+            <div className="bg-white dark:bg-[#242424] border border-slate-200 dark:border-[#2d2d2d] rounded-2xl p-6 shadow-sm space-y-4 animate-in fade-in-50 duration-150">
+              <div className="flex items-center gap-2 pb-3 border-b border-slate-100 dark:border-[#2d2d2d]">
+                <Bot className="w-5 h-5 text-[#7b68ee]" />
+                <div>
+                  <h2 className="text-sm font-black uppercase tracking-wider text-slate-900 dark:text-white">Local AI CLI engine</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Runs fan-out tasks with an AI CLI on this PC, each in its own copy of the repository.
+                  </p>
+                </div>
+              </div>
+              <LocalEngineSettingsSection />
             </div>
           )}
 

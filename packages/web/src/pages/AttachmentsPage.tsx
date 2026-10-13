@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { CreateSharedAssetInput } from '@sp-kickstack/shared';
 import { WorkspaceSelect } from '../components/WorkspaceSelect.js';
+import { Portal } from '../components/ui/portal.js';
 
 export type AttachmentsTab = 'ticket' | 'shared';
 export const VALID_ATTACHMENTS_TABS: AttachmentsTab[] = ['ticket', 'shared'];
@@ -525,7 +526,8 @@ export function AttachmentsPage() {
 
       {/* Upload Shared Asset Modal */}
       {isUploadOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <Portal>
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white dark:bg-[#181920] border border-slate-200 dark:border-[#262732] rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in fade-in-0 zoom-in-95 duration-200">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -634,6 +636,7 @@ export function AttachmentsPage() {
             </form>
           </div>
         </div>
+      </Portal>
       )}
     </div>
   );

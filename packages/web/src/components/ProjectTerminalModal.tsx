@@ -22,6 +22,7 @@ import {
   fetchActiveTerminals,
   BASE,
 } from '../lib/api.js';
+import { Portal } from './ui/portal.js';
 
 interface ProjectTerminalModalProps {
   isOpen: boolean;
@@ -304,7 +305,8 @@ export const ProjectTerminalModal: React.FC<ProjectTerminalModalProps> = ({
   const isRunning = terminalStatus?.running || activeTerminals.includes(activeProject);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-150 p-2 sm:p-4">
+    <Portal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-150 p-2 sm:p-4">
       <div className="flex flex-col w-full h-[92vh] max-w-[1550px] bg-[#0f1015] border border-slate-800 rounded-2xl shadow-2xl overflow-hidden font-mono text-xs">
         {/* ========================================================= */}
         {/* Top Header Bar */}
@@ -520,5 +522,6 @@ export const ProjectTerminalModal: React.FC<ProjectTerminalModalProps> = ({
         </div>
       </div>
     </div>
+  </Portal>
   );
 };

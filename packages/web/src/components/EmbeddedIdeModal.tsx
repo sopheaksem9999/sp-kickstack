@@ -21,6 +21,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Portal } from './ui/portal.js';
 
 interface EmbeddedIdeModalProps {
   isOpen: boolean;
@@ -110,7 +111,8 @@ export const EmbeddedIdeModal: React.FC<EmbeddedIdeModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm animate-in fade-in duration-200 p-2 sm:p-4">
+    <Portal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm animate-in fade-in duration-200 p-2 sm:p-4">
       <div className="flex flex-col w-full h-[95vh] max-w-[1700px] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
         {/* Top Header Bar */}
         <div className="flex flex-wrap items-center justify-between px-4 py-2.5 bg-slate-950 border-b border-slate-800/80 gap-3">
@@ -325,5 +327,6 @@ export const EmbeddedIdeModal: React.FC<EmbeddedIdeModalProps> = ({
         </div>
       </div>
     </div>
+  </Portal>
   );
 };

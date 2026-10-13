@@ -40,6 +40,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Portal } from './ui/portal.js';
 
 interface ProjectGitReviewModalProps {
   isOpen: boolean;
@@ -286,7 +287,8 @@ export const ProjectGitReviewModal: React.FC<ProjectGitReviewModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md animate-in fade-in duration-200 p-2 sm:p-4">
+    <Portal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md animate-in fade-in duration-200 p-2 sm:p-4">
       <div className="flex flex-col w-full h-[96vh] max-w-[1850px] bg-slate-950 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
         {/* ========================================================= */}
         {/* Top Header Bar */}
@@ -1025,5 +1027,6 @@ export const ProjectGitReviewModal: React.FC<ProjectGitReviewModalProps> = ({
         </div>
       </div>
     </div>
+  </Portal>
   );
 };

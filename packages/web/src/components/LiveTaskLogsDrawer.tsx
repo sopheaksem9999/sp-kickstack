@@ -17,6 +17,7 @@ import { BridgeTask } from '@sp-kickstack/shared';
 import { fetchTaskLogs, runTaskCli } from '../lib/api.js';
 import { StatusBadge } from './StatusBadge.js';
 import { useDemoMode } from '../lib/useDemoMode.js';
+import { Portal } from './ui/portal.js';
 
 interface LiveTaskLogsDrawerProps {
   task: BridgeTask | null;
@@ -79,7 +80,13 @@ export function LiveTaskLogsDrawer({ task, isOpen, onClose }: LiveTaskLogsDrawer
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <Portal>
+      <div
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+        className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
+      >
       <div className="w-full max-w-3xl h-full bg-[#12131a] text-slate-100 shadow-2xl flex flex-col border-l border-[#272938]">
         {/* Drawer Header */}
         <div className="p-4 border-b border-[#272938] bg-[#161722] flex items-center justify-between">
@@ -257,5 +264,6 @@ export function LiveTaskLogsDrawer({ task, isOpen, onClose }: LiveTaskLogsDrawer
         </div>
       </div>
     </div>
+  </Portal>
   );
 }

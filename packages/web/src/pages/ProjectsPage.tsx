@@ -33,6 +33,7 @@ import {
   Smartphone,
   ExternalLink,
 } from 'lucide-react';
+import { Portal } from '../components/ui/portal.js';
 import { WorkspaceSelect } from '../components/WorkspaceSelect.js';
 import { ProjectGitReviewView } from '../components/ProjectGitReviewView.js';
 import { ProjectTerminalView } from '../components/ProjectTerminalView.js';
@@ -716,7 +717,8 @@ export function ProjectsPage() {
       {/* 1. Open Project Details Modal                            */}
       {/* ======================================================== */}
       {selectedProject && (
-        <div className="fixed inset-0 z-50 bg-black/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+        <Portal>
+          <div className="fixed inset-0 z-50 bg-black/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-[#2d2d2d] rounded-2xl p-6 w-full max-w-xl space-y-5 shadow-2xl">
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-3.5 border-b border-slate-200 dark:border-[#2d2d2d]">
@@ -902,13 +904,15 @@ export function ProjectsPage() {
             </div>
           </div>
         </div>
+      </Portal>
       )}
 
       {/* ======================================================== */}
       {/* 2. Edit Project Modal Dialog                             */}
       {/* ======================================================== */}
       {editingProject && (
-        <div className="fixed inset-0 z-50 bg-black/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+        <Portal>
+          <div className="fixed inset-0 z-50 bg-black/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-[#2d2d2d] rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-[#2d2d2d]">
               <h3 className="text-base font-black text-slate-900 dark:text-white">
@@ -1057,13 +1061,15 @@ export function ProjectsPage() {
             </form>
           </div>
         </div>
+      </Portal>
       )}
 
       {/* ======================================================== */}
       {/* 3. Delete Project Modal Dialog                           */}
       {/* ======================================================== */}
       {deletingProject && (
-        <div className="fixed inset-0 z-50 bg-black/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+        <Portal>
+          <div className="fixed inset-0 z-50 bg-black/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-[#2d2d2d] rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-2xl">
             <h3 className="text-base font-bold text-slate-900 dark:text-white">Delete Project</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
@@ -1089,13 +1095,15 @@ export function ProjectsPage() {
             </div>
           </div>
         </div>
+      </Portal>
       )}
 
       {/* ======================================================== */}
       {/* 4. Create Project Modal Dialog                           */}
       {/* ======================================================== */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+        <Portal>
+          <div className="fixed inset-0 z-50 bg-black/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-[#2d2d2d] rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-[#2d2d2d]">
               <h3 className="text-base font-black text-slate-900 dark:text-white">Register Project</h3>
@@ -1254,6 +1262,7 @@ export function ProjectsPage() {
             </form>
           </div>
         </div>
+      </Portal>
       )}
 
     </div>

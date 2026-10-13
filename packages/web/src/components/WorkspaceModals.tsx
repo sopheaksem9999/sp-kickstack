@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { X, Plus, BookOpen, Save } from 'lucide-react';
 import { AgentProfilePicker } from './AgentProfilePicker.js';
 import type { ProfileValue } from '../lib/agentProfile.js';
+import { Portal } from './ui/portal.js';
 
 interface CreateWorkspaceModalProps {
   isOpen: boolean;
@@ -74,7 +75,8 @@ export function CreateWorkspaceModal({ isOpen, onClose }: CreateWorkspaceModalPr
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+    <Portal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-150">
       <div className="bg-white dark:bg-[#1e1f26] border border-slate-200 dark:border-[#2e303d] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="p-4 border-b border-slate-200 dark:border-[#262732] flex items-center justify-between bg-slate-50/70 dark:bg-[#181920]">
           <div className="flex items-center gap-2.5">
@@ -181,6 +183,7 @@ export function CreateWorkspaceModal({ isOpen, onClose }: CreateWorkspaceModalPr
         </form>
       </div>
     </div>
+  </Portal>
   );
 }
 
@@ -230,7 +233,8 @@ export function WorkspaceRulesModal({ isOpen, onClose }: WorkspaceRulesModalProp
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+    <Portal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-150">
       <div className="bg-white dark:bg-[#1e1f26] border border-slate-200 dark:border-[#2e303d] rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="p-4 border-b border-slate-200 dark:border-[#262732] flex items-center justify-between bg-slate-50/70 dark:bg-[#181920]">
           <div className="flex items-center gap-2.5">
@@ -320,5 +324,6 @@ export function WorkspaceRulesModal({ isOpen, onClose }: WorkspaceRulesModalProp
         </form>
       </div>
     </div>
+  </Portal>
   );
 }

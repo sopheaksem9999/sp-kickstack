@@ -32,6 +32,7 @@ import { describeProfile, hasPin, profileApplies } from '../lib/agentProfile.js'
 import { BridgeTask, RequirementStatus, BranchMergePolicy } from '@sp-kickstack/shared';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { toast } from 'sonner';
+import { Portal } from '../components/ui/portal.js';
 import {
   ArrowLeft,
   Play,
@@ -873,7 +874,8 @@ export function RequirementDetailPage() {
 
       {/* Edit Projects Modal */}
       {isEditingProjects && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+        <Portal>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="w-full max-w-md bg-white dark:bg-[#1a1b24] border border-slate-200 dark:border-[#2d2f3e] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="px-5 py-4 border-b border-slate-100 dark:border-[#262734] flex items-center justify-between">
               <div>
@@ -940,6 +942,7 @@ export function RequirementDetailPage() {
             </div>
           </div>
         </div>
+      </Portal>
       )}
 
       {/* Live CLI Task Execution & Process Logs Drawer */}

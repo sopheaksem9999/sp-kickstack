@@ -37739,11 +37739,6 @@ function resolveCommit(repo, ref) {
 function hasRemote(repo, remote = "origin") {
   return (tryGit(repo, ["remote"]) || "").split("\n").some((r) => r.trim() === remote);
 }
-async function fetchBranch(repo, branch, remote = "origin", timeoutMs) {
-  await runGitAsync(repo, ["fetch", "--quiet", remote, `+refs/heads/${branch}:refs/remotes/${remote}/${branch}`], {
-    timeoutMs
-  });
-}
 function createBranch(repo, name, startSha) {
   if (resolveCommit(repo, `refs/heads/${name}`)) return;
   runGit(repo, ["branch", "--", name, startSha]);
@@ -51997,28 +51992,22 @@ var MergeGateService = class {
     if (!project) throw new GateFailure(`${name}: project not found`);
     const repo = project.repo_path;
     const base = this.branches.baseBranchFor(project, reqId);
-    const remote = hasRemote(repo);
+    const remote = false;
     const gitTimeout = this.options.gitTimeoutMs;
-    let startSha = null;
-    if (remote) {
-      try {
-        await fetchBranch(repo, base, "origin", gitTimeout);
-        startSha = resolveCommit(repo, `refs/remotes/origin/${base}`);
-      } catch (err) {
-        if (!/couldn't find remote ref/i.test(err.message)) {
-          throw new GateFailure(`${name}: could not fetch ${base} from origin (${err.message})`);
-        }
+    let startSha = resolveCommit(repo, `refs/heads/${base}`);
+    if (!startSha) {
+      const remoteRef = resolveCommit(repo, `refs/remotes/origin/${base}`);
+      if (remoteRef) {
+        createBranch(repo, base, remoteRef);
+        startSha = remoteRef;
       }
     }
-    startSha = startSha ?? resolveCommit(repo, `refs/heads/${base}`);
     if (!startSha) throw new GateFailure(`${name}: base branch ${base} was not found`);
-    if (!remote) {
-      const checkout = checkoutPathOf(repo, base);
-      if (checkout && !isClean(checkout)) {
-        throw new GateFailure(
-          `${name}: ${checkout} has uncommitted changes on ${base} and there is no origin to merge through; commit or stash them, then merge again`
-        );
-      }
+    const checkout = checkoutPathOf(repo, base);
+    if (checkout && !isClean(checkout)) {
+      throw new GateFailure(
+        `${name}: ${checkout} has uncommitted changes on ${base}; commit or stash them, then merge again`
+      );
     }
     const tmpRoot = this.options.tmpRoot ?? os4.tmpdir();
     fs13.mkdirSync(tmpRoot, { recursive: true });
@@ -52085,33 +52074,19 @@ ${tail(run.output, 50)}`);
     }
   }
   /**
-   * Phase 2 for one project: push (never forced) and record the merge as soon as origin has
-   * it; then fast-forward the local base (a local failure is only a warning once origin has it).
+   * Phase 2 for one project: fast-forward the local base branch (strictly local merge, never pushes to origin).
    */
   async advance(p) {
     if (p.resultSha === p.startSha) {
       this.recordMerged(p);
       return void 0;
     }
-    if (p.remote) {
-      try {
-        await pushCommit(p.repo, p.resultSha, p.base, "origin", this.options.gitTimeoutMs);
-      } catch (err) {
-        throw new GateFailure(`${p.project.name}: pushing ${p.base} to origin failed (${err.message})`);
-      }
-      this.recordMerged(p);
-      try {
-        return fastForwardBranch(p.repo, p.base, p.resultSha).warning;
-      } catch (err) {
-        return `origin has the merge, but local ${p.base} could not be updated (${err.message}); run "git pull" there`;
-      }
-    }
     const ff = fastForwardBranch(p.repo, p.base, p.resultSha);
     if (!ff.advanced) {
       throw new GateFailure(`${p.project.name}: could not advance ${p.base}: ${ff.warning}`);
     }
     this.recordMerged(p);
-    return void 0;
+    return ff.warning;
   }
   recordMerged(p) {
     const now = (/* @__PURE__ */ new Date()).toISOString();

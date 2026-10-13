@@ -30,6 +30,7 @@ export function useBridgeEvents() {
           toast.success(`${data.payload?.reqId} merged and moved to QA`, {
             description: warnings.length ? warnings.join('\n') : undefined,
           });
+          window.dispatchEvent(new CustomEvent('sp:merge_succeeded', { detail: data.payload }));
         } else if (data.type === 'engine_rate_limited') {
           const until = data.payload?.until ? new Date(data.payload.until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'later';
           toast.warning(`${data.payload?.project} engine is rate limited until ${until}; work resumes automatically`);

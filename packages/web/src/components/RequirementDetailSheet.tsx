@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { RunSettingsDialog } from './RunSettingsDialog.js';
 import { statusChangeStartsFanOut } from '../lib/runSettings.js';
 import { Link } from 'react-router-dom';
@@ -109,6 +109,7 @@ export function RequirementDetailSheet({
     queryKey: ['requirement', requirementId],
     queryFn: () => fetchRequirement(requirementId!),
     enabled: Boolean(requirementId && isOpen),
+    refetchInterval: (query) => (query.state.data?.merge_state === 'running' ? 1000 : false),
   });
 
   const { data: graph, isLoading: graphLoading } = useQuery({
@@ -197,6 +198,7 @@ export function RequirementDetailSheet({
     onSuccess: () => {
       toast.success(mergeText.success);
       queryClient.invalidateQueries();
+      onClose();
     },
     onError: (err: any) => toast.error(err.message || 'Failed to merge to main'),
   });
@@ -210,6 +212,33 @@ export function RequirementDetailSheet({
     },
     onError: (err: any) => toast.error(err.message || 'Could not start the merge'),
   });
+
+  // Auto-close form when merge gate succeeds
+  useEffect(() => {
+    if (!isOpen || !requirementId) return;
+    const handleMergeSucceeded = (e: Event) => {
+      const custom = e as CustomEvent<{ reqId?: string }>;
+      if (custom.detail?.reqId === requirementId) {
+        onClose();
+      }
+    };
+    window.addEventListener('sp:merge_succeeded', handleMergeSucceeded);
+    return () => window.removeEventListener('sp:merge_succeeded', handleMergeSucceeded);
+  }, [isOpen, requirementId, onClose]);
+
+  const wasMergingRef = useRef(false);
+  useEffect(() => {
+    if (req?.merge_state === 'running') {
+      wasMergingRef.current = true;
+    } else if (wasMergingRef.current) {
+      if (req?.status === 'qa' && req?.merge_state === 'idle') {
+        wasMergingRef.current = false;
+        onClose();
+      } else if (req?.merge_state === 'failed') {
+        wasMergingRef.current = false;
+      }
+    }
+  }, [req?.merge_state, req?.status, onClose]);
 
   const doneMutation = useMutation({
     mutationFn: (taskId: number) => markTaskDone(taskId),

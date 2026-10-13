@@ -251,7 +251,7 @@ describe('Merge gate', () => {
   const statusOf = (err: unknown) => (err as { status?: number }).status;
   const reqRow = (id: string) => h.db.prepare('SELECT status, merge_state, merge_error FROM requirements WHERE id = ?').get(id) as any;
 
-  it('merges every task branch, pushes, fast-forwards local develop and moves the requirement to QA', async () => {
+  it('merges every task branch, fast-forwards local develop and moves the requirement to QA', async () => {
     h = makeGitHarness();
     const { req, goals } = await readyForGate();
 
@@ -260,8 +260,10 @@ describe('Merge gate', () => {
     expect(outcome).toMatchObject({ ok: true, projects: ['backend', 'mobile'], warnings: [] });
     for (const g of goals) {
       const { repo, origin } = h.repoOf(g.project);
-      expect(sh(origin!, ['show', `develop:${g.project}-${g.id}.txt`])).toBe(`work ${g.id}`);
-      expect(headOf(repo, 'develop')).toBe(headOf(origin!, 'develop'));
+      expect(sh(repo, ['show', `develop:${g.project}-${g.id}.txt`])).toBe(`work ${g.id}`);
+      if (origin) {
+        expect(() => sh(origin, ['show', `develop:${g.project}-${g.id}.txt`])).toThrow();
+      }
       const row = h.task(g.id);
       expect(row.status).toBe('done');
       expect(row.merged_at).toBeTruthy();
@@ -311,18 +313,16 @@ describe('Merge gate', () => {
     expect(headOf(h.mobileRepo.origin!, 'develop')).toBe(headOf(h.mobileRepo.repo, 'develop'));
   });
 
-  it('pushes to origin but leaves a dirty checkout alone, with a warning', async () => {
+  it('refuses before changing anything when a repo has a dirty checkout on base branch', async () => {
     h = makeGitHarness();
-    const { req, goals } = await readyForGate();
+    const { req } = await readyForGate();
     fs.writeFileSync(path.join(h.backendRepo.repo, 'README.md'), 'my unsaved work\n');
     const localBefore = headOf(h.backendRepo.repo, 'develop');
 
     const outcome = await h.gate.start(req.id, 'manual').done;
 
-    expect(outcome.ok).toBe(true);
-    if (outcome.ok) expect(outcome.warnings.join('\n')).toMatch(/uncommitted/);
-    const backendGoal = goals.find((g) => g.project === 'backend')!;
-    expect(sh(h.backendRepo.origin!, ['show', `develop:backend-${backendGoal.id}.txt`])).toBe(`work ${backendGoal.id}`);
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.error).toMatch(/uncommitted/);
     expect(headOf(h.backendRepo.repo, 'develop')).toBe(localBefore);
     expect(fs.readFileSync(path.join(h.backendRepo.repo, 'README.md'), 'utf8')).toBe('my unsaved work\n');
   });
@@ -340,11 +340,10 @@ describe('Merge gate', () => {
     expect(['backend', 'mobile'].map((p) => headOf(h.repoOf(p).repo, 'develop'))).toEqual(before);
   });
 
-  it('reports a partial merge when a later push is rejected, and a retry merges only the rest', async () => {
+  it('reports a partial merge when a later project fails to advance, and a retry merges only the rest', async () => {
     h = makeGitHarness();
     const { req, goals } = await readyForGate();
-    const hook = path.join(h.mobileRepo.origin!, 'hooks', 'pre-receive');
-    fs.writeFileSync(hook, '#!/bin/sh\necho "protected branch" >&2\nexit 1\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(h.mobileRepo.repo, '.git', 'index.lock'), '');
 
     const first = await h.gate.start(req.id, 'manual').done;
 
@@ -355,11 +354,11 @@ describe('Merge gate', () => {
     expect(h.task(mobileGoal.id).merged_at).toBeNull();
     expect(reqRow(req.id)).toMatchObject({ status: 'in_review', merge_state: 'failed' });
 
-    fs.rmSync(hook);
+    fs.rmSync(path.join(h.mobileRepo.repo, '.git', 'index.lock'));
     const second = await h.gate.start(req.id, 'manual').done;
 
     expect(second).toMatchObject({ ok: true, projects: ['mobile'] });
-    expect(sh(h.backendRepo.origin!, ['rev-list', '--merges', '--count', 'develop'])).toBe('1');
+    expect(sh(h.backendRepo.repo, ['rev-list', '--merges', '--count', 'develop'])).toBe('1');
     expect(reqRow(req.id).status).toBe('qa');
   });
 
@@ -414,7 +413,7 @@ describe('Merge gate', () => {
     expect(rb.ok).toBe(true);
     for (const r of [a, b]) {
       const goal = r.goals[0];
-      expect(sh(h.backendRepo.origin!, ['show', `develop:backend-${goal.id}.txt`])).toBe(`work ${goal.id}`);
+      expect(sh(h.backendRepo.repo, ['show', `develop:backend-${goal.id}.txt`])).toBe(`work ${goal.id}`);
     }
   });
 });
@@ -532,7 +531,7 @@ describe('Merge gate review fixes', () => {
     h.requirementService.updateStatus(req.id, 'in_review');
     return { req, goals };
   }
-  const originFiles = (project: string) => sh(h.repoOf(project).origin!, ['ls-tree', '--name-only', 'develop']);
+  const repoFiles = (project: string) => sh(h.repoOf(project).repo, ['ls-tree', '--name-only', 'develop']);
 
   it('marking every branched task done keeps the requirement in review so it can still be merged', async () => {
     h = makeGitHarness();
@@ -545,7 +544,7 @@ describe('Merge gate review fixes', () => {
 
     expect(h.requirementService.getRequirement(req.id)!.status).toBe('in_review');
     expect((await h.gate.start(req.id, 'manual').done).ok).toBe(true);
-    expect(originFiles('backend')).toMatch(/backend-\d+\.txt/);
+    expect(repoFiles('backend')).toMatch(/backend-\d+\.txt/);
   });
 
   it('does not push when a branch gets new commits while the merge runs', async () => {
@@ -560,7 +559,7 @@ describe('Merge gate review fixes', () => {
 
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) expect(outcome.error).toMatch(/changed during the merge/);
-    expect(originFiles('backend')).not.toMatch(/backend-\d+\.txt/);
+    expect(repoFiles('backend')).not.toMatch(/backend-\d+\.txt/);
     expect(h.task(goals[0].id).merged_at).toBeNull();
     expect(h.requirementService.getRequirement(req.id)!.status).toBe('in_review');
   });
@@ -576,11 +575,11 @@ describe('Merge gate review fixes', () => {
     const outcome = await run;
 
     expect(outcome.ok).toBe(false);
-    expect(originFiles('backend')).not.toMatch(/backend-\d+\.txt/);
+    expect(repoFiles('backend')).not.toMatch(/backend-\d+\.txt/);
     expect(h.requirementService.getRequirement(req.id)!.status).toBe('cancelled');
   });
 
-  it('records the merge once origin has it, even if the local fast-forward fails', async () => {
+  it('fails if the local fast-forward fails and leaves the requirement in review', async () => {
     h = makeGitHarness();
     const { req, goals } = await ready(['backend']);
     fs.writeFileSync(path.join(h.backendRepo.repo, '.git', 'index.lock'), '');
@@ -588,53 +587,19 @@ describe('Merge gate review fixes', () => {
     const outcome = await h.gate.start(req.id, 'manual').done;
     fs.rmSync(path.join(h.backendRepo.repo, '.git', 'index.lock'));
 
-    expect(outcome.ok).toBe(true);
-    if (outcome.ok) expect(outcome.warnings.join('\n')).toMatch(/develop/);
-    expect(h.task(goals[0].id).merge_sha).toBeTruthy();
-    expect(h.requirementService.getRequirement(req.id)!.status).toBe('qa');
+    expect(outcome.ok).toBe(false);
+    expect(h.requirementService.getRequirement(req.id)!.status).toBe('in_review');
   });
 
-  it('keeps the server responsive during a slow push', async () => {
+  it('does not push to origin during the merge', async () => {
     h = makeGitHarness();
     const { req } = await ready(['backend']);
-    fs.writeFileSync(path.join(h.backendRepo.origin!, 'hooks', 'pre-receive'), '#!/bin/sh\nsleep 1.5\nexit 0\n', { mode: 0o755 });
-    const t0 = Date.now();
-    const done = h.gate.start(req.id, 'manual').done;
-
-    const lag = await new Promise<number>((r) => setTimeout(() => r(Date.now() - t0), 0));
-    const outcome = await done;
-
-    expect(lag).toBeLessThan(500);
-    expect(outcome.ok).toBe(true);
-  }, 15_000);
-
-  it('fails a push that hangs past the git timeout and records nothing', async () => {
-    h = makeGitHarness();
-    const { req, goals } = await ready(['backend']);
-    fs.writeFileSync(path.join(h.backendRepo.origin!, 'hooks', 'pre-receive'), '#!/bin/sh\nsleep 5\nexit 0\n', { mode: 0o755 });
-    const gate = new MergeGateService(h.db, h.projectService, h.requirementService, h.reactor, {
-      gitTimeoutMs: 400, tmpRoot: path.join(h.ws, 'tmp'),
-    });
-
-    const outcome = await gate.start(req.id, 'manual').done;
-
-    expect(outcome.ok).toBe(false);
-    if (!outcome.ok) expect(outcome.error).toMatch(/timed out/);
-    expect(h.task(goals[0].id).merged_at).toBeNull();
-  }, 15_000);
-
-  it('creates the base branch on origin when origin does not have it yet', async () => {
-    h = makeGitHarness();
-    const { repo, origin } = h.backendRepo;
-    sh(repo, ['push', '-q', 'origin', 'develop:main']);
-    sh(origin!, ['symbolic-ref', 'HEAD', 'refs/heads/main']);
-    sh(repo, ['push', '-q', 'origin', '--delete', 'develop']);
-    const { req } = await ready(['backend']);
+    const originDevelopBefore = headOf(h.backendRepo.origin!, 'develop');
 
     const outcome = await h.gate.start(req.id, 'manual').done;
 
     expect(outcome.ok).toBe(true);
-    expect(originFiles('backend')).toMatch(/backend-\d+\.txt/);
+    expect(headOf(h.backendRepo.origin!, 'develop')).toBe(originDevelopBefore);
   });
 
   it('deletes merged task branches when auto_delete_branch is on, whatever is checked out', async () => {
@@ -787,8 +752,7 @@ describe('Requirement target branch', () => {
     h.db.prepare("UPDATE bridge_tasks SET status = 'in_review' WHERE id = ?").run(goal.id);
     h.requirementService.updateStatus(req.id, 'in_review');
     expect((await h.gate.start(req.id, 'manual').done).ok).toBe(true);
-    expect(sh(origin!, ['show', 'release/1.3:feature.txt'])).toBe('f');
-    expect(headOf(repo, 'release/1.3')).toBe(headOf(origin!, 'release/1.3'));
+    expect(sh(repo, ['show', 'release/1.3:feature.txt'])).toBe('f');
   });
 
   it('a ticket of the requirement branches from the target in its own repository', async () => {
@@ -809,14 +773,14 @@ describe('Requirement target branch', () => {
     const req = h.createRequirement(['backend']);
     h.requirementService.updateRunSettings(req.id, { target_branch: 'release/1.3' });
     const [goal] = await h.fanOutService.execute(req.id);
-    const { repo, origin } = h.backendRepo;
-    const developBefore = headOf(origin!, 'develop');
+    const { repo } = h.backendRepo;
+    const developBefore = headOf(repo, 'develop');
     commitOnBranch(repo, h.task(goal.id).branch, 'feature.txt', 'f\n');
     h.db.prepare("UPDATE bridge_tasks SET status = 'in_review' WHERE id = ?").run(goal.id);
     h.requirementService.updateStatus(req.id, 'in_review');
     expect((await h.gate.start(req.id, 'manual').done).ok).toBe(true);
-    expect(sh(origin!, ['show', 'release/1.3:feature.txt'])).toBe('f');
-    expect(headOf(origin!, 'develop')).toBe(developBefore);
+    expect(sh(repo, ['show', 'release/1.3:feature.txt'])).toBe('f');
+    expect(headOf(repo, 'develop')).toBe(developBefore);
   });
 });
 

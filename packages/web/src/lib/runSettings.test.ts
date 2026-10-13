@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { BridgeTask, Requirement } from '@sp-kickstack/shared';
 import {
-  branchOptions, branchPatternExamples, draftFromRequirement, fanOutResult, modelSuggestionsFor, pickerRows, runSettingsPatch, runSettingsProblem,
-  runSettingsSummary, shouldResetDraft, statusChangeStartsFanOut,
+  branchOptions, branchPatternExamples, createTargetBranch, draftFromRequirement, fanOutResult, modelSuggestionsFor, optionalBranchProblem, pickerRows,
+  runSettingsPatch, runSettingsProblem, runSettingsSummary, shouldResetDraft, statusChangeStartsFanOut,
 } from './runSettings.js';
 
 const req = (over: Partial<Requirement> = {}): Requirement => ({
@@ -104,5 +104,18 @@ describe('run settings dialog, picker and status changes', () => {
     expect(shouldResetDraft({ open: true, reqId: 'REQ-008' }, { open: true, reqId: 'REQ-008' })).toBe(false);
     expect(shouldResetDraft({ open: true, reqId: 'REQ-008' }, { open: true, reqId: 'REQ-009' })).toBe(true);
     expect(shouldResetDraft({ open: true, reqId: 'REQ-008' }, { open: false, reqId: 'REQ-008' })).toBe(false);
+  });
+
+  it('Settings default target branch: empty is fine, else a valid branch name', () => {
+    expect(optionalBranchProblem('')).toBeNull();
+    expect(optionalBranchProblem('  ')).toBeNull();
+    expect(optionalBranchProblem('release/1.3')).toBeNull();
+    expect(optionalBranchProblem('bad..name')).not.toBeNull();
+  });
+
+  it('create form: empty means base branch once Settings are loaded; before that the server default applies', () => {
+    expect(createTargetBranch(' release/1.3 ', true)).toBe('release/1.3');
+    expect(createTargetBranch('', true)).toBeNull();
+    expect(createTargetBranch('', false)).toBeUndefined();
   });
 });

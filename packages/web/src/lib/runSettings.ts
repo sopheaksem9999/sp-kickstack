@@ -85,6 +85,20 @@ export function branchOptions(entries: BranchEntry[], query: string, chosen: str
   return rows;
 }
 
+/** Why an optional branch name (empty = none) cannot be used, or null. */
+export function optionalBranchProblem(value: string): string | null {
+  const name = value.trim();
+  return name ? branchNameProblem(name) : null;
+}
+
+/**
+ * The create form's target_branch: the chosen name; null = each repository's base branch once the
+ * form could show the Settings default; undefined (not sent) lets the server apply that default.
+ */
+export function createTargetBranch(value: string, settingsLoaded: boolean): string | null | undefined {
+  return value.trim() || (settingsLoaded ? null : undefined);
+}
+
 /** The picker row for "no target branch": each repository's base branch. */
 export const BASE_BRANCH_OPTION: BranchOption = { name: '', detail: "each repository's base branch", create: false };
 

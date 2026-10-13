@@ -13,6 +13,7 @@ import {
 } from '@sp-kickstack/shared';
 import { HttpError, badRequest, conflict } from '../lib/httpError.js';
 import { targetBranchProblem } from './branchService.js';
+import { SettingsService } from './settingsService.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -79,8 +80,13 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
 
   public createRequirement(input: CreateRequirementInput): Requirement {
     const scoped = { ...input, affected_projects: this.ownWorkspaceProjects(input.workspace_id || 'default', input.affected_projects) };
-    const targetBranch = input.target_branch?.trim() || null;
-    if (targetBranch) this.assertTargetBranch(targetBranch, scoped.affected_projects);
+    // Not named (undefined): Settings → default target branch; null or '' = each repository's base branch.
+    const fromSettings = input.target_branch === undefined;
+    const targetBranch =
+      (fromSettings ? new SettingsService(this.db).getBranchMergeSettings().default_target_branch : input.target_branch)?.trim() || null;
+    if (targetBranch) {
+      this.assertTargetBranch(targetBranch, scoped.affected_projects, fromSettings ? ' (Settings → Git & Branch Rules → Default target branch)' : '');
+    }
     const now = new Date().toISOString();
     const status: RequirementStatus = input.status || 'draft';
     const revision = 1;
@@ -373,14 +379,14 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
   }
 
   /** 400 when `target` cannot be the target branch of a requirement in these repositories. */
-  private assertTargetBranch(target: string, projectNames: string[]) {
+  private assertTargetBranch(target: string, projectNames: string[], source = '') {
     const repos = projectNames.length
       ? (this.db
           .prepare(`SELECT name, repo_path FROM projects WHERE name IN (${projectNames.map(() => '?').join(', ')})`)
           .all(...projectNames) as Array<{ name: string; repo_path: string }>)
       : [];
     const problem = targetBranchProblem(this.db, target, repos);
-    if (problem) throw badRequest(problem);
+    if (problem) throw badRequest(problem + source);
   }
 
   public updateStatus(id: string, status: RequirementStatus) {

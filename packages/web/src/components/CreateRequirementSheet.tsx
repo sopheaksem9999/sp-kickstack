@@ -64,9 +64,10 @@ import {
   AiChatMessage,
   DraftRequirementResult,
 } from '@sp-kickstack/shared';
-import { sendAiChatMessage } from '../lib/api.js';
+import { fetchSettings, sendAiChatMessage } from '../lib/api.js';
 import { fetchBranches } from '../lib/runSettingsApi.js';
 import { BranchPicker } from './BranchPicker.js';
+import { createTargetBranch } from '../lib/runSettings.js';
 import { Sheet, SheetContent } from './ui/sheet.js';
 
 export function CreateRequirementSheet() {
@@ -107,6 +108,12 @@ export function CreateRequirementSheet() {
     queryFn: () => fetchBranches(selectedProjects),
     enabled: isOpen && selectedProjects.length > 0,
   });
+  // Each new requirement starts with Settings → Git & Branch Rules → Default target branch.
+  const { data: settingsData } = useQuery({ queryKey: ['settings'], queryFn: fetchSettings, enabled: isOpen });
+  const defaultTargetBranch = settingsData?.branch_merge.default_target_branch ?? '';
+  useEffect(() => {
+    if (isOpen) setTargetBranch(defaultTargetBranch);
+  }, [isOpen, defaultTargetBranch]);
   const [criteria, setCriteria] = useState<string[]>(['']);
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [activeGoalTab, setActiveGoalTab] = useState<'write' | 'preview'>('write');
@@ -388,7 +395,7 @@ What feature, solution, or refactoring would you like to design today? You can s
         status: andStart ? 'ready' : status,
         sprint_id: sprintId || undefined,
         merge_policy: mergePolicy !== 'inherit' ? mergePolicy : undefined,
-        target_branch: targetBranch.trim() || undefined,
+        target_branch: createTargetBranch(targetBranch, Boolean(settingsData)),
         affected_projects: selectedProjects,
         acceptance_criteria: filteredCriteria,
         attachments,
@@ -788,8 +795,9 @@ What feature, solution, or refactoring would you like to design today? You can s
                 disabled={selectedProjects.length === 0}
               />
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Tasks start from it and are merged into it, for example <span className="font-mono">release/1.3</span>. A new name is
-                created from each repository's base branch at fan-out. Empty = each repository's base branch.
+                Tasks start from it and are merged into it, for example <span className="font-mono">release/1.3</span>. It starts with
+                Settings → Default target branch; a new name is created from each repository's base branch at fan-out. Empty = each
+                repository's base branch.
               </p>
             </div>
 

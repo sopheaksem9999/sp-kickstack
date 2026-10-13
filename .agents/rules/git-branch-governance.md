@@ -28,6 +28,9 @@ this rule.
   `project.base_branch` directly for task or merge work.
 - A missing target branch is created by `ensureTaskBranch`, from the repository's own base branch,
   and records a `target_branch_created` event.
+- New requirements start with Settings → **Default Target Branch** (`default_target_branch`):
+  `RequirementService.createRequirement` applies it when `target_branch` is not sent; `null` means
+  each repository's base branch.
 - Target branch names are validated with `branchNameProblem` (`@sp-kickstack/shared`) and
   `targetBranchProblem` (`branchService.ts`): not a task branch, and no clash with an existing branch
   path in the requirement's repositories (`release` beside `release/1.3`). The check runs when the

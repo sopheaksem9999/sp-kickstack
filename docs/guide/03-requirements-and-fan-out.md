@@ -11,7 +11,8 @@ affects, as one goal per project on its own branch.
 3. Under **Affected Repositories / Engines**, click every project that must change
    (**Select All** and **Clear** help). At least one is required.
    Optional: under **Target Branch**, pick a branch of those repositories or type a new name, for
-   example `release/1.3`. Empty = each repository's base branch (see [Run settings](#run-settings)).
+   example `release/1.3`. It starts with Settings → Git & Branch Rules → **Default Target Branch**.
+   Empty = each repository's base branch (see [Run settings](#run-settings)).
 4. Describe the work in **Goal & Problem Context (Rich Text)**. If you leave it empty, the title
    is used. **Template** inserts a starting structure; **Attach Files** adds files.
 5. Optional: **User Story (Optional)** and **Acceptance Criteria (Optional)** (**Add Criterion**

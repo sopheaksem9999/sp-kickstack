@@ -51,6 +51,24 @@ describe('requirement run settings: storage', () => {
   });
 });
 
+describe('default target branch (Settings → Git & Branch Rules)', () => {
+  const base = { title: 'Rides', goal: 'g', acceptance_criteria: ['a'], affected_projects: ['backend'], priority: 'normal' as const };
+
+  it('is empty by default, trimmed when saved, and refuses a bad branch name', () => {
+    const settings = new SettingsService(db);
+    expect(settings.getBranchMergeSettings().default_target_branch).toBe('');
+    expect(settings.updateBranchMergeSettings({ default_target_branch: ' release/1.3 ' }).default_target_branch).toBe('release/1.3');
+    expect(() => settings.updateBranchMergeSettings({ default_target_branch: 'bad..name' })).toThrow();
+  });
+
+  it('a new requirement starts with it unless it names a target, or none (null)', () => {
+    new SettingsService(db).updateBranchMergeSettings({ default_target_branch: 'release/1.3' });
+    expect(requirements.createRequirement(base).target_branch).toBe('release/1.3');
+    expect(requirements.createRequirement({ ...base, target_branch: 'hotfix/2' }).target_branch).toBe('hotfix/2');
+    expect(requirements.createRequirement({ ...base, target_branch: null }).target_branch).toBeNull();
+  });
+});
+
 describe('requirement run settings: saving', () => {
   const addTask = (reqId: string, branch: string) =>
     db.prepare("INSERT INTO bridge_tasks (req_id, project, role, title, status, branch, created_at, updated_at) VALUES (?, 'backend', 'goal', 'T', 'queued', ?, 'x', 'x')")

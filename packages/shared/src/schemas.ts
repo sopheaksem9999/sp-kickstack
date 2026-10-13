@@ -89,6 +89,12 @@ export const BranchMergeSettingsSchema = z.object({
   task_branch_pattern: z.string().trim().superRefine(refineWith(taskBranchPatternProblem)).default(DEFAULT_TASK_BRANCH_PATTERN),
   /** The bridge pushes new task/target branches and agents' new commits to origin. */
   push_branches: z.boolean().default(true),
+  /** New requirements start with this target branch; empty = each repository's base branch. */
+  default_target_branch: z
+    .string()
+    .trim()
+    .superRefine(refineWith((name) => (name ? branchNameProblem(name) : null)))
+    .default(''),
 });
 
 export const AttachmentItemSchema = z.object({

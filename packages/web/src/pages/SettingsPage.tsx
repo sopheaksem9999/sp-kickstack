@@ -45,7 +45,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { NotificationSettingsSection } from '../components/NotificationSettingsSection.js';
-import { branchPatternExamples } from '../lib/runSettings.js';
+import { branchPatternExamples, optionalBranchProblem } from '../lib/runSettings.js';
 import { LocalEngineSettingsSection } from '../components/LocalEngineSettingsSection.js';
 import { BranchMergePolicy, ReasoningEffort, EngineId } from '@sp-kickstack/shared';
 
@@ -1012,6 +1012,8 @@ export function SettingsPage() {
   const [mergePolicy, setMergePolicy] = useState<BranchMergePolicy>('manual_review_merge');
   const [taskBranchPattern, setTaskBranchPattern] = useState('{req}');
   const [pushBranches, setPushBranches] = useState(true);
+  const [defaultTargetBranch, setDefaultTargetBranch] = useState('');
+  const defaultTargetProblem = optionalBranchProblem(defaultTargetBranch);
 
   // AI CLI Settings
   const [enabledEngines, setEnabledEngines] = useState<EngineId[]>([
@@ -1044,6 +1046,7 @@ export function SettingsPage() {
       setMergePolicy(settingsData.branch_merge.merge_policy || 'manual_review_merge');
       setTaskBranchPattern(settingsData.branch_merge.task_branch_pattern || '{req}');
       setPushBranches(settingsData.branch_merge.push_branches !== false);
+      setDefaultTargetBranch(settingsData.branch_merge.default_target_branch || '');
     }
     if (settingsData?.ai_cli) {
       const cli = settingsData.ai_cli;
@@ -1099,6 +1102,7 @@ export function SettingsPage() {
         merge_policy: mergePolicy,
         task_branch_pattern: taskBranchPattern.trim(),
         push_branches: pushBranches,
+        default_target_branch: defaultTargetBranch.trim(),
       }),
     onSuccess: () => {
       toast.success('Branch & merge rules saved');
@@ -2062,7 +2066,7 @@ export function SettingsPage() {
                 </span>
               </div>
 
-              {/* Default Target Branch */}
+              {/* Default Base Branch */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
                   Default Implementation Base Branch
@@ -2081,8 +2085,30 @@ export function SettingsPage() {
                   <span className="text-xs text-slate-400">Default: <code className="text-[#7b68ee]">develop</code></span>
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  All feature fan-outs and agent runs will target this branch by default instead of production main.
+                  The base branch of repositories that do not set their own Base Branch.
                 </p>
+              </div>
+
+              {/* Default Target Branch */}
+              <div className="space-y-1.5">
+                <label htmlFor="default-target-branch" className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                  Default Target Branch
+                </label>
+                <input
+                  id="default-target-branch"
+                  type="text"
+                  value={defaultTargetBranch}
+                  onChange={(e) => setDefaultTargetBranch(e.target.value)}
+                  placeholder="Each repository's base branch"
+                  className="w-full max-w-sm px-3 py-2 rounded-lg border border-slate-200 dark:border-[#333333] bg-slate-50 dark:bg-[#1a1a1a] font-mono text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#7b68ee]"
+                />
+                {defaultTargetProblem ? (
+                  <p className="text-[11px] text-rose-600 dark:text-rose-400">{defaultTargetProblem}</p>
+                ) : (
+                  <p className="text-[11px] text-slate-400">
+                    New requirements start with this target branch, for example <code>release/1.3</code> for the current release; each requirement can change it. Empty = each repository's base branch.
+                  </p>
+                )}
               </div>
 
               {/* Merge Policy Selector */}
@@ -2187,7 +2213,7 @@ export function SettingsPage() {
                 <button
                   type="button"
                   onClick={() => updateBranchMutation.mutate()}
-                  disabled={updateBranchMutation.isPending || Boolean(branchPatternExamples(taskBranchPattern).problem)}
+                  disabled={updateBranchMutation.isPending || Boolean(branchPatternExamples(taskBranchPattern).problem) || Boolean(defaultTargetProblem)}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#7b68ee] hover:bg-[#6c5ce7] text-white text-xs font-bold shadow-md shadow-purple-500/20 active:scale-[0.98] transition-all disabled:opacity-50"
                 >
                   <Save className="w-3.5 h-3.5" />

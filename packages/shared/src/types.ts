@@ -85,6 +85,8 @@ export interface BranchMergeSettings {
   task_branch_pattern: string;
   /** The bridge pushes new task/target branches and agents' new commits to origin. */
   push_branches: boolean;
+  /** New requirements start with this target branch; empty = each repository's base branch. */
+  default_target_branch: string;
 }
 
 export interface AttachmentItem {

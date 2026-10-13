@@ -75,6 +75,11 @@ export class ReviewService {
     return this.assist.improve(reqId, input);
   }
 
+  /** Files changed on a task's branch, for "#" in the comment box. */
+  public branchFiles(taskId: number): { branch: string | null; base: string | null; files: string[] } {
+    return this.assist.branchFiles(taskId);
+  }
+
   public listComments(reqId: string): ReviewComment[] {
     const rows = this.db
       .prepare('SELECT c.*, t.project FROM review_comments c JOIN bridge_tasks t ON t.id = c.task_id WHERE c.req_id = ? ORDER BY c.id')

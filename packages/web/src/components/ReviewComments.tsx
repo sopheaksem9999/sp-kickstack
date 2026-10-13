@@ -4,12 +4,17 @@ import { toast } from 'sonner';
 import { CheckCircle2, MessageSquare, RotateCcw, Send, Sparkles, Trash2, Undo2 } from 'lucide-react';
 import type { BridgeTask, Requirement, ReviewComment } from '@sp-kickstack/shared';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog.js';
-import { addReviewComment, deleteReviewComment, fetchReviewComments, improveReviewComment, requestChanges, updateReviewComment } from '../lib/humanLoopApi.js';
-import { applyImprovedComment, commentLocation, requestChangesOutcome, requestChangesState, reviewableTasks, taskReviewView } from '../lib/reviewActions.js';
-import type { CommentDraft } from '../lib/reviewActions.js';
+import {
+  addReviewComment, deleteReviewComment, fetchBranchFiles, fetchReviewComments, improveReviewComment, requestChanges, updateReviewComment,
+} from '../lib/humanLoopApi.js';
+import { fetchAssets, fetchProjects, fetchRequirements } from '../lib/api.js';
+import { commentLocation, requestChangesOutcome, requestChangesState, reviewableTasks, taskReviewView } from '../lib/reviewActions.js';
+import type { MentionSources } from '../lib/mentions.js';
 import { hasPin, requestChangesProfile } from '../lib/agentProfile.js';
 import type { ProfileValue } from '../lib/agentProfile.js';
 import { AgentProfilePicker } from './AgentProfilePicker.js';
+import { MarkdownMessage } from './MarkdownMessage.js';
+import { MentionTextarea } from './MentionTextarea.js';
 
 const STATE_STYLE: Record<ReviewComment['state'], string> = {
   open: 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300',
@@ -33,44 +38,40 @@ function useReviewComments(reqId: string) {
 
 const fail = (err: Error) => toast.error(err.message);
 
+/** What # and @ offer in a task card's comment box: its branch's files, the workspace's repositories, requirements and shared assets. */
+function useMentionSources(req: Requirement, task: BridgeTask, enabled: boolean): MentionSources {
+  const workspaceId = req.workspace_id || 'default';
+  const { data: branch } = useQuery({ queryKey: ['branch-files', task.id], queryFn: () => fetchBranchFiles(task.id), enabled });
+  const { data: projects = [] } = useQuery({ queryKey: ['projects', workspaceId], queryFn: () => fetchProjects(workspaceId), enabled });
+  const { data: requirements = [] } = useQuery({ queryKey: ['requirements', workspaceId], queryFn: () => fetchRequirements(workspaceId), enabled });
+  const { data: assets } = useQuery({ queryKey: ['assets', workspaceId], queryFn: () => fetchAssets(workspaceId), enabled });
+  return { files: branch?.files ?? [], projects, requirements, assets: assets?.shared_assets ?? [] };
+}
+
 /** A repository task card's review comments and comment box (In Review / QA). */
 export function TaskReviewComments({ req, task }: { req: Requirement; task: BridgeTask }) {
   const { comments, refresh } = useReviewComments(req.id);
   const view = taskReviewView(req, task, comments);
-  const [filePath, setFilePath] = useState('');
-  const [line, setLine] = useState('');
+  const sources = useMentionSources(req, task, view.canAdd);
   const [body, setBody] = useState('');
   // The text before "Improve with AI", for Undo; and which AI rewrote it.
-  const [undo, setUndo] = useState<CommentDraft | null>(null);
+  const [undo, setUndo] = useState<string | null>(null);
   const [aiNote, setAiNote] = useState<string | null>(null);
-  const draftInput = () => ({
-    task_id: task.id,
-    body: body.trim(),
-    file_path: filePath.trim() || undefined,
-    line: filePath.trim() && line.trim() ? Number(line) : undefined,
-  });
-  const show = (d: CommentDraft) => {
-    setBody(d.body);
-    setFilePath(d.filePath);
-    setLine(d.line);
-  };
 
   const improve = useMutation({
-    mutationFn: () => improveReviewComment(req.id, draftInput()),
+    mutationFn: () => improveReviewComment(req.id, { task_id: task.id, body: body.trim() }),
     onSuccess: (result) => {
-      const before = { body, filePath, line };
-      setUndo(before);
-      show(applyImprovedComment(before, result));
+      setUndo(body);
+      setBody(result.body);
       setAiNote(`Improved by ${result.provider_used}. Check it, then Add comment.`);
     },
     onError: fail,
   });
 
   const add = useMutation({
-    mutationFn: () => addReviewComment(req.id, draftInput()),
+    mutationFn: () => addReviewComment(req.id, { task_id: task.id, body: body.trim() }),
     onSuccess: () => {
       setBody('');
-      setLine('');
       setUndo(null);
       setAiNote(null);
       refresh();
@@ -85,7 +86,6 @@ export function TaskReviewComments({ req, task }: { req: Requirement; task: Brid
   const remove = useMutation({ mutationFn: (id: number) => deleteReviewComment(id), onSuccess: refresh, onError: fail });
 
   if (!view.show) return null;
-  const input = 'rounded-lg border border-slate-200 dark:border-[#2e303d] bg-white dark:bg-[#1a1b23] px-2 py-1.5 text-xs';
 
   return (
     <div className="pt-2 border-t border-slate-100 dark:border-[#2d2d2d] space-y-2">
@@ -97,7 +97,7 @@ export function TaskReviewComments({ req, task }: { req: Requirement; task: Brid
       {view.comments.map((c) => (
         <div key={c.id} className="rounded-lg border border-slate-200 dark:border-[#262732] bg-white dark:bg-[#1a1b23] p-2 text-xs space-y-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <code className="text-[11px] text-slate-500 dark:text-slate-400">{commentLocation(c)}</code>
+            {c.file_path && <code className="text-[11px] text-slate-500 dark:text-slate-400">{commentLocation(c)}</code>}
             <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${STATE_STYLE[c.state]}`}>
               {c.state}
               {c.round ? ` · round ${c.round}` : ''}
@@ -136,39 +136,24 @@ export function TaskReviewComments({ req, task }: { req: Requirement; task: Brid
               </button>
             )}
           </div>
-          <p className="text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{c.body}</p>
+          <div className="text-slate-700 dark:text-slate-300">
+            <MarkdownMessage content={c.body} />
+          </div>
         </div>
       ))}
 
       {view.canAdd && (
         <div className="space-y-1.5">
-          <div className="flex gap-2">
-            <input
-              value={filePath}
-              onChange={(e) => setFilePath(e.target.value)}
-              aria-label={`File for ${task.project}`}
-              placeholder="File (optional), e.g. src/api/users.ts"
-              className={`flex-1 min-w-0 ${input}`}
-            />
-            <input
-              value={line}
-              onChange={(e) => setLine(e.target.value.replace(/[^0-9]/g, ''))}
-              aria-label={`Line for ${task.project}`}
-              placeholder="Line"
-              inputMode="numeric"
-              disabled={!filePath.trim()}
-              className={`w-16 ${input} disabled:opacity-40`}
-            />
-          </div>
-          <textarea
+          <MentionTextarea
             value={body}
-            onChange={(e) => setBody(e.target.value)}
-            rows={Math.min(12, Math.max(2, body.split('\n').length))}
+            onChange={setBody}
+            sources={sources}
+            rows={Math.min(12, Math.max(3, body.split('\n').length))}
             maxLength={20000}
             disabled={improve.isPending}
-            aria-label={`Comment for ${task.project}`}
-            placeholder="What should the agent change? You can paste an error from the logs and use Improve with AI."
-            className={`w-full ${input} disabled:opacity-60`}
+            ariaLabel={`Comment for ${task.project}`}
+            placeholder="What should the agent change? # a file, repository or requirement · @ a shared asset · paste an error and use Improve with AI"
+            className="w-full rounded-lg border border-slate-200 dark:border-[#2e303d] bg-white dark:bg-[#1a1b23] px-2 py-1.5 text-xs disabled:opacity-60"
           />
           <div className="flex items-center gap-2 flex-wrap">
             <button
@@ -194,7 +179,7 @@ export function TaskReviewComments({ req, task }: { req: Requirement; task: Brid
               <button
                 type="button"
                 onClick={() => {
-                  show(undo);
+                  setBody(undo);
                   setUndo(null);
                   setAiNote(null);
                 }}

@@ -96,6 +96,22 @@ describe('Improve a review comment with AI', () => {
     expect(prompt).not.toContain('lib/missing.ts (lines');
   });
 
+  it('reads a file pointed at with # (and :line) in the draft', async () => {
+    await assist().improve(reqId, { task_id: goalId, body: '#src/hooks.sh:6 fails without npx' });
+    expect(calls[0].prompt).toContain('### src/hooks.sh (lines 1-26)');
+  });
+
+  it("lists the files changed on a task's branch, for # in the comment box", () => {
+    expect(assist().branchFiles(goalId)).toEqual({ branch: reqId, base: 'develop', files: ['src/hooks.sh'] });
+    const loose = Number(
+      db
+        .prepare("INSERT INTO bridge_tasks (req_id, project, role, title, status, created_at, updated_at) VALUES (?, 'backend', 'ticket', 'T', 'queued', 'x', 'x')")
+        .run(reqId).lastInsertRowid
+    );
+    expect(assist().branchFiles(loose)).toEqual({ branch: null, base: 'develop', files: [] });
+    expect(() => assist().branchFiles(999999)).toThrow('Task #999999 not found');
+  });
+
   it('keeps the file and line the reviewer gave when the AI names none', async () => {
     answer = 'FILE: none\nLINE: none\n---\nClearer text';
     expect(await assist().improve(reqId, { task_id: goalId, body: 'x', file_path: 'src/hooks.sh', line: 3 })).toMatchObject({
@@ -143,6 +159,8 @@ describe('Improve a review comment with AI', () => {
     expect(ok.status).toBe(200);
     expect(ok.body).toMatchObject({ file_path: 'src/hooks.sh', line: 6, provider_used: 'Claude Code (sonnet)' });
     expect((await testRequest(app, 'POST', `/api/requirements/${reqId}/comments/improve`, { body: { task_id: goalId, body: '' } })).status).toBe(400);
+    expect((await testRequest(app, 'GET', `/api/tasks/${goalId}/branch-files`)).body).toEqual({ branch: reqId, base: 'develop', files: ['src/hooks.sh'] });
+    expect((await testRequest(app, 'GET', '/api/tasks/999999/branch-files')).status).toBe(404);
   });
 });
 

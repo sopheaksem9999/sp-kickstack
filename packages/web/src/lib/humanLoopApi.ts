@@ -55,6 +55,11 @@ export function addReviewComment(reqId: string, input: CreateReviewCommentInput)
   return request(`${BASE}/requirements/${encodeURIComponent(reqId)}/comments`, send('POST', input));
 }
 
+/** Files changed on a task's branch: what # offers in the comment box. */
+export function fetchBranchFiles(taskId: number): Promise<{ branch: string | null; base: string | null; files: string[] }> {
+  return request(`${BASE}/tasks/${taskId}/branch-files`);
+}
+
 /** "Improve with AI": the draft rewritten by the AI CLI from Settings; nothing is saved. */
 export function improveReviewComment(reqId: string, input: ImproveReviewCommentInput): Promise<ImproveReviewCommentResult> {
   return request(`${BASE}/requirements/${encodeURIComponent(reqId)}/comments/improve`, send('POST', input));

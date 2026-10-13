@@ -42,21 +42,25 @@ section: in the side panel under **Per-Repo Agent Engines**, and on the full pag
 **Task Columns**. A card keeps showing its comments afterwards.
 
 1. Go to the card of the repository you tested (for example **BACKEND**).
-2. Optional: enter a **File** path relative to the repository (for example
-   `src/api/users.ts`) and a **Line** number. A line needs a file.
-3. Write the comment in the box ("What should the agent change?"). A comment can be up to 4000
-   characters. You can also paste an error or log lines as they are.
-4. Optional: click **Improve with AI**. It rewrites your text into one clear point for the agent:
-   the problem, the key error lines as **Evidence**, what you **Expected**, and **Where**. If you
-   left **File** and **Line** empty and the error names them, it fills them in. It reads the
-   requirement, the files changed on the task branch, and the code around the file and line (also
-   files named in a pasted stack trace). It uses the AI CLI from Settings → AI & Local Engines
-   (Claude Code, AGY or Codex), as text only: it changes no files. It can take up to 2 minutes.
-   Check the result; **Undo** brings your text back. Nothing is saved yet.
-5. Click **Add comment**. Repeat in other cards as needed.
+2. Write the comment in the box ("What should the agent change?"). A comment can be up to 4000
+   characters, and Markdown is shown formatted. You can paste an error or log lines as they are.
+   As in AI chat:
+   - type `#` to pick a file changed on this task's branch, a repository or a requirement (add
+     `:42` after a file for a line, for example `#src/api/users.ts:42`);
+   - type `@` to pick a shared workspace asset (for example `@openapi.yaml`).
 
-Each comment shows its location (`src/api/users.ts:42`, `src/api/users.ts` or `General`) and its
-state:
+   ↑/↓ and Enter (or Tab) pick from the list; Escape closes it.
+3. Optional: click **Improve with AI**. It rewrites your text into one clear point for the agent:
+   the problem, the key error lines as **Evidence**, what you **Expected**, and **Where**
+   (as `#path:line`). It keeps your `#` and `@` references. It reads the requirement, the files
+   changed on the task branch, and the code of the files you pointed at with `#` or that a pasted
+   stack trace names. It uses the AI CLI from Settings → AI & Local Engines (Claude Code, AGY or
+   Codex), as text only: it changes no files. It can take up to 2 minutes. Check the result;
+   **Undo** brings your text back. Nothing is saved yet.
+4. Click **Add comment**. Repeat in other cards as needed.
+
+Each comment shows its state (comments made before 2026-10-13 also show their file, for example
+`src/api/users.ts:42`):
 
 | State | Meaning | What you can do |
 |---|---|---|

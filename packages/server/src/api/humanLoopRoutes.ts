@@ -90,6 +90,15 @@ export function registerHumanLoopRoutes(app: Express, deps: HumanLoopRouteDeps) 
     }
   });
 
+  // Files changed on a task's branch: the "#" list of the review comment box.
+  app.get('/api/tasks/:id/branch-files', (req, res, next) => {
+    try {
+      res.json(reviewService.branchFiles(Number(req.params.id)));
+    } catch (err) {
+      next(err);
+    }
+  });
+
   app.patch('/api/comments/:id', (req, res, next) => {
     try {
       res.json(reviewService.updateComment(Number(req.params.id), req.body ?? {}));

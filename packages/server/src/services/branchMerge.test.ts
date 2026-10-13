@@ -197,6 +197,23 @@ describe('Branch-mode dependencies', () => {
     expect(h.mobileEngine.getTaskData(source.engine_task_id!)!.status).toBe('queued');
   });
 
+  it("tells the released agent that both branches merge into the requirement's target branch", async () => {
+    const req = h.createRequirement(['backend', 'mobile']);
+    h.requirementService.updateRunSettings(req.id, { target_branch: 'release/1.3' });
+    const source = (await h.fanOutService.execute(req.id)).find((g) => g.project === 'mobile')!;
+    const t = await h.ticketService.createTicket(
+      { to: 'backend', type: 'api_request', title: 'GET /loc', body: 'Provide location endpoint', blocking: true },
+      'mobile',
+      source.engine_task_id!
+    );
+    h.backendEngine.setTaskStatus(h.task(t.ticketId).engine_task_id, 'in_review', 'needs_review');
+
+    await h.watcher.scanOnce();
+
+    const [link] = h.linkService.getLinksForTask(source.id);
+    expect(link.context_md).toContain('merges both branches into release/1.3');
+  });
+
   it('still waits for done when the projects do not use branches', async () => {
     for (const name of ['pa', 'pb']) {
       const dir = path.join(h.ws, name);
@@ -907,5 +924,75 @@ describe('Branch list', () => {
     });
     expect((await testRequest(app, 'GET', '/api/branches?projects=backend')).body).toEqual([{ name: 'develop', projects: ['backend'] }]);
     expect((await testRequest(app, 'GET', '/api/branches')).status).toBe(400);
+  });
+});
+
+describe('Target and task branches never collide', () => {
+  let h: GitHarness;
+  afterEach(() => h.db.close());
+  const rowsOf = (reqId: string) => h.db.prepare('SELECT COUNT(*) AS n FROM bridge_tasks WHERE req_id = ?').get(reqId);
+
+  it("a requirement whose target is its own ID gets another task branch, and the merge keeps the agent's work", async () => {
+    h = makeGitHarness({ withOrigin: false });
+    new SettingsService(h.db).updateBranchMergeSettings({ auto_delete_branch: true });
+    const req = h.createRequirement(['backend']);
+    h.requirementService.updateRunSettings(req.id, { target_branch: req.id });
+    const [goal] = await h.fanOutService.execute(req.id);
+    const repo = h.backendRepo.repo;
+    expect(h.task(goal.id).branch).toBe(`${req.id}-2`);
+
+    commitOnBranch(repo, h.task(goal.id).branch, 'feature.txt', 'f\n');
+    h.db.prepare("UPDATE bridge_tasks SET status = 'in_review' WHERE id = ?").run(goal.id);
+    h.requirementService.updateStatus(req.id, 'in_review');
+    expect((await h.gate.start(req.id, 'manual').done).ok).toBe(true);
+    expect(sh(repo, ['show', `${req.id}:feature.txt`])).toBe('f');
+  });
+
+  it("another open requirement's target branch is not used as a task branch", async () => {
+    h = makeGitHarness();
+    const first = h.createRequirement(['backend']);
+    const second = h.createRequirement(['backend']);
+    h.requirementService.updateRunSettings(first.id, { target_branch: second.id });
+    const [goal] = await h.fanOutService.execute(second.id);
+    expect(h.task(goal.id).branch).toBe(`${second.id}-2`);
+  });
+
+  it('fan-out refuses a target that is a task branch, before reserving anything', async () => {
+    h = makeGitHarness();
+    const [goal] = await h.fanOutService.execute(h.createRequirement(['backend']).id);
+    const second = h.createRequirement(['backend']);
+    h.db.prepare('UPDATE requirements SET target_branch = ? WHERE id = ?').run(h.task(goal.id).branch, second.id);
+    await expect(h.fanOutService.execute(second.id)).rejects.toThrow(`is the branch of task #${goal.id}`);
+    expect(rowsOf(second.id)).toEqual({ n: 0 });
+  });
+
+  it('refuses at save a target that git cannot create next to an existing branch, either way round', () => {
+    h = makeGitHarness();
+    const repo = h.backendRepo.repo;
+    sh(repo, ['branch', 'release/1.3']);
+    sh(repo, ['branch', 'stable']);
+    const req = h.createRequirement(['backend']);
+    expect(() => h.requirementService.updateRunSettings(req.id, { target_branch: 'release' })).toThrow('release/1.3');
+    expect(() => h.requirementService.updateRunSettings(req.id, { target_branch: 'stable/2' })).toThrow('stable');
+    expect(h.requirementService.updateRunSettings(req.id, { target_branch: 'release/1.4' }).target_branch).toBe('release/1.4');
+  });
+
+  it('fan-out refuses such a target before reserving anything, so the target can still change', async () => {
+    h = makeGitHarness();
+    const req = h.createRequirement(['backend']);
+    h.requirementService.updateRunSettings(req.id, { target_branch: 'hotfix' });
+    sh(h.backendRepo.repo, ['branch', 'hotfix/1']);
+    await expect(h.fanOutService.execute(req.id)).rejects.toThrow('hotfix/1');
+    expect(rowsOf(req.id)).toEqual({ n: 0 });
+    expect(h.requirementService.updateRunSettings(req.id, { target_branch: 'hotfix-2' }).target_branch).toBe('hotfix-2');
+  });
+
+  it('a task branch pattern that puts the branch under an existing branch fails with the reason', async () => {
+    h = makeGitHarness();
+    const req = h.createRequirement(['backend']);
+    sh(h.backendRepo.repo, ['branch', req.id]);
+    new SettingsService(h.db).updateBranchMergeSettings({ task_branch_pattern: '{req}/{project}' });
+    await expect(h.fanOutService.execute(req.id)).rejects.toThrow(`${req.id}/backend in backend: the branch ${req.id} exists there`);
+    expect(rowsOf(req.id)).toEqual({ n: 0 });
   });
 });

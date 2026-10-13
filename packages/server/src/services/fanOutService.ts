@@ -4,11 +4,11 @@ import { RequirementService } from './requirementService.js';
 import { EngineAdapter } from '../adapters/types.js';
 import { AgentProfileInput, BridgeTask } from '@sp-kickstack/shared';
 import { oneLine, wrapUntrusted } from '../lib/promptSafety.js';
-import { HttpError, conflict } from '../lib/httpError.js';
+import { HttpError, badRequest, conflict } from '../lib/httpError.js';
 import { RequirementStatus, normalizeMergePolicy } from '@sp-kickstack/shared';
 import { cancelOrphan } from './orphans.js';
 import { MAX_DISPATCH_ATTEMPTS, shouldNotifyFailure } from '../lib/retryPolicy.js';
-import { BranchService, branchInstructions } from './branchService.js';
+import { BranchService, branchInstructions, targetBranchProblem } from './branchService.js';
 import { isRateLimit } from '../adapters/rateLimit.js';
 import { pauseForRateLimit } from './rateLimitPause.js';
 import { prepareRetry } from './taskRetry.js';
@@ -132,6 +132,9 @@ ${wrapUntrusted('requirement', requirementMd)}
     if (projects.length === 0) {
       throw conflict(`Requirement ${reqId} has no enabled projects to fan out to`);
     }
+    // Checked again here: branches may have appeared since the target was saved.
+    const targetProblem = req.target_branch ? targetBranchProblem(this.db, req.target_branch, projects) : null;
+    if (targetProblem) throw badRequest(targetProblem);
 
     // Reserve synchronously: no await between the uniqueness check and the insert.
     const toDispatch: Array<{ id: number; attempts: number }> = [];

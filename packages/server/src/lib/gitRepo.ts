@@ -100,10 +100,20 @@ export function createBranch(repo: string, name: string, startSha: string): void
   runGit(repo, ['branch', '--', name, startSha]);
 }
 
-/** True when a branch lives under `<name>/` locally or on origin (git then refuses a branch named `name`). */
-export function hasBranchesUnder(repo: string, name: string): boolean {
-  const refs = tryGit(repo, ['for-each-ref', '--count=1', '--format=%(refname)', `refs/heads/${name}/`, `refs/remotes/origin/${name}/`]);
-  return (refs ?? '').trim() !== '';
+/** A branch living under `<name>/` locally or on origin (git then refuses a branch named `name`), or null. */
+export function branchUnder(repo: string, name: string): string | null {
+  const ref = tryGit(repo, ['for-each-ref', '--count=1', '--format=%(refname)', `refs/heads/${name}/`, `refs/remotes/origin/${name}/`])?.trim();
+  return ref ? ref.replace(/^refs\/(heads|remotes\/origin)\//, '') : null;
+}
+
+/** A branch, locally or on origin, that `name` would live under (`release` for `release/1.3`), or null. */
+export function branchAbove(repo: string, name: string): string | null {
+  const parts = name.split('/');
+  for (let i = 1; i < parts.length; i++) {
+    const prefix = parts.slice(0, i).join('/');
+    if (resolveCommit(repo, `refs/heads/${prefix}`) || resolveCommit(repo, `refs/remotes/origin/${prefix}`)) return prefix;
+  }
+  return null;
 }
 
 export async function addDetachedWorktree(repo: string, dir: string, sha: string, timeoutMs?: number): Promise<void> {

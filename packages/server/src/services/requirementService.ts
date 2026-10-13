@@ -12,6 +12,7 @@ import {
   UpdateRunSettingsInputSchema,
 } from '@sp-kickstack/shared';
 import { HttpError, badRequest, conflict } from '../lib/httpError.js';
+import { targetBranchProblem } from './branchService.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -352,8 +353,12 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
         );
       }
       if (target) {
-        const owner = this.db.prepare('SELECT id FROM bridge_tasks WHERE branch = ? LIMIT 1').get(target) as { id: number } | undefined;
-        if (owner) throw badRequest(`${target} is the branch of task #${owner.id}; choose another target branch`);
+        const names = req.affected_projects;
+        const repos = names.length
+          ? (this.db.prepare(`SELECT name, repo_path FROM projects WHERE name IN (${names.map(() => '?').join(', ')})`).all(...names) as Array<{ name: string; repo_path: string }>)
+          : [];
+        const problem = targetBranchProblem(this.db, target, repos);
+        if (problem) throw badRequest(problem);
       }
     }
 

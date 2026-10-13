@@ -11,7 +11,8 @@ export interface AgentProfile {
 /**
  * Model and effort for a task's next run, each resolved on its own: the task's pin (Retry /
  * Request changes), else its requirement's choice, else its workspace's default; null = the
- * engine decides.
+ * engine decides. A requirement that chooses a CLI skips the workspace model (model names differ
+ * per CLI), so that CLI's own Settings model applies.
  */
 export function resolveAgentProfile(db: AppDatabase, taskId: number): AgentProfile {
   const row = db
@@ -26,8 +27,9 @@ export function resolveAgentProfile(db: AppDatabase, taskId: number): AgentProfi
     `)
     .get(taskId) as Record<string, string | null> | undefined;
   if (!row) return { model: null, effort: null, cli: null };
+  const workspaceModel = row.req_cli ? null : row.ws_model;
   return {
-    model: row.model_override ?? row.req_model ?? row.ws_model ?? null,
+    model: row.model_override ?? row.req_model ?? workspaceModel ?? null,
     effort: (row.effort_override ?? row.req_effort ?? row.ws_effort ?? null) as ReasoningEffort | null,
     cli: (row.req_cli ?? null) as AgentCliId | null,
   };

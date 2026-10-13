@@ -2,8 +2,8 @@ import { AppDatabase } from '../db/index.js';
 import { ProjectService } from './projectService.js';
 import { SettingsService } from './settingsService.js';
 import { BridgeTask, DEFAULT_TASK_BRANCH_PATTERN, Project, normalizeMergePolicy, renderTaskBranchPattern } from '@sp-kickstack/shared';
-import { createBranch, hasBranchesUnder, hasRemote, isGitWorkTree, listBranchNames, pushCommit, resolveCommit } from '../lib/gitRepo.js';
-import { badRequest } from '../lib/httpError.js';
+import { branchAbove, branchUnder, createBranch, hasRemote, isGitWorkTree, listBranchNames, pushCommit, resolveCommit } from '../lib/gitRepo.js';
+import { badRequest, conflict } from '../lib/httpError.js';
 import { oneLine } from '../lib/promptSafety.js';
 import { folderName } from '../localEngine/worktrees.js';
 
@@ -31,7 +31,22 @@ export function branchInstructions(branch: string, base: string, policy: Effecti
 - If you are told about a merge conflict, rebase your branch onto \`${base}\` and resolve it there.`;
 }
 
-/** Names and creates the per-task branches (req/<REQ-ID>/task-<id>) in project repositories. */
+/**
+ * Why `target` cannot be a requirement's target branch, or null: it is a task's branch, or git cannot
+ * create it next to an existing branch of one of these repositories (`release` beside `release/1.3`).
+ */
+export function targetBranchProblem(db: AppDatabase, target: string, repos: Array<{ name: string; repo_path: string }>): string | null {
+  const owner = db.prepare('SELECT id FROM bridge_tasks WHERE branch = ? LIMIT 1').get(target) as { id: number } | undefined;
+  if (owner) return `${target} is the branch of task #${owner.id}; choose another target branch`;
+  for (const { name, repo_path } of repos) {
+    if (!isGitWorkTree(repo_path)) continue;
+    const clash = branchUnder(repo_path, target) ?? branchAbove(repo_path, target);
+    if (clash) return `Git cannot create ${target} in ${name}: the branch ${clash} exists there; choose another target branch`;
+  }
+  return null;
+}
+
+/** Names and creates the per-task branches (Settings → Task branch name, default {req}) in project repositories. */
 export class BranchService {
   private settings: SettingsService;
 
@@ -58,13 +73,21 @@ export class BranchService {
 
   /**
    * A free branch name for a task: the Settings pattern (default {req}), plus -ticket-{task} for
-   * tickets, plus -2, -3… when the name is taken locally, on origin, by another task or by a branch under it.
+   * tickets, plus -2, -3… when the name is taken locally, on origin, by another task, by an open
+   * requirement's target branch or by a branch under it. A branch the name would live under cannot be
+   * avoided by a suffix, so that is refused.
    */
   public nameTaskBranch(project: Project, reqId: string, taskId: number, role: TaskBranchRole): string {
     const pattern = this.settings.getBranchMergeSettings().task_branch_pattern || DEFAULT_TASK_BRANCH_PATTERN;
     const stem =
       renderTaskBranchPattern(pattern, { req: reqId, task: taskId, project: folderName(project.name) }) +
       (role === 'ticket' ? `-ticket-${taskId}` : '');
+    const above = isGitWorkTree(project.repo_path) ? branchAbove(project.repo_path, stem) : null;
+    if (above) {
+      throw conflict(
+        `Git cannot create the task branch ${stem} in ${project.name}: the branch ${above} exists there. Change Settings → Git & Branch Rules → Task branch name.`
+      );
+    }
     for (let n = 1; ; n++) {
       const name = n === 1 ? stem : `${stem}-${n}`;
       if (!this.branchTaken(project, name, taskId)) return name;
@@ -74,9 +97,11 @@ export class BranchService {
   private branchTaken(project: Project, name: string, taskId: number): boolean {
     const recorded = this.db.prepare('SELECT 1 FROM bridge_tasks WHERE project = ? AND branch = ? AND id <> ? LIMIT 1').get(project.name, name, taskId);
     if (recorded) return true;
+    const target = this.db.prepare("SELECT 1 FROM requirements WHERE target_branch = ? AND status NOT IN ('done', 'cancelled') LIMIT 1").get(name);
+    if (target) return true;
     const repo = project.repo_path;
     if (!isGitWorkTree(repo)) return false;
-    return Boolean(resolveCommit(repo, `refs/heads/${name}`) || resolveCommit(repo, `refs/remotes/origin/${name}`) || hasBranchesUnder(repo, name));
+    return Boolean(resolveCommit(repo, `refs/heads/${name}`) || resolveCommit(repo, `refs/remotes/origin/${name}`) || branchUnder(repo, name));
   }
 
   /** Branches of the chosen repositories (one workspace) and which repositories have each; task branches excluded. */

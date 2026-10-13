@@ -128,6 +128,17 @@ describe('Agent model and effort', () => {
     expect(resolveAgentProfile(h.db, goal.id)).toEqual({ model: 'opus', effort: 'low', cli: null });
   });
 
+  it("a requirement that chooses a CLI skips the workspace model, so that CLI's Settings model applies", async () => {
+    h.workspaceService.updateWorkspace('speedx', { agent_model: 'opus', agent_effort: 'high' });
+    const req = h.createRequirement();
+    h.requirementService.updateRunSettings(req.id, { agent_cli: 'agy-cli' });
+    const [goal] = await h.fanOutService.execute(req.id);
+
+    expect(resolveAgentProfile(h.db, goal.id)).toEqual({ model: null, effort: 'high', cli: 'agy-cli' });
+    h.requirementService.updateRunSettings(req.id, { agent_model: 'gemini-3.8-flash' });
+    expect(resolveAgentProfile(h.db, goal.id).model).toBe('gemini-3.8-flash');
+  });
+
   it('keeps a value on undefined, clears it on null, and refuses bad values', () => {
     const req = h.createRequirement();
     h.requirementService.updateAgentProfile(req.id, { model: 'opus', effort: 'max' });

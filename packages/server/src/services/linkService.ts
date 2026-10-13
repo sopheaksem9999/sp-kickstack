@@ -3,13 +3,19 @@ import { AdapterFactory } from './fanOutService.js';
 import { ProjectService } from './projectService.js';
 import { Link, LinkState, BridgeTask } from '@sp-kickstack/shared';
 import { wrapUntrusted } from '../lib/promptSafety.js';
+import { BranchService } from './branchService.js';
 
 export class LinkService {
+  private branches: BranchService;
+
   constructor(
     private db: AppDatabase,
     private projectService: ProjectService,
-    private getAdapter: AdapterFactory
-  ) {}
+    private getAdapter: AdapterFactory,
+    branches?: BranchService
+  ) {
+    this.branches = branches ?? new BranchService(db, projectService);
+  }
 
   public wouldCreateCycle(taskId: number, dependsOnId: number): boolean {
     if (taskId === dependsOnId) return true;
@@ -108,7 +114,7 @@ ${contractBlock}
       dependencyTask,
       dependencyTask.project,
       targetProject?.contract_path || undefined,
-      targetProject?.base_branch,
+      targetProject ? this.branches.baseBranchFor(targetProject, dependencyTask.req_id) : undefined,
       targetProject?.repo_path
     );
 

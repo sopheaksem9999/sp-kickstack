@@ -2,12 +2,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { AgentCliId } from '@sp-kickstack/shared';
-import { initDatabase } from '../db/index.js';
+import type { AgentCliId, Requirement } from '@sp-kickstack/shared';
+import { initDatabase, type AppDatabase } from '../db/index.js';
 import { ProjectService } from '../services/projectService.js';
 import { RequirementService } from '../services/requirementService.js';
 import { SettingsService } from '../services/settingsService.js';
 import { AgentRunner, type AgentRunnerOptions } from '../localEngine/agentRunner.js';
+import type { LocalRun } from '../localEngine/runStore.js';
 import { createBranch, resolveCommit } from '../lib/gitRepo.js';
 import { makeRepo } from './gitFixture.js';
 
@@ -29,7 +30,34 @@ export interface LocalHarnessOptions {
   runner?: Partial<AgentRunnerOptions>;
 }
 
-export function makeLocalHarness(opts: LocalHarnessOptions = {}) {
+export interface HarnessTask {
+  id: number;
+  branch: string;
+}
+
+/** Spelled out so declaration emit can name the database type. */
+export interface LocalHarness {
+  ws: string;
+  repo: string;
+  db: AppDatabase;
+  projectService: ProjectService;
+  requirementService: RequirementService;
+  settingsService: SettingsService;
+  runner: AgentRunner;
+  newRunner(overrides?: Partial<AgentRunnerOptions>): AgentRunner;
+  req: Requirement;
+  addTask(): HarnessTask;
+  queueRun(bodyMd: string, task?: HarnessTask, using?: AgentRunner): { run: LocalRun; task: HarnessTask };
+  logs(taskId: number): Array<{ stream: string; message: string }>;
+  logText(taskId: number): string;
+  prompts(runId: string): string[];
+  invocations(runId: string): any[];
+  settle(using?: AgentRunner): Promise<void>;
+  run(id: string): LocalRun;
+  promptsDir: string;
+}
+
+export function makeLocalHarness(opts: LocalHarnessOptions = {}): LocalHarness {
   fs.chmodSync(FAKE_AGENT_CLI, 0o755);
   const ws = path.join(tempRoot, `case-${process.pid}-${counter++}`);
   fs.rmSync(ws, { recursive: true, force: true });
@@ -37,7 +65,7 @@ export function makeLocalHarness(opts: LocalHarnessOptions = {}) {
   const promptsDir = path.join(ws, 'prompts');
   process.env.FAKE_AGENT_LOG_DIR = promptsDir;
 
-  const db = initDatabase(':memory:');
+  const db: AppDatabase = initDatabase(':memory:');
   const projectService = new ProjectService(db);
   const requirementService = new RequirementService(db, ws);
   const settingsService = new SettingsService(db);

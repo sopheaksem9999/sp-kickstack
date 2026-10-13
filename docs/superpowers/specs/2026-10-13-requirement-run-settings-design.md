@@ -1,6 +1,7 @@
 # Requirement run settings — design
 
-Status: design approved by the user in chat ("look good"), 2026-10-13. Builds on the Local AI CLI engine
+Status: design approved by the user in chat ("look good"), 2026-10-13. Task branch names (`REQ-008`) and
+pushing branches to `origin` added at the user's request the same day. Builds on the Local AI CLI engine
 (2026-10-13), agent model/effort per requirement (2026-10-12) and the branch merge gate (2026-10-09).
 
 ## Problem
@@ -23,6 +24,10 @@ A person cannot shape how one requirement runs.
   have it yet gets it created from that repository's base branch at fan-out.
 - **Kanban:** dragging a not-started card to In Progress opens a dialog showing repositories, CLI + model +
   effort, target branch and merge policy, editable. **Start Fan-Out** confirms.
+- **Task branch names** are the requirement ID, `REQ-008`, instead of `req/REQ-008/task-8`. The pattern is
+  a setting.
+- **Branches are pushed to `origin`** by the bridge: when created, and after every agent run that commits.
+  It is a setting, on by default.
 - **Approach:** the settings live on the requirement, and one shared "Run settings" dialog is used
   everywhere. Rejected alternatives:
   - choosing the settings only at fan-out: nothing stays editable, and the merge gate needs the target
@@ -84,7 +89,8 @@ stays for compatibility.
 **Branch name rule:**
 - Allowed characters: letters, digits, `.`, `_`, `/`, `-`, at most 100 characters.
 - It must not start with `-` or `/`, end with `/`, `.` or `.lock`, or contain `..`, `//` or `@{`.
-- It must not start with `req/`: that namespace is reserved for task branches.
+- It must not be a branch the bridge created for a task (any `bridge_tasks.branch`), since a target must
+  not be one task's own work.
 
 Refused names are a 400 with the reason.
 
@@ -106,7 +112,8 @@ then the project's `base_branch`, then the Settings default. Every caller passes
 - When it runs: in `ensureTaskBranch`, before the task branch is created.
 - Where it starts from: if the target branch exists neither locally nor as `origin/<target>`, it is created
   locally from the repository's own base branch (local, else `origin/<base>`).
-- Not pushed then: the merge gate pushes it with the first merge, when the repository has a remote.
+- Pushed right away when `push_branches` is on (see "Pushing branches to `origin`"). Otherwise, or if that
+  push fails, the merge gate pushes it with the first merge, when the repository has a remote.
 - Record: a `target_branch_created` event `{ reqId, project, branch, from }`.
 
 **Merge gate with a target the remote does not have yet:**
@@ -122,13 +129,68 @@ then the project's `base_branch`, then the Settings default. Every caller passes
 [{ "name": "release/1.3", "projects": ["backend", "frontend"] }, { "name": "develop", "projects": ["backend", "frontend"] }]
 ```
 
-- Contents: local branches plus `origin/*` (shown without the `origin/` prefix), excluding `HEAD` and
-  `req/*` task branches.
+- Contents: local branches plus `origin/*` (shown without the `origin/` prefix), excluding `HEAD` and the
+  branches the bridge created for tasks (any `bridge_tasks.branch`, old `req/…` names included).
 - Order: most repositories first, then by name.
 - Limit: at most 200 names.
 - Repositories without git return nothing.
 - Unknown project names are a 400.
 - No `fetch` is run: the list reflects the last fetch.
+
+### Task branch names
+
+`taskBranchName` (used by fan-out for goals and by ticket creation) builds names from a pattern in
+Settings → Git & Branch Rules: `task_branch_pattern`, default `{req}`. The tokens are `{req}`
+(`REQ-008`), `{task}` (the task number) and `{project}` (the repository's folder-safe name).
+
+| Task | Default name |
+|---|---|
+| Goal: one per requirement per repository | `REQ-008` |
+| Ticket: another task of the same requirement in that repository | `REQ-008-ticket-12` (the pattern plus `-ticket-{task}`) |
+| Name already taken in the repository | the first free of `REQ-008-2`, `REQ-008-3`, … |
+
+- **Ticket names use a dash.** Each task has its own worktree and git cannot check out one branch
+  twice; git also refuses both `REQ-008` and `REQ-008/…` as branch names.
+- **"Taken"** means the name exists as a local branch, as `origin/<name>`, or as another task's recorded
+  branch. The bridge never reuses or overwrites a branch it did not create for this task. A later revision
+  of the same requirement therefore gets `REQ-008-2`.
+- **Pattern validation:** it must contain `{req}`, and the name it produces must pass the branch name rule.
+  Refused patterns are a 400 with the reason.
+- **Existing branches:** tasks that already have a branch keep it (`req/REQ-008/task-8` stays; it has a
+  worktree and may be in review). Only tasks created after the change get the new names.
+- The goal prompt's branch rules name the actual branch, as today.
+
+### Pushing branches to `origin`
+
+Settings → Git & Branch Rules: `push_branches`, on by default.
+
+When it is on and the repository has an `origin` remote, the bridge pushes:
+- a **task branch** when fan-out or ticket creation creates it;
+- a **task branch** again after every Local AI CLI run that added commits (end commit ≠ start commit);
+- a **new target branch** when fan-out creates it.
+
+How it pushes:
+- **Never forced:** `git push origin <sha>:refs/heads/<branch>`, the existing `pushCommit`. If the
+  remote branch moved, or the push fails (no credentials, offline, a timeout of 2 minutes), the task is
+  not affected. The task log shows `Could not push <branch> to origin: <reason>`, and the next push of that
+  branch tries again.
+- **Never blocking:** pushes run asynchronously (`runGitAsync`), after the branch exists, and never delay
+  fan-out or a run's result.
+- **Logged:** a successful push logs `↑ Pushed <branch> to origin` on the task.
+- **Agents still never push.** Their prompt keeps "never push"; only the bridge pushes, so every push is
+  controlled and visible.
+- **Branches made before the change:** they are pushed the next time something changes on them.
+
+A consequence to know: a task branch starts from the local base branch, so local commits not yet on
+`origin/<base>` become visible on `origin` with the task branch. The merge gate pushes them anyway when
+it merges.
+
+### Settings (Rule B)
+
+`BranchMergeSettings` gains `task_branch_pattern` (string, default `{req}`) and `push_branches` (boolean,
+default `true`), validated as above. They are saved through the existing
+`PUT /api/settings/branch-merge` and shown on Settings → Git & Branch Rules as a text field (with a live
+example: `REQ-008`, `REQ-008-ticket-12`) and a switch.
 
 ### CLI per requirement (Local AI CLI)
 
@@ -187,6 +249,8 @@ Desktop (Rule A): every call goes through `BASE`, and no new server dependency i
 | Validation | refused branch names (400); target change after fan-out (409); same value accepted |
 | Branch list | union across repositories, task branches excluded, unknown project refused |
 | CLI | the preferred CLI is used per run; an unusable preferred CLI fails clearly; a paused CLI blocks only its own runs; Stoneforge body unchanged (now asserted) |
+| Branch names | goal `REQ-008`; ticket in the same repo `REQ-008-ticket-12`; a taken name gets `-2`; pattern with `{project}`; a pattern without `{req}` refused; existing tasks keep `req/…` |
+| Push | with a bare `origin`: a new task branch, new commits after a run, and a new target branch reach `origin`; a moved remote branch is not forced and the task goes on with the log line; repositories without `origin` and `push_branches: false` push nothing |
 
 **Web:** helper tests in `lib/runSettings.test.ts`, then typecheck and build.
 
@@ -195,6 +259,8 @@ Desktop (Rule A): every call goes through `BASE`, and no new server dependency i
 - `03-requirements-and-fan-out.md`: the Run settings card and dialog, Start Fan-Out through the dialog,
   and Kanban drag to In Progress.
 - `06-review-qa-and-merge.md`: merging into the target branch, and creating it.
+- `09-settings-and-environment.md`: the task branch name pattern and the push switch.
+- Every `req/<REQ-ID>/task-<id>` in the guide becomes the new names, noting that older tasks keep theirs.
 - `02-projects-and-engines.md`: the CLI per requirement for Local AI CLI.
 - `10-troubleshooting.md`: the new messages (branch name refused, target locked, preferred CLI
   unavailable).
@@ -206,3 +272,6 @@ Desktop (Rule A): every call goes through `BASE`, and no new server dependency i
 - A CLI choice on Retry or Request changes.
 - Fetching remotes to refresh the branch list.
 - Changing the target branch after fan-out.
+- Renaming branches that already exist (`req/REQ-008/task-8` stays).
+- Deleting merged branches on `origin` (auto-delete still removes only the local branch).
+- Agents pushing by themselves.

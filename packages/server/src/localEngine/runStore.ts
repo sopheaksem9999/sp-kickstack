@@ -10,12 +10,14 @@ export type RunStatus =
   | 'rate_limited'
   | 'review'
   | 'no_changes'
+  /** AI QA: the run finished (its result is on the QA task). */
+  | 'done'
   | 'failed'
   | 'timed_out'
   | 'cancelled';
 
 /** A run in one of these states never starts again (Retry creates a new run). */
-export const FINISHED_RUN_STATUSES: RunStatus[] = ['review', 'no_changes', 'failed', 'timed_out', 'cancelled'];
+export const FINISHED_RUN_STATUSES: RunStatus[] = ['review', 'no_changes', 'done', 'failed', 'timed_out', 'cancelled'];
 
 export interface LocalRun {
   id: string;

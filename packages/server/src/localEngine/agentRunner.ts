@@ -4,12 +4,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { AGENT_CLI_IDS } from '@sp-kickstack/shared';
-import type { AgentCliId, AiCliSettings, BridgeTask, LocalEngineSettings, LocalEngineStatus } from '@sp-kickstack/shared';
+import type { AgentCliId, AiCliSettings, AiQaSettings, BridgeTask, LocalEngineSettings, LocalEngineStatus } from '@sp-kickstack/shared';
 import type { AppDatabase } from '../db/index.js';
 import type { ProjectService } from '../services/projectService.js';
 import type { SettingsService } from '../services/settingsService.js';
 import type { NeuronService } from '../services/neuronService.js';
-import { commitsAhead, resolveCommit } from '../lib/gitRepo.js';
+import { commitsAhead, removeWorktree, resolveCommit } from '../lib/gitRepo.js';
+import { toEngineTask } from '../adapters/localCliAdapter.js';
 import { findCliBinary } from '../services/aiDraftService.js';
 import { FINISHED_RUN_STATUSES, RunStore, type LocalRun, type RunPatch, type RunStatus } from './runStore.js';
 import { AgentWorktrees, defaultWorktreeRoot, folderName } from './worktrees.js';
@@ -54,6 +55,10 @@ export const MAX_INTERRUPTIONS = 3;
 /** Wait when a usage limit names no reset time, and the longest wait honoured. */
 const DEFAULT_LIMIT_WAIT_MS = 15 * 60 * 1000;
 const MAX_LIMIT_WAIT_MS = 24 * 60 * 60 * 1000;
+/** A QA task's summary when its agent ended without `xticket qa-result`. */
+const QA_NO_RESULT = 'Finished without a result';
+/** Prefix of a QA run that starts again (usage limit, restart): its earlier findings are kept. */
+const QA_CONTINUE = '## Continue\nAn earlier attempt of this QA run was interrupted. The findings it reported are kept: report only new ones, then the result.\n\n';
 
 interface ActiveRun {
   runId: string;
@@ -151,6 +156,7 @@ export class AgentRunner {
     if (this.runs.transition(runId, ['queued', 'held', 'rate_limited', 'running'], { status: 'cancelled', pid: null, finished_at: this.iso() })) {
       this.log(run.bridge_task_id, 'system', '■ Cancelled');
     }
+    this.followRun(runId);
   }
 
   /** The agent asked a person: the run is held at once; the agent gets holdGraceMs to commit and stop. */
@@ -188,6 +194,7 @@ export class AgentRunner {
       [...this.active.values()].map(async (active) => {
         if (this.runs.transition(active.runId, ['running'], { status: 'queued', continuation: 1 })) {
           this.log(active.taskId, 'system', '⏹ Server stopping; this run continues when the server starts again');
+          this.followRun(active.runId);
         }
         await stopGroup(active.agent.pid, active.agent.exited, this.stopGrace());
         await active.settled.catch(() => {});
@@ -212,9 +219,11 @@ export class AgentRunner {
         const error = `Interrupted ${interruptions} times (the server stopped while the agent was running); Retry starts it again`;
         if (this.runs.transition(run.id, ['running'], { status: 'failed', pid: null, interruptions, finished_at: this.iso(), error })) {
           this.log(run.bridge_task_id, 'system', `✗ ${error}`);
+          this.followRun(run.id);
         }
       } else if (this.runs.transition(run.id, ['running'], { status: 'queued', pid: null, interruptions, continuation: 1 })) {
         this.log(run.bridge_task_id, 'system', '↻ The server restarted while the agent was running; it continues from the branch');
+        this.followRun(run.id);
       }
     }
   }
@@ -250,6 +259,7 @@ export class AgentRunner {
   private async pass(): Promise<void> {
     if (this.stopping) return;
     this.resumeRateLimited();
+    this.stopQaOutsideQa();
     this.cleanupWorktrees();
     const settings = this.settings();
     if (!settings.enabled) return;
@@ -265,6 +275,7 @@ export class AgentRunner {
         if (this.runs.transition(run.id, ['queued'], { status: 'failed', error: choice.problem, finished_at: this.iso() })) {
           this.log(run.bridge_task_id, 'system', `✗ ${choice.problem}`);
         }
+        this.followRun(run.id);
         continue;
       }
       if (!choice.cli || !choice.bin || paused.has(choice.cli)) continue;
@@ -272,15 +283,16 @@ export class AgentRunner {
     }
   }
 
-  /** The requirement's CLI when it chose one (it must be enabled and installed), else the engine's choice. */
+  /** The requirement's (or AI QA's) CLI when one was chosen (it must be enabled and installed), else the engine's choice. */
   private cliFor(run: LocalRun, ai: AiCliSettings, fallback: CliChoice): CliChoice {
     if (!run.preferred_cli) return fallback.cli ? fallback : { cli: null, bin: null, problem: null };
     const cli = run.preferred_cli;
     const bin = cliEnabled(cli, ai) ? cliBinary(cli, ai, this.find) : null;
     if (bin) return { cli, bin, problem: null };
-    const reqId = this.task(run.bridge_task_id)?.req_id ?? 'this requirement';
+    const task = this.task(run.bridge_task_id);
     const why = cliEnabled(cli, ai) ? 'is not installed on this PC' : 'is turned off in Settings → AI & Local Engines';
-    return { cli: null, bin: null, problem: `${CLI_LABELS[cli]} is chosen for ${reqId} but ${why}` };
+    if (task?.role === 'qa') return { cli: null, bin: null, problem: `No AI CLI can run QA: ${CLI_LABELS[cli]} is chosen for AI QA but ${why}` };
+    return { cli: null, bin: null, problem: `${CLI_LABELS[cli]} is chosen for ${task?.req_id ?? 'this requirement'} but ${why}` };
   }
 
   private taskBusy(run: LocalRun): boolean {
@@ -293,6 +305,7 @@ export class AgentRunner {
   private start(run: LocalRun, cli: AgentCliId, bin: string, ai: AiCliSettings, settings: LocalEngineSettings): boolean {
     if (run.cancel_requested_at) {
       this.runs.transition(run.id, ['queued'], { status: 'cancelled', finished_at: this.iso() });
+      this.followRun(run.id);
       return false;
     }
     const task = this.task(run.bridge_task_id);
@@ -300,28 +313,30 @@ export class AgentRunner {
       this.runs.transition(run.id, ['queued'], { status: 'cancelled', error: 'The task is no longer active', finished_at: this.iso() });
       return false;
     }
+    const qa = task.role === 'qa';
     const fail = (message: string) => {
       if (this.runs.transition(run.id, ['queued'], { status: 'failed', error: message, finished_at: this.iso() })) this.log(task.id, 'system', `✗ ${message}`);
+      this.followRun(run.id);
       return false;
     };
     const project = this.opts.projectService.getProject(run.project);
     if (!project) return fail(`Repository ${run.project} is not registered`);
     // Switched to another engine or disabled: no agent starts there; the run waits until it is back.
-    if (!project.enabled || project.engine_type !== 'local') return false;
-    if (!task.branch) return fail(`Local AI CLI needs a git repository: ${project.repo_path} is not the top of a git work tree`);
-    // A task keeps its worktree (even after the worktree folder setting changed); new tasks use the current root.
-    const dir = this.recordedWorktree(task.id) ?? this.worktrees.pathFor(project.name, task.id);
-    let gitCommonDir: string;
+    // AI QA checks every git repository, whatever its engine.
+    if (!project.enabled || (!qa && project.engine_type !== 'local')) return false;
+    let checkout: { dir: string; ref: string; startSha: string | null; gitCommonDir: string };
     try {
-      this.worktrees.ensure(project.repo_path, task.branch, dir);
-      gitCommonDir = this.worktrees.gitCommonDir(project.repo_path);
+      checkout = qa ? this.qaCheckout(project.name, project.repo_path, task) : this.taskCheckout(project.name, project.repo_path, task);
     } catch (err: any) {
       return fail(err?.message || String(err));
     }
+    const { dir, gitCommonDir } = checkout;
 
     const model = runModel(cli, run.model, ai);
     const effort = runEffort(cli, run.effort, ai);
-    let prompt = buildRunPrompt({ bodyMd: run.body_md, worktree: dir, branch: task.branch, notesMd: run.notes_md, continuation: run.continuation === 1 });
+    let prompt = qa
+      ? `${run.continuation === 1 ? QA_CONTINUE : ''}${run.body_md}`
+      : buildRunPrompt({ bodyMd: run.body_md, worktree: dir, branch: task.branch!, notesMd: run.notes_md, continuation: run.continuation === 1 });
     if (this.opts.neuronService) {
       prompt = this.opts.neuronService.enrichPrompt(prompt, project.name);
     }
@@ -342,16 +357,16 @@ export class AgentRunner {
         ...(this.opts.agentToken ? { XTICKET_TOKEN: this.opts.agentToken } : {}),
       },
     });
-    const startSha = resolveCommit(project.repo_path, `refs/heads/${task.branch}`);
     let agent: SpawnedAgent;
     try {
       agent = spawnAgent(command, dir, env);
     } catch (err: any) {
+      if (qa) removeWorktree(project.repo_path, dir);
       return fail(`Could not start ${CLI_LABELS[cli]} (${bin}): ${err?.message || err}`);
     }
     // A cancel requested meanwhile keeps the run from starting (cancel_requested_at is never reset).
     const claimed = !this.runs.get(run.id)?.cancel_requested_at && this.runs.transition(run.id, ['queued'], {
-      status: 'running', cli, model, effort, worktree: dir, start_sha: startSha, end_sha: null, pid: agent.pid,
+      status: 'running', cli, model, effort, worktree: dir, start_sha: checkout.startSha, end_sha: null, pid: agent.pid,
       pid_started_at: agent.startedAt, started_at: this.iso(), finished_at: null, notes_md: '', continuation: 0,
       hold_requested_at: null, exit_code: null, error: null, resume_at: null,
     });
@@ -359,10 +374,30 @@ export class AgentRunner {
       void stopGroup(agent.pid, agent.exited, this.stopGrace());
       return false;
     }
+    this.followRun(run.id);
     this.opts.db.prepare('UPDATE bridge_tasks SET model = ?, effort = ? WHERE id = ?').run(model, effort, task.id);
-    this.log(task.id, 'system', `▶ ${CLI_LABELS[cli]} started in ${dir} on ${task.branch}${model ? ` · ${model}` : ''}${effort ? ` · ${effort}` : ''}`);
-    this.supervise(run.id, task, project.repo_path, cli, bin, agent, settings.runTimeoutMinutes, runDir);
+    const profile = `${model ? ` · ${model}` : ''}${effort ? ` · ${effort}` : ''}`;
+    this.log(task.id, 'system', qa ? `▶ AI QA with ${CLI_LABELS[cli]} in ${dir} at ${checkout.ref}${profile}` : `▶ ${CLI_LABELS[cli]} started in ${dir} on ${checkout.ref}${profile}`);
+    const minutes = qa ? this.qaSettings().timeLimitMinutes : settings.runTimeoutMinutes;
+    this.supervise(run.id, task, project.repo_path, cli, bin, agent, minutes, runDir);
     return true;
+  }
+
+  /** The task's own worktree on its branch (kept between runs). */
+  private taskCheckout(projectName: string, repo: string, task: BridgeTask) {
+    if (!task.branch) throw new Error(`Local AI CLI needs a git repository: ${repo} is not the top of a git work tree`);
+    // A task keeps its worktree (even after the worktree folder setting changed); new tasks use the current root.
+    const dir = this.recordedWorktree(task.id) ?? this.worktrees.pathFor(projectName, task.id);
+    this.worktrees.ensure(repo, task.branch, dir);
+    return { dir, ref: task.branch, startSha: resolveCommit(repo, `refs/heads/${task.branch}`), gitCommonDir: this.worktrees.gitCommonDir(repo) };
+  }
+
+  /** AI QA: a fresh detached checkout of the commit to check, removed when the run ends. */
+  private qaCheckout(projectName: string, repo: string, task: BridgeTask) {
+    if (!task.base_sha) throw new Error('AI QA has no commit to check');
+    const dir = this.worktrees.pathFor(projectName, task.id);
+    this.worktrees.checkoutDetached(repo, task.base_sha, dir);
+    return { dir, ref: task.base_sha.slice(0, 7), startSha: task.base_sha, gitCommonDir: this.worktrees.gitCommonDir(repo) };
   }
 
   private supervise(runId: string, task: BridgeTask, repo: string, cli: AgentCliId, bin: string, agent: SpawnedAgent, minutes: number, runDir: string) {
@@ -437,6 +472,7 @@ export class AgentRunner {
       } finally {
         this.active.delete(runId);
       }
+      this.followRun(runId);
       await this.tick();
     });
     this.active.set(runId, active);
@@ -447,7 +483,9 @@ export class AgentRunner {
     const run = this.runs.get(runId);
     const task = this.task(taskId);
     if (!run || !task) return;
-    const endSha = task.branch ? resolveCommit(repo, `refs/heads/${task.branch}`) : null;
+    const qa = task.role === 'qa';
+    if (qa) this.dropQaCheckout(taskId, repo, run.worktree);
+    const endSha = !qa && task.branch ? resolveCommit(repo, `refs/heads/${task.branch}`) : null;
     if (endSha && endSha !== run.start_sha) this.opts.onCommits?.(taskId);
     const base: RunPatch = { pid: null, exit_code: exit.code, end_sha: endSha, finished_at: this.iso() };
     const label = CLI_LABELS[cli];
@@ -455,7 +493,7 @@ export class AgentRunner {
     if (run.cancel_requested_at) {
       // Any state: a run released or re-queued while its agent was stopping must not start again.
       if (this.runs.transition(runId, ['running', 'held', 'queued', 'rate_limited'], { ...base, status: 'cancelled' })) {
-        this.log(taskId, 'system', '■ Stopped: the task was cancelled');
+        this.log(taskId, 'system', qa ? '■ AI QA stopped' : '■ Stopped: the task was cancelled');
       }
       return;
     }
@@ -470,8 +508,10 @@ export class AgentRunner {
       return;
     }
     if (timedOut) {
-      const minutes = this.settings().runTimeoutMinutes;
-      this.end(runId, taskId, { ...base, status: 'timed_out', error: `Stopped after the ${minutes} minute time limit (Settings → AI & Local Engines)` });
+      const error = qa
+        ? `Stopped after the ${this.qaSettings().timeLimitMinutes} minute AI QA time limit (Settings → AI & Local Engines → AI QA)`
+        : `Stopped after the ${this.settings().runTimeoutMinutes} minute time limit (Settings → AI & Local Engines)`;
+      this.end(runId, taskId, { ...base, status: 'timed_out', error });
       return;
     }
     if (out.rateLimit) {
@@ -491,6 +531,10 @@ export class AgentRunner {
       this.end(runId, taskId, { ...base, status: 'failed', error: `${label} failed: ${reason}\n${out.tail.join('\n')}`.trim() });
       return;
     }
+    if (qa) {
+      this.finishQa(runId, taskId, base);
+      return;
+    }
     const worktree = run.worktree ?? '';
     const dirty = worktree ? this.worktrees.uncommitted(worktree) : [];
     if (dirty.length) {
@@ -505,6 +549,18 @@ export class AgentRunner {
     this.end(runId, taskId, { ...base, status: 'no_changes', error });
   }
 
+  /** AI QA ends done; its result is what the agent reported with `xticket qa-result`. */
+  private finishQa(runId: string, taskId: number, base: RunPatch) {
+    const row = this.task(taskId);
+    if (!row || row.qa_passed == null) {
+      this.opts.db.prepare('UPDATE bridge_tasks SET qa_summary = ? WHERE id = ? AND qa_passed IS NULL').run(QA_NO_RESULT, taskId);
+      this.end(runId, taskId, { ...base, status: 'done' }, '✓ AI QA finished without a result (the agent did not run xticket qa-result)');
+      return;
+    }
+    const summary = (row.qa_summary ?? '').split('\n')[0];
+    this.end(runId, taskId, { ...base, status: 'done' }, `✓ AI QA ${row.qa_passed ? 'passed' : 'found problems'}: ${summary}`);
+  }
+
   /** The reset the CLI named, else its live quota's, else 15 minutes; at least 1 minute, at most 24 h ahead. */
   private async resumeTime(cli: AgentCliId, bin: string, reported: string | null): Promise<string> {
     let until = reported ? Date.parse(reported) : NaN;
@@ -517,17 +573,25 @@ export class AgentRunner {
     return new Date(until).toISOString();
   }
 
-  /** Worktrees of tasks that are COMPLETE or CANCELLED are removed (kept while they have uncommitted changes). */
+  /** Worktrees of tasks that are COMPLETE or CANCELLED are removed (kept while they have uncommitted changes); AI QA checkouts always go. */
   private cleanupWorktrees() {
     const rows = this.opts.db
       .prepare(`
-        SELECT r.bridge_task_id AS taskId, r.project AS project, MAX(r.worktree) AS worktree
+        SELECT r.bridge_task_id AS taskId, r.project AS project, MAX(r.worktree) AS worktree, t.role AS role
         FROM local_runs r JOIN bridge_tasks t ON t.id = r.bridge_task_id
-        WHERE r.worktree IS NOT NULL AND t.status IN ('done', 'cancelled')
+        WHERE r.worktree IS NOT NULL AND (t.status IN ('done', 'cancelled') OR (t.role = 'qa' AND t.status = 'failed'))
         GROUP BY r.bridge_task_id, r.project
       `)
-      .all() as Array<{ taskId: number; project: string; worktree: string }>;
-    for (const row of rows) this.removeTaskWorktree(row.taskId, row.project, row.worktree);
+      .all() as Array<{ taskId: number; project: string; worktree: string; role: string }>;
+    for (const row of rows) {
+      if (row.role !== 'qa') {
+        this.removeTaskWorktree(row.taskId, row.project, row.worktree);
+        continue;
+      }
+      if ([...this.active.values()].some((a) => a.taskId === row.taskId)) continue;
+      const repo = this.opts.projectService.getProject(row.project)?.repo_path;
+      if (repo) this.dropQaCheckout(row.taskId, repo, row.worktree);
+    }
   }
 
   private removeTaskWorktree(taskId: number, project: string, worktree: string): boolean {
@@ -558,8 +622,47 @@ export class AgentRunner {
       if (run.resume_at && run.resume_at > now) continue;
       if (this.runs.transition(run.id, ['rate_limited'], { status: 'queued', resume_at: null, continuation: 1, error: null })) {
         this.log(run.bridge_task_id, 'system', '↻ Usage limit reset; continuing');
+        this.followRun(run.id);
       }
     }
+  }
+
+  /** AI QA checks a requirement in QA: its runs stop once the requirement leaves QA (Request changes, done, cancelled) or the QA task is cancelled. */
+  private stopQaOutsideQa() {
+    const rows = this.opts.db
+      .prepare(`
+        SELECT r.id AS runId, t.id AS taskId, t.req_id AS reqId FROM local_runs r
+        JOIN bridge_tasks t ON t.id = r.bridge_task_id
+        JOIN requirements q ON q.id = t.req_id
+        WHERE t.role = 'qa' AND r.status IN ('queued', 'running', 'rate_limited') AND r.cancel_requested_at IS NULL
+          AND (q.status <> 'qa' OR t.status = 'cancelled')
+      `)
+      .all() as Array<{ runId: string; taskId: number; reqId: string }>;
+    for (const row of rows) {
+      this.log(row.taskId, 'system', `■ ${row.reqId} is no longer in QA; AI QA stops`);
+      void this.cancel(row.runId).catch((err) => console.warn(`[local-engine] run ${row.runId}: ${err?.message || err}`));
+    }
+  }
+
+  /** A QA task has no engine to sync it: its status follows its run (a no-op for other tasks). */
+  private followRun(runId: string) {
+    const run = this.runs.get(runId);
+    if (!run) return;
+    const status = toEngineTask(run).status;
+    this.opts.db
+      .prepare("UPDATE bridge_tasks SET status = ?, last_error = ?, updated_at = ? WHERE id = ? AND role = 'qa' AND status <> 'cancelled'")
+      .run(status, status === 'failed' ? run.error : null, new Date().toISOString(), run.bridge_task_id);
+  }
+
+  /** Remove an AI QA checkout; whatever the agent left in it is thrown away. */
+  private dropQaCheckout(taskId: number, repo: string, worktree: string | null) {
+    if (!worktree) return;
+    removeWorktree(repo, worktree);
+    this.opts.db.prepare('UPDATE local_runs SET worktree = NULL, updated_at = ? WHERE bridge_task_id = ?').run(new Date().toISOString(), taskId);
+  }
+
+  private qaSettings(): AiQaSettings {
+    return this.opts.settingsService.getAiQaSettings();
   }
 
   private end(runId: string, taskId: number, patch: RunPatch & { status: RunStatus }, message?: string) {

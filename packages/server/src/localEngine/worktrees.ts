@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkoutPathOf, isClean, isGitWorkTree, runGit } from '../lib/gitRepo.js';
+import { checkoutPathOf, isClean, isGitWorkTree, removeWorktree, runGit } from '../lib/gitRepo.js';
 
 const real = (p: string) => {
   try {
@@ -57,6 +57,15 @@ export class AgentWorktrees {
     }
     fs.mkdirSync(path.dirname(dir), { recursive: true });
     runGit(repo, ['worktree', 'add', '--quiet', dir, branch]);
+  }
+
+  /** AI QA: a fresh detached checkout of `sha` at `dir`; what an earlier attempt left there is removed. */
+  checkoutDetached(repo: string, sha: string, dir: string): void {
+    if (!isGitWorkTree(repo)) throw new Error(`AI QA needs a git repository: ${repo} is not the top of a git work tree`);
+    if (fs.existsSync(dir)) removeWorktree(repo, dir);
+    runGit(repo, ['worktree', 'prune']);
+    fs.mkdirSync(path.dirname(dir), { recursive: true });
+    runGit(repo, ['worktree', 'add', '--quiet', '--detach', dir, sha]);
   }
 
   /** Remove a worktree that has no uncommitted changes. */

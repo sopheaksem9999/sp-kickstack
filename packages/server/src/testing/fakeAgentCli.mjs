@@ -3,7 +3,7 @@
 // called as `-p <prompt> …`, AGY's stream-json. Lines "FAKE: <action> <arg>" in the prompt drive it:
 //   say <text> · commit <file> · dirty <file> · sleep <ms> · wait-for-note <ms> · wait-once <ms>
 //   exit <code> · fail-unless-retry <code> · limit <epoch s> · limit-once <epoch s>
-//   stderr <text> · background <ms> · chatty-background
+//   stderr <text> · background <ms> · chatty-background · where (says HEAD <sha> and its branch, or (detached))
 // With FAKE_AGENT_LOG_DIR set, each prompt is saved as <XTICKET_TASK>-<n>.md (and argv/env as .json).
 import fs from 'node:fs';
 import path from 'node:path';
@@ -61,6 +61,10 @@ for (const [action, arg] of actions) {
       execFileSync('git', ['add', '--', arg]);
       execFileSync('git', ['-c', 'user.name=Fake Agent', '-c', 'user.email=agent@example.com', 'commit', '-q', '-m', `add ${arg}`]);
     }
+  } else if (action === 'where') {
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const branch = execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim();
+    say(`HEAD ${head} ${branch ? `on ${branch}` : '(detached)'}`);
   } else if (action === 'sleep') await sleep(Number(arg));
   else if (action === 'wait-for-note') { if (!hasNotes) await sleep(Number(arg)); }
   else if (action === 'wait-once') { if (!continued) await sleep(Number(arg)); }

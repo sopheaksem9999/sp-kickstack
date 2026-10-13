@@ -20,6 +20,7 @@ const STATUS: Record<RunStatus, NormStatus> = {
   rate_limited: 'rate_limited',
   review: 'in_review',
   no_changes: 'needs_human',
+  done: 'done',
   failed: 'failed',
   timed_out: 'failed',
   cancelled: 'cancelled',

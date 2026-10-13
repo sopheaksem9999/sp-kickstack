@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canMarkDone, canRetry, canSendNote, pausedLabel, retryOutcome } from './taskActions';
+import { canMarkDone, canRetry, canSendNote, pausedLabel, retryOutcome, taskFailureMessage } from './taskActions';
 
 const t = (role: string, status: string, extra: Record<string, unknown> = {}) => ({ role, status, ...extra }) as any;
 
@@ -70,5 +70,27 @@ describe('canSendNote', () => {
     expect(canSendNote(t('goal', 'in_review', { engine_task_id: 'e1' }))).toBe(false);
     expect(canSendNote(t('goal', 'running', { engine_task_id: null }))).toBe(false);
     expect(canSendNote(t('waiting', 'held', { engine_task_id: 'e1' }))).toBe(false);
+  });
+});
+
+describe('taskFailureMessage', () => {
+  const refused = (status: number, message: string) => Object.assign(new Error(message), { status });
+
+  it('does not add a refresh hint when the server refused with 409: its message already says what to do', () => {
+    const message = taskFailureMessage('retry the task', refused(409, 'A waiting task cannot be retried'));
+    expect(message).toBe('Could not retry the task: A waiting task cannot be retried');
+    expect(message).not.toMatch(/refresh/i);
+  });
+
+  it('tells the person to refresh after any other failure', () => {
+    expect(taskFailureMessage('mark the task done', refused(500, 'Request failed (500)'))).toBe(
+      'Could not mark the task done: Request failed (500). Refresh the queue to see its current state.'
+    );
+    expect(taskFailureMessage('retry the task', refused(404, 'Task not found'))).toBe(
+      'Could not retry the task: Task not found. Refresh the queue to see its current state.'
+    );
+    expect(taskFailureMessage('retry the task', new Error('Failed to fetch'))).toBe(
+      'Could not retry the task: Failed to fetch. Refresh the queue to see its current state.'
+    );
   });
 });

@@ -25,6 +25,8 @@ export function QueueTaskCard({ task, retrying, markingDone, onOpenRequirement, 
   const resumes = pausedLabel(task);
   const who = `${task.project} task ${task.id}`;
   const urgent = task.req_priority === 'urgent' || task.req_priority === 'high';
+  // One action at a time per task: Retry and Mark Done change the same row.
+  const busy = retrying || markingDone;
 
   return (
     <li className="bg-white dark:bg-[#202020] border border-slate-200 dark:border-[#2d2d2d] rounded-xl p-4 shadow-sm hover:border-slate-300 dark:hover:border-[#383838] transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -110,7 +112,7 @@ export function QueueTaskCard({ task, retrying, markingDone, onOpenRequirement, 
           <button
             type="button"
             onClick={() => onRetry(task)}
-            disabled={retrying}
+            disabled={busy}
             aria-label={`Retry, ${who}`}
             title="Send this task to its engine again on the same branch (the old engine task is cancelled)"
             className={`${ACTION} bg-amber-100 dark:bg-amber-950/50 hover:bg-amber-200 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-300`}
@@ -124,7 +126,7 @@ export function QueueTaskCard({ task, retrying, markingDone, onOpenRequirement, 
           <button
             type="button"
             onClick={() => onMarkDone(task)}
-            disabled={markingDone}
+            disabled={busy}
             aria-label={`Mark Done, ${who}`}
             title="Mark this task done here and release the work waiting on it (the engine and its agent are not told)"
             className={`${ACTION} bg-slate-100 dark:bg-[#282828] hover:bg-slate-200 dark:hover:bg-[#323232] text-slate-700 dark:text-slate-300`}

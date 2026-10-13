@@ -34,6 +34,13 @@ describe('api wrappers surface server errors', () => {
     await expect(api.markTaskDone(1)).rejects.toThrow(/500/);
   });
 
+  it('keeps the HTTP status on the error so callers can tell a refusal (409) from other failures', async () => {
+    respondWith(409, { error: 'Requirement is cancelled' });
+    await expect(api.markTaskDone(1)).rejects.toMatchObject({ message: 'Requirement is cancelled', status: 409 });
+    respondWith(500, {});
+    await expect(api.retryTask(1)).rejects.toMatchObject({ status: 500 });
+  });
+
   it('resolves with the JSON body on success', async () => {
     respondWith(200, { ok: true });
     await expect(api.markTaskDone(1)).resolves.toEqual({ ok: true });

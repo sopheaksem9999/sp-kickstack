@@ -39,3 +39,14 @@ export function retryOutcome(task: Pick<BridgeTask, 'status'> & { last_error?: s
   if (task.status === 'rate_limited') return { kind: 'info', message: 'Retry queued: the engine is rate limited; it starts automatically' };
   return { kind: 'success', message: 'Task sent to its engine again' };
 }
+
+/**
+ * Toast text for a failed Retry or Mark Done. A 409 means the server refused on purpose and its message
+ * says what to do, so no hint is added; any other failure gets one.
+ */
+export function taskFailureMessage(action: 'retry the task' | 'mark the task done', err: Error): string {
+  const refused = (err as Error & { status?: number }).status === 409;
+  return refused
+    ? `Could not ${action}: ${err.message}`
+    : `Could not ${action}: ${err.message}. Refresh the queue to see its current state.`;
+}

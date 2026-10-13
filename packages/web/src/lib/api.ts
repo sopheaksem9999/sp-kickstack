@@ -49,12 +49,20 @@ const isTauri =
 export const API_BASE = isTauri ? 'http://127.0.0.1:4100' : '';
 export const BASE = `${API_BASE}/api`;
 
+/** An error the server answered with: the message is its `error` text, `status` the HTTP status. */
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 /** fetch + JSON, throwing the server's `error` message (or the HTTP status) on failure. */
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error((body as { error?: string })?.error || `Request failed (${res.status})`);
+    throw new ApiError((body as { error?: string })?.error || `Request failed (${res.status})`, res.status);
   }
   return body as T;
 }

@@ -6,7 +6,8 @@ import { ListTodo, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import type { QueueTask } from '@sp-kickstack/shared';
 import { fetchProjects, fetchTasks, markTaskDone, retryTask } from '../lib/api.js';
-import { retryOutcome } from '../lib/taskActions.js';
+import { retryOutcome, taskFailureMessage } from '../lib/taskActions.js';
+import { flightKey, setInFlight, type TaskAction } from '../lib/inFlight.js';
 import { QUEUE_TABS, filterQueue, resolveQueueTab, sortQueue, tabCounts } from '../lib/queueTasks.js';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { LiveTaskLogsDrawer } from '../components/LiveTaskLogsDrawer.js';
@@ -67,23 +68,34 @@ export function QueuePage() {
     queryClient.invalidateQueries({ queryKey: ['requirement-graph'] });
   };
 
+  // Each task tracks its own running action: one mutation object holds only the latest call's variables,
+  // so starting an action on task B would otherwise free task A's buttons while A is still pending.
+  const [inFlight, setInFlightIds] = useState<ReadonlySet<string>>(() => new Set());
+  const track = (action: TaskAction, task: QueueTask, on: boolean) =>
+    setInFlightIds((prev) => setInFlight(prev, flightKey(action, task.id), on));
+  const isBusy = (task: QueueTask) => inFlight.has(flightKey('retry', task.id)) || inFlight.has(flightKey('markDone', task.id));
+
   const retry = useMutation({
     mutationFn: (task: QueueTask) => retryTask(task.id),
+    onMutate: (task) => track('retry', task, true),
     onSuccess: (retried) => {
       const outcome = retryOutcome(retried);
       toast[outcome.kind](outcome.message);
       refreshAfterChange();
     },
-    onError: (err: Error) => toast.error(`Could not retry the task: ${err.message}. Refresh the queue to see its current state.`),
+    onError: (err: Error) => toast.error(taskFailureMessage('retry the task', err)),
+    onSettled: (_data, _err, task) => track('retry', task, false),
   });
 
   const markDone = useMutation({
     mutationFn: (task: QueueTask) => markTaskDone(task.id),
+    onMutate: (task) => track('markDone', task, true),
     onSuccess: () => {
       toast.success('Task marked as done');
       refreshAfterChange();
     },
-    onError: (err: Error) => toast.error(`Could not mark the task done: ${err.message}. Refresh the queue to see its current state.`),
+    onError: (err: Error) => toast.error(taskFailureMessage('mark the task done', err)),
+    onSettled: (_data, _err, task) => track('markDone', task, false),
   });
 
   const filtered = Boolean(search.trim()) || project !== null;
@@ -93,12 +105,12 @@ export function QueuePage() {
         <QueueTaskCard
           key={task.id}
           task={task}
-          retrying={retry.isPending && retry.variables?.id === task.id}
-          markingDone={markDone.isPending && markDone.variables?.id === task.id}
+          retrying={inFlight.has(flightKey('retry', task.id))}
+          markingDone={inFlight.has(flightKey('markDone', task.id))}
           onOpenRequirement={setOpenReqId}
           onOpenLogs={setLogTask}
-          onRetry={(t) => retry.mutate(t)}
-          onMarkDone={(t) => markDone.mutate(t)}
+          onRetry={(t) => !isBusy(t) && retry.mutate(t)}
+          onMarkDone={(t) => !isBusy(t) && markDone.mutate(t)}
         />
       ))}
     </ul>

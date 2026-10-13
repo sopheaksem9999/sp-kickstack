@@ -36724,7 +36724,9 @@ var BranchMergeSettingsSchema = external_exports.object({
   /** Task branch names: {req}, {task}, {project}; tickets add -ticket-{task}. */
   task_branch_pattern: external_exports.string().trim().superRefine(refineWith(taskBranchPatternProblem)).default(DEFAULT_TASK_BRANCH_PATTERN),
   /** The bridge pushes new task/target branches and agents' new commits to origin. */
-  push_branches: external_exports.boolean().default(true)
+  push_branches: external_exports.boolean().default(true),
+  /** New requirements start with this target branch; empty = each repository's base branch. */
+  default_target_branch: external_exports.string().trim().superRefine(refineWith((name) => name ? branchNameProblem(name) : null)).default("")
 });
 var AttachmentItemSchema = external_exports.object({
   name: external_exports.string().min(1),
@@ -38002,8 +38004,11 @@ ${input.attachments.map(
   }
   createRequirement(input) {
     const scoped = { ...input, affected_projects: this.ownWorkspaceProjects(input.workspace_id || "default", input.affected_projects) };
-    const targetBranch = input.target_branch?.trim() || null;
-    if (targetBranch) this.assertTargetBranch(targetBranch, scoped.affected_projects);
+    const fromSettings = input.target_branch === void 0;
+    const targetBranch = (fromSettings ? new SettingsService(this.db).getBranchMergeSettings().default_target_branch : input.target_branch)?.trim() || null;
+    if (targetBranch) {
+      this.assertTargetBranch(targetBranch, scoped.affected_projects, fromSettings ? " (Settings \u2192 Git & Branch Rules \u2192 Default target branch)" : "");
+    }
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const status = input.status || "draft";
     const revision = 1;
@@ -38245,10 +38250,10 @@ ${input.attachments.map(
     return this.getRequirement(id);
   }
   /** 400 when `target` cannot be the target branch of a requirement in these repositories. */
-  assertTargetBranch(target, projectNames) {
+  assertTargetBranch(target, projectNames, source = "") {
     const repos = projectNames.length ? this.db.prepare(`SELECT name, repo_path FROM projects WHERE name IN (${projectNames.map(() => "?").join(", ")})`).all(...projectNames) : [];
     const problem = targetBranchProblem(this.db, target, repos);
-    if (problem) throw badRequest(problem);
+    if (problem) throw badRequest(problem + source);
   }
   updateStatus(id, status) {
     this.db.prepare(`

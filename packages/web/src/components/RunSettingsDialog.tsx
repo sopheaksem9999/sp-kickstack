@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { BranchMergePolicy, Requirement } from '@sp-kickstack/shared';
@@ -8,7 +8,9 @@ import { AgentProfileFields } from './AgentProfilePicker.js';
 import { BranchPicker } from './BranchPicker.js';
 import { fetchProjects, startRequirementFanOut, updateRequirementProjects } from '../lib/api.js';
 import { fetchBranches, saveRunSettings } from '../lib/runSettingsApi.js';
-import { CLI_CHOICES, draftFromRequirement, modelSuggestionsFor, runSettingsPatch, runSettingsProblem, type RunSettingsDraft } from '../lib/runSettings.js';
+import {
+  CLI_CHOICES, draftFromRequirement, fanOutResult, modelSuggestionsFor, runSettingsPatch, runSettingsProblem, shouldResetDraft, type RunSettingsDraft,
+} from '../lib/runSettings.js';
 
 export interface RunSettingsDialogProps {
   req: Requirement;
@@ -49,11 +51,14 @@ export function RunSettingsDialog({ req, mode, open, onOpenChange }: RunSettings
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<RunSettingsDraft>(() => draftFromRequirement(req));
   const [error, setError] = useState<string | null>(null);
+  // Refetches while open (every live update) keep what the person is editing.
+  const shown = useRef<{ open: boolean; reqId: string | null }>({ open: false, reqId: null });
   useEffect(() => {
-    if (open) {
+    if (shouldResetDraft(shown.current, { open, reqId: req.id })) {
       setDraft(draftFromRequirement(req));
       setError(null);
     }
+    shown.current = { open, reqId: req.id };
   }, [open, req]);
 
   const workspaceId = req.workspace_id || 'default';
@@ -79,11 +84,19 @@ export function RunSettingsDialog({ req, mode, open, onOpenChange }: RunSettings
       }
       const patch = runSettingsPatch(draft, req);
       if (Object.keys(patch).length > 0) await saveRunSettings(req.id, patch);
-      if (mode === 'fan-out') await startRequirementFanOut(req.id);
+      return mode === 'fan-out' ? (await startRequirementFanOut(req.id)).tasks : null;
     },
-    onSuccess: () => {
+    onSuccess: (goals) => {
       queryClient.invalidateQueries();
-      toast.success(mode === 'fan-out' ? `Fan-out started for ${req.id}` : 'Run settings saved; they apply to runs started from now on');
+      if (!goals) {
+        toast.success('Run settings saved; they apply to runs started from now on');
+        onOpenChange(false);
+        return;
+      }
+      const result = fanOutResult(req.id, goals);
+      if (result.level === 'error') return setError(result.message);
+      if (result.level === 'warning') toast.warning(result.message);
+      else toast.success(result.message);
       onOpenChange(false);
     },
     onError: (err: Error) => setError(err.message),

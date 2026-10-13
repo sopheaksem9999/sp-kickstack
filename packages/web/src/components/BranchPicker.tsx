@@ -2,7 +2,7 @@ import { useMemo, useState, type KeyboardEvent } from 'react';
 import { Check, GitBranch, Plus } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.js';
 import { cn } from './ui/sheet.js';
-import { branchOptions, type BranchOption } from '../lib/runSettings.js';
+import { pickerRows } from '../lib/runSettings.js';
 import type { BranchEntry } from '../lib/runSettingsApi.js';
 
 interface BranchPickerProps {
@@ -13,14 +13,12 @@ interface BranchPickerProps {
   disabled?: boolean;
 }
 
-const BASE_ROW: BranchOption = { name: '', detail: "each repository's base branch", create: false };
-
 /** Target branch: an existing branch of the chosen repositories, a new name, or each repository's base branch. */
 export function BranchPicker({ value, onChange, entries, chosenProjects, disabled }: BranchPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
-  const rows = useMemo(() => [BASE_ROW, ...branchOptions(entries, query, chosenProjects)], [entries, query, chosenProjects]);
+  const rows = useMemo(() => pickerRows(entries, query, chosenProjects), [entries, query, chosenProjects]);
 
   const choose = (name: string) => {
     onChange(name);

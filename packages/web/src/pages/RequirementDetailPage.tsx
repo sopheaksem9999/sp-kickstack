@@ -26,6 +26,7 @@ import { ReviewPanel } from '../components/ReviewPanel.js';
 import { TaskNoteDialog } from '../components/TaskNoteDialog.js';
 import { RunSettingsCard } from '../components/RunSettingsCard.js';
 import { RunSettingsDialog } from '../components/RunSettingsDialog.js';
+import { statusChangeStartsFanOut } from '../lib/runSettings.js';
 import { RetryWithProfile } from '../components/RetryWithProfile.js';
 import { describeProfile, hasPin, profileApplies } from '../lib/agentProfile.js';
 import { BridgeTask, RequirementStatus } from '@sp-kickstack/shared';
@@ -319,7 +320,12 @@ export function RequirementDetailPage() {
                 <StatusBadge status={req.status} size="xs" />
                 <select
                   value={req.status === 'in_review' ? 'qa' : req.status}
-                  onChange={(e) => statusMutation.mutate(e.target.value as RequirementStatus)}
+                  onChange={(e) => {
+                    const next = e.target.value as RequirementStatus;
+                    // Starting work is a fan-out: confirm the run settings first.
+                    if (statusChangeStartsFanOut(req.status, next)) setFanOutOpen(true);
+                    else statusMutation.mutate(next);
+                  }}
                   className="bg-transparent text-[11px] font-bold text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
                   title="Change State"
                 >

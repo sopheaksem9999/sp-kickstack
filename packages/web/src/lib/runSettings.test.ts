@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import type { Requirement } from '@sp-kickstack/shared';
-import { branchOptions, branchPatternExamples, draftFromRequirement, modelSuggestionsFor, runSettingsPatch, runSettingsProblem, runSettingsSummary } from './runSettings.js';
+import type { BridgeTask, Requirement } from '@sp-kickstack/shared';
+import {
+  branchOptions, branchPatternExamples, draftFromRequirement, fanOutResult, modelSuggestionsFor, pickerRows, runSettingsPatch, runSettingsProblem,
+  runSettingsSummary, shouldResetDraft, statusChangeStartsFanOut,
+} from './runSettings.js';
 
 const req = (over: Partial<Requirement> = {}): Requirement => ({
   id: 'REQ-008', seq: 8, title: 'T', status: 'draft', priority: 'normal', body_md: '', file_path: '', revision: 1,
@@ -62,5 +65,44 @@ describe('branch name pattern examples', () => {
     expect(branchPatternExamples('{req}')).toEqual({ goal: 'REQ-008', ticket: 'REQ-008-ticket-12', problem: null });
     expect(branchPatternExamples('{project}/{req}')).toEqual({ goal: 'backend/REQ-008', ticket: 'backend/REQ-008-ticket-12', problem: null });
     expect(branchPatternExamples('feature').problem).toBe('The pattern must contain {req}');
+  });
+});
+
+describe('run settings dialog, picker and status changes', () => {
+  it('branch picker: Enter picks the base branch only without search text, else the exact or the new name', () => {
+    const entries = [
+      { name: 'develop', projects: ['backend'] },
+      { name: 'release/2.0', projects: ['backend'] },
+      { name: 'release/2', projects: ['backend'] },
+    ];
+    expect(pickerRows(entries, '', ['backend'])[0].name).toBe('');
+    expect(pickerRows(entries, 'release/3', ['backend'])[0]).toMatchObject({ name: 'release/3', create: true });
+    expect(pickerRows(entries, 'release/2', ['backend'])[0]).toMatchObject({ name: 'release/2', create: false });
+    expect(pickerRows(entries, 'release/2', ['backend']).some((r) => r.name === '')).toBe(false);
+  });
+
+  it('fan-out result: an error when no goal reached its engine, a warning when some failed', () => {
+    const goal = (project: string, status: string, last_error: string | null = null) => ({ project, status, last_error }) as BridgeTask;
+    expect(fanOutResult('REQ-008', [goal('backend', 'queued')])).toEqual({ level: 'success', message: 'Fan-out started for REQ-008' });
+    expect(fanOutResult('REQ-008', [goal('backend', 'failed', 'Base branch "nope" was not found')])).toEqual({
+      level: 'error', message: 'No agent started. backend: Base branch "nope" was not found',
+    });
+    expect(fanOutResult('REQ-008', [goal('backend', 'queued'), goal('mobile', 'failed', 'boom')])).toEqual({
+      level: 'warning', message: 'Fan-out started for REQ-008, but mobile failed: boom',
+    });
+  });
+
+  it('moving To Do or Ready to In Progress goes through the fan-out dialog', () => {
+    expect(statusChangeStartsFanOut('draft', 'in_progress')).toBe(true);
+    expect(statusChangeStartsFanOut('ready', 'in_progress')).toBe(true);
+    expect(statusChangeStartsFanOut('qa', 'in_progress')).toBe(false);
+    expect(statusChangeStartsFanOut('draft', 'ready')).toBe(false);
+  });
+
+  it('the dialog draft restarts when the dialog opens, not when the requirement is refetched while open', () => {
+    expect(shouldResetDraft({ open: false, reqId: null }, { open: true, reqId: 'REQ-008' })).toBe(true);
+    expect(shouldResetDraft({ open: true, reqId: 'REQ-008' }, { open: true, reqId: 'REQ-008' })).toBe(false);
+    expect(shouldResetDraft({ open: true, reqId: 'REQ-008' }, { open: true, reqId: 'REQ-009' })).toBe(true);
+    expect(shouldResetDraft({ open: true, reqId: 'REQ-008' }, { open: false, reqId: 'REQ-008' })).toBe(false);
   });
 });

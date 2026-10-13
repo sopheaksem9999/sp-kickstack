@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import { Priority, Requirement, RequirementStatus } from '@sp-kickstack/shared';
 import { RunSettingsDialog } from '../components/RunSettingsDialog.js';
+import { statusChangeStartsFanOut } from '../lib/runSettings.js';
 
 const priorityConfig: Record<Priority, { color: string; label: string }> = {
   urgent: { color: 'text-rose-500 fill-rose-500', label: 'Urgent' },
@@ -207,7 +208,7 @@ export function RequirementsPage() {
 
     if (groupBy === 'status' || groupBy === 'none') {
       const targetStatus = targetGroupId as RequirementStatus;
-      if (targetStatus === 'in_progress' && (req.status === 'draft' || req.status === 'ready')) {
+      if (statusChangeStartsFanOut(req.status, targetStatus)) {
         // Starting work is a fan-out: confirm the run settings first; the card moves once it succeeded.
         setFanOutReq(req);
       } else if (req.status !== targetStatus) {

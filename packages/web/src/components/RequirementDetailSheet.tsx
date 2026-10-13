@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { RunSettingsDialog } from './RunSettingsDialog.js';
+import { statusChangeStartsFanOut } from '../lib/runSettings.js';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -381,9 +382,12 @@ export function RequirementDetailSheet({
                   <StatusBadge status={req.status} size="xs" />
                   <select
                     value={req.status === 'in_review' ? 'qa' : req.status}
-                    onChange={(e) =>
-                      statusMutation.mutate(e.target.value as RequirementStatus)
-                    }
+                    onChange={(e) => {
+                      const next = e.target.value as RequirementStatus;
+                      // Starting work is a fan-out: confirm the run settings first.
+                      if (statusChangeStartsFanOut(req.status, next)) setFanOutOpen(true);
+                      else statusMutation.mutate(next);
+                    }}
                     className="bg-transparent text-[11px] font-bold text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
                     title="Change State"
                   >

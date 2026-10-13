@@ -1,4 +1,4 @@
-import type { AgentCliId, BranchMergePolicy, ReasoningEffort, Requirement, UpdateRunSettingsInput } from '@sp-kickstack/shared';
+import type { AgentCliId, BranchMergePolicy, BridgeTask, ReasoningEffort, Requirement, RequirementStatus, UpdateRunSettingsInput } from '@sp-kickstack/shared';
 import { branchNameProblem, renderTaskBranchPattern, taskBranchPatternProblem } from '@sp-kickstack/shared';
 import { MODEL_SUGGESTIONS, describeProfile, isValidModel } from './agentProfile.js';
 import type { BranchEntry } from './runSettingsApi.js';
@@ -83,6 +83,41 @@ export function branchOptions(entries: BranchEntry[], query: string, chosen: str
     rows.unshift({ name: q, detail: "new: created from each repository's base branch at fan-out", create: true });
   }
   return rows;
+}
+
+/** The picker row for "no target branch": each repository's base branch. */
+export const BASE_BRANCH_OPTION: BranchOption = { name: '', detail: "each repository's base branch", create: false };
+
+/**
+ * Picker rows; the first is what Enter picks. Without search text the base branch comes first; with
+ * text the exact branch or the new name does, and the base row is hidden.
+ */
+export function pickerRows(entries: BranchEntry[], query: string, chosen: string[]): BranchOption[] {
+  const q = query.trim();
+  if (!q) return [BASE_BRANCH_OPTION, ...branchOptions(entries, '', chosen)];
+  const rows = branchOptions(entries, q, chosen);
+  const exact = rows.findIndex((r) => r.name === q);
+  return exact > 0 ? [rows[exact], ...rows.slice(0, exact), ...rows.slice(exact + 1)] : rows;
+}
+
+/** What the fan-out dialog says about the goals it started: an error keeps the dialog open. */
+export function fanOutResult(reqId: string, goals: BridgeTask[]): { level: 'success' | 'warning' | 'error'; message: string } {
+  const failed = goals.filter((g) => g.status === 'failed');
+  const reasons = failed.map((g) => `${g.project}: ${g.last_error || 'unknown error'}`).join('; ');
+  if (failed.length === 0) return { level: 'success', message: `Fan-out started for ${reqId}` };
+  if (failed.length === goals.length) return { level: 'error', message: `No agent started. ${reasons}` };
+  const which = failed.map((g) => `${g.project} failed: ${g.last_error || 'unknown error'}`).join('; ');
+  return { level: 'warning', message: `Fan-out started for ${reqId}, but ${which}` };
+}
+
+/** To Do / Ready → In Progress starts agents, so it goes through the fan-out dialog, not a plain status change. */
+export function statusChangeStartsFanOut(from: RequirementStatus, to: RequirementStatus): boolean {
+  return (from === 'draft' || from === 'ready') && to === 'in_progress';
+}
+
+/** The dialog's draft restarts from the requirement when the dialog opens or shows another one, never on a refetch. */
+export function shouldResetDraft(before: { open: boolean; reqId: string | null }, now: { open: boolean; reqId: string }): boolean {
+  return now.open && (!before.open || before.reqId !== now.reqId);
 }
 
 /** The Run settings card's parts: CLI, model · effort, target branch, merge policy. */

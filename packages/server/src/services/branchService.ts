@@ -2,10 +2,19 @@ import { AppDatabase } from '../db/index.js';
 import { ProjectService } from './projectService.js';
 import { SettingsService } from './settingsService.js';
 import { BridgeTask, DEFAULT_TASK_BRANCH_PATTERN, Project, normalizeMergePolicy, renderTaskBranchPattern } from '@sp-kickstack/shared';
-import { createBranch, hasBranchesUnder, isGitWorkTree, resolveCommit } from '../lib/gitRepo.js';
+import { createBranch, hasBranchesUnder, hasRemote, isGitWorkTree, pushCommit, resolveCommit } from '../lib/gitRepo.js';
+import { oneLine } from '../lib/promptSafety.js';
 import { folderName } from '../localEngine/worktrees.js';
 
 export type TaskBranchRole = 'goal' | 'ticket';
+
+/** Pushes in flight; tests wait for them. */
+const pendingPushes = new Set<Promise<void>>();
+const PUSH_TIMEOUT_MS = 120_000;
+
+export async function pushesSettled(): Promise<void> {
+  while (pendingPushes.size > 0) await Promise.all([...pendingPushes]);
+}
 
 export type EffectiveMergePolicy = 'manual_review_merge' | 'auto_merge';
 
@@ -124,8 +133,40 @@ export class BranchService {
     return { branch: task.branch, baseSha: start };
   }
 
-  /** Hook for newly created branches (Task 5 pushes them). */
-  private afterCreate(_repo: string, _branches: string[], _taskId: number): void {}
+  private afterCreate(repo: string, branches: string[], taskId: number): void {
+    for (const branch of branches) this.queuePush(repo, branch, taskId);
+  }
+
+  /** Push a task's branch after it got new commits (a Local AI CLI run). */
+  public pushTaskBranch(taskId: number): void {
+    const task = this.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(taskId) as BridgeTask | undefined;
+    const project = task?.branch ? this.projectService.getProject(task.project) : undefined;
+    if (task?.branch && project) this.queuePush(project.repo_path, task.branch, taskId);
+  }
+
+  /** Push `branch` to origin when Settings → push branches is on and origin exists. Never forced, never blocking. */
+  private queuePush(repo: string, branch: string, taskId: number): void {
+    if (!this.settings.getBranchMergeSettings().push_branches || !hasRemote(repo)) return;
+    const sha = resolveCommit(repo, `refs/heads/${branch}`);
+    if (!sha) return;
+    const push: Promise<void> = pushCommit(repo, sha, branch, 'origin', PUSH_TIMEOUT_MS)
+      .then(() => this.log(taskId, `↑ Pushed ${branch} to origin`))
+      .catch((err) => this.log(taskId, `Could not push ${branch} to origin: ${oneLine(err?.message || String(err), 300)}`))
+      .finally(() => {
+        pendingPushes.delete(push);
+      });
+    pendingPushes.add(push);
+  }
+
+  private log(taskId: number, message: string) {
+    try {
+      this.db
+        .prepare("INSERT INTO task_logs (task_id, stream, message, created_at) VALUES (?, 'system', ?, ?)")
+        .run(taskId, message, new Date().toISOString());
+    } catch {
+      // The database closed meanwhile (shutdown): nothing to record.
+    }
+  }
 
   private recordEvent(type: string, reqId: string, taskId: number, payload: Record<string, unknown>) {
     this.db

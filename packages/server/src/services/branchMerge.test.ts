@@ -15,6 +15,7 @@ import { FakeEngineServer } from '../adapters/fakeEngine.js';
 import { StoneforgeAdapter } from '../adapters/stoneforgeAdapter.js';
 import { makeRepo, headOf, commitOnBranch, sh } from '../testing/gitFixture.js';
 import { MergeGateService, tempDirPrefix } from './mergeGate.js';
+import { BranchService, pushesSettled } from './branchService.js';
 import { SettingsService } from './settingsService.js';
 import { prepareRetry } from './taskRetry.js';
 
@@ -22,12 +23,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const tempRoot = path.resolve(__dirname, '../../.temp/sp-test-branch-merge');
 let caseCounter = 0;
 
-function makeGitHarness(opts: { withOrigin?: boolean } = { withOrigin: true }) {
+function makeGitHarness(opts: { withOrigin?: boolean; push?: boolean } = {}) {
+  const withOrigin = opts.withOrigin ?? true;
   const ws = path.join(tempRoot, `case-${process.pid}-${caseCounter++}`);
-  const backendRepo = makeRepo(path.join(ws, 'backend'), { withOrigin: opts.withOrigin });
-  const mobileRepo = makeRepo(path.join(ws, 'mobile'), { withOrigin: opts.withOrigin });
+  const backendRepo = makeRepo(path.join(ws, 'backend'), { withOrigin });
+  const mobileRepo = makeRepo(path.join(ws, 'mobile'), { withOrigin });
 
   const db = initDatabase(':memory:');
+  if (!opts.push) new SettingsService(db).updateBranchMergeSettings({ push_branches: false });
   const projectService = new ProjectService(db);
   const requirementService = new RequirementService(db, ws);
   const backendEngine = new FakeEngineServer('http://127.0.0.1:3457');
@@ -38,8 +41,11 @@ function makeGitHarness(opts: { withOrigin?: boolean } = { withOrigin: true }) {
   };
   const getAdapter = (name: string) => adapters[name] ?? adapters.backend;
   const linkService = new LinkService(db, projectService, getAdapter);
-  const ticketService = new TicketService(db, projectService, linkService, getAdapter);
-  const fanOutService = new FanOutService(db, projectService, requirementService, getAdapter);
+  const branches = new BranchService(db, projectService);
+  const ticketService = new TicketService(db, projectService, linkService, getAdapter, branches);
+  const fanOutService = new FanOutService(db, projectService, requirementService, getAdapter, branches);
+  const logText = (taskId: number) =>
+    (db.prepare('SELECT message FROM task_logs WHERE task_id = ?').all(taskId) as Array<{ message: string }>).map((r) => r.message).join('\n');
   const emitted: any[] = [];
   const reactor = new TaskReactor(db, requirementService, linkService, (evt) => { emitted.push(evt); });
   const watcher = new EngineWatcher(db, projectService, requirementService, getAdapter, (evt) => { emitted.push(evt); }, 5000, reactor);
@@ -71,7 +77,7 @@ function makeGitHarness(opts: { withOrigin?: boolean } = { withOrigin: true }) {
   return {
     ws, db, backendRepo, mobileRepo, projectService, requirementService, backendEngine, mobileEngine,
     adapters, linkService, ticketService, fanOutService, reactor, watcher, emitted, createRequirement, task, engineBody,
-    gate, repoOf,
+    gate, repoOf, branches, logText,
   };
 }
 
@@ -789,5 +795,83 @@ describe('Requirement target branch', () => {
     expect((await h.gate.start(req.id, 'manual').done).ok).toBe(true);
     expect(sh(origin!, ['show', 'release/1.3:feature.txt'])).toBe('f');
     expect(headOf(origin!, 'develop')).toBe(developBefore);
+  });
+});
+
+describe('Pushing branches to origin', () => {
+  let h: GitHarness;
+  afterEach(async () => {
+    await pushesSettled();
+    h.db.close();
+  });
+  const remoteHead = (origin: string, branch: string) => {
+    try {
+      return sh(origin, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]);
+    } catch {
+      return null;
+    }
+  };
+
+  it('pushes a new task branch and a new target branch at fan-out', async () => {
+    h = makeGitHarness({ push: true });
+    const req = h.createRequirement(['backend']);
+    h.requirementService.updateRunSettings(req.id, { target_branch: 'release/1.3' });
+    const [goal] = await h.fanOutService.execute(req.id);
+    await pushesSettled();
+    const { repo, origin } = h.backendRepo;
+    expect(remoteHead(origin!, req.id)).toBe(headOf(repo, req.id));
+    expect(remoteHead(origin!, 'release/1.3')).toBe(headOf(repo, 'release/1.3'));
+    expect(h.logText(goal.id)).toContain(`↑ Pushed ${req.id} to origin`);
+  });
+
+  it('pushes new commits of a task branch when asked (after an agent run)', async () => {
+    h = makeGitHarness({ push: true });
+    const req = h.createRequirement(['backend']);
+    const [goal] = await h.fanOutService.execute(req.id);
+    await pushesSettled();
+    const { repo, origin } = h.backendRepo;
+    commitOnBranch(repo, req.id, 'a.txt', 'a\n');
+    h.branches.pushTaskBranch(goal.id);
+    await pushesSettled();
+    expect(remoteHead(origin!, req.id)).toBe(headOf(repo, req.id));
+  });
+
+  it('never forces: a branch that moved on origin stays, and the task log says why', async () => {
+    h = makeGitHarness({ push: true });
+    const req = h.createRequirement(['backend']);
+    const [goal] = await h.fanOutService.execute(req.id);
+    await pushesSettled();
+    const { repo, origin } = h.backendRepo;
+    const other = commitOnBranch(repo, 'develop', 'other.txt', 'o\n');
+    sh(repo, ['push', '-q', '--force', 'origin', `${other}:refs/heads/${req.id}`]); // someone else moved it
+    commitOnBranch(repo, req.id, 'mine.txt', 'm\n');
+    h.branches.pushTaskBranch(goal.id);
+    await pushesSettled();
+    expect(remoteHead(origin!, req.id)).toBe(other);
+    expect(h.logText(goal.id)).toContain(`Could not push ${req.id} to origin:`);
+  });
+
+  it('an unreachable origin does not hold up fan-out', async () => {
+    h = makeGitHarness({ push: true });
+    sh(h.backendRepo.repo, ['remote', 'set-url', 'origin', path.join(h.ws, 'no-such-origin.git')]);
+    const req = h.createRequirement(['backend']);
+    const [goal] = await h.fanOutService.execute(req.id);
+    expect(h.task(goal.id).status).toBe('queued');
+    await pushesSettled();
+    expect(h.logText(goal.id)).toContain(`Could not push ${req.id} to origin:`);
+  });
+
+  it('pushes nothing when turned off or without origin', async () => {
+    h = makeGitHarness();
+    const req = h.createRequirement(['backend']);
+    await h.fanOutService.execute(req.id);
+    await pushesSettled();
+    expect(remoteHead(h.backendRepo.origin!, req.id)).toBeNull();
+    h.db.close();
+    h = makeGitHarness({ withOrigin: false, push: true });
+    const other = h.createRequirement(['backend']);
+    const [goal] = await h.fanOutService.execute(other.id);
+    await pushesSettled();
+    expect(h.logText(goal.id)).not.toContain('origin');
   });
 });

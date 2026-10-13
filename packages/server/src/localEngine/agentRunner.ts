@@ -39,6 +39,8 @@ export interface AgentRunnerOptions {
   now?: () => number;
   /** Home folder for the default worktree root (tests). */
   homeDir?: string;
+  /** A run added commits to its task branch (the bridge pushes it). */
+  onCommits?: (taskId: number) => void;
 }
 
 /** Log lines kept per run in task_logs; the raw output file keeps everything. */
@@ -423,6 +425,7 @@ export class AgentRunner {
     const task = this.task(taskId);
     if (!run || !task) return;
     const endSha = task.branch ? resolveCommit(repo, `refs/heads/${task.branch}`) : null;
+    if (endSha && endSha !== run.start_sha) this.opts.onCommits?.(taskId);
     const base: RunPatch = { pid: null, exit_code: exit.code, end_sha: endSha, finished_at: this.iso() };
     const label = CLI_LABELS[cli];
 

@@ -163,6 +163,14 @@ describe('AgentRunner: limits and settings', () => {
 });
 
 describe('AgentRunner: review fixes', () => {
+  it('reports a task whose run added commits, so its branch can be pushed', async () => {
+    const pushed: number[] = [];
+    const h = makeLocalHarness({ runner: { onCommits: (taskId) => pushed.push(taskId) } });
+    const committed = h.queueRun('FAKE: commit a.txt');
+    h.queueRun('FAKE: say nothing to do');
+    await h.settle();
+    expect(pushed).toEqual([committed.task.id]);
+  });
   it('survives a leftover process that keeps writing after the agent exits', async () => {
     const h = makeLocalHarness();
     const { run } = h.queueRun('FAKE: commit a.txt\nFAKE: chatty-background');

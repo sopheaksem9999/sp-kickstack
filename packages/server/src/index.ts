@@ -52,6 +52,7 @@ const localEngine = new AgentRunner({
   workspaceDir: WORKSPACE_DIR,
   bridgeUrl: `http://${HOST === '0.0.0.0' || HOST === '::' ? '127.0.0.1' : HOST}:${PORT}`,
   agentToken: process.env.AGENT_TOKEN || undefined,
+  onCommits: (taskId) => branchService.pushTaskBranch(taskId),
 });
 
 // Per-engine rate-limit handling: circuit breaker + start limit around every adapter call.

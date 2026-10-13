@@ -13,7 +13,7 @@ import { HttpError, badRequest } from '../lib/httpError.js';
 import crypto from 'node:crypto';
 import { cancelOrphan } from './orphans.js';
 import { MAX_DISPATCH_ATTEMPTS, shouldNotifyFailure } from '../lib/retryPolicy.js';
-import { BranchService, branchInstructions, taskBranchName } from './branchService.js';
+import { BranchService, branchInstructions } from './branchService.js';
 import { isRateLimit } from '../adapters/rateLimit.js';
 import { pauseForRateLimit } from './rateLimitPause.js';
 import { prepareRetry } from './taskRetry.js';
@@ -144,10 +144,10 @@ ${wrapUntrusted('ticket', `Type: ${input.type}\nTitle: ${input.title}\n\n${input
       ownsEngineCall = reserved.changes === 1;
       if (ownsEngineCall && this.branches.usesBranches(targetProject)) {
         const id = Number(reserved.lastInsertRowid);
-        const name = taskBranchName(reqId, id);
+        const name = this.branches.nameTaskBranch(targetProject, reqId, id, 'ticket');
         const body = this.formatTicketBody(sourceProject, reqId, input, {
           name,
-          base: this.branches.baseBranchFor(targetProject),
+          base: this.branches.baseBranchFor(targetProject, reqId),
           policy: this.branches.policyFor(reqId),
         });
         this.db.prepare('UPDATE bridge_tasks SET branch = ?, body_md = ? WHERE id = ?').run(name, body, id);

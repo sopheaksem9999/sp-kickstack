@@ -1,14 +1,13 @@
 import { AppDatabase } from '../db/index.js';
 import { ProjectService } from './projectService.js';
 import { SettingsService } from './settingsService.js';
-import { BridgeTask, Project, normalizeMergePolicy } from '@sp-kickstack/shared';
-import { createBranch, isGitWorkTree, resolveCommit } from '../lib/gitRepo.js';
+import { BridgeTask, DEFAULT_TASK_BRANCH_PATTERN, Project, normalizeMergePolicy, renderTaskBranchPattern } from '@sp-kickstack/shared';
+import { createBranch, hasBranchesUnder, isGitWorkTree, resolveCommit } from '../lib/gitRepo.js';
+import { folderName } from '../localEngine/worktrees.js';
+
+export type TaskBranchRole = 'goal' | 'ticket';
 
 export type EffectiveMergePolicy = 'manual_review_merge' | 'auto_merge';
-
-export function taskBranchName(reqId: string, taskId: number): string {
-  return `req/${reqId}/task-${taskId}`;
-}
 
 /** Prompt section telling the agent where to commit and who merges. */
 export function branchInstructions(branch: string, base: string, policy: EffectiveMergePolicy): string {
@@ -34,8 +33,40 @@ export class BranchService {
     this.settings = settingsService ?? new SettingsService(db);
   }
 
-  public baseBranchFor(project: Project): string {
+  /** The repository's own base branch: its setting, else Settings → default base branch. */
+  public projectBaseBranch(project: Project): string {
     return project.base_branch || this.settings.getBranchMergeSettings().default_base_branch || 'develop';
+  }
+
+  /** Where a requirement's tasks start and merge: its target branch, else the repository's base branch. */
+  public baseBranchFor(project: Project, reqId?: string): string {
+    const row = reqId
+      ? (this.db.prepare('SELECT target_branch FROM requirements WHERE id = ?').get(reqId) as { target_branch: string | null } | undefined)
+      : undefined;
+    return row?.target_branch || this.projectBaseBranch(project);
+  }
+
+  /**
+   * A free branch name for a task: the Settings pattern (default {req}), plus -ticket-{task} for
+   * tickets, plus -2, -3… when the name is taken locally, on origin, by another task or by a branch under it.
+   */
+  public nameTaskBranch(project: Project, reqId: string, taskId: number, role: TaskBranchRole): string {
+    const pattern = this.settings.getBranchMergeSettings().task_branch_pattern || DEFAULT_TASK_BRANCH_PATTERN;
+    const stem =
+      renderTaskBranchPattern(pattern, { req: reqId, task: taskId, project: folderName(project.name) }) +
+      (role === 'ticket' ? `-ticket-${taskId}` : '');
+    for (let n = 1; ; n++) {
+      const name = n === 1 ? stem : `${stem}-${n}`;
+      if (!this.branchTaken(project, name, taskId)) return name;
+    }
+  }
+
+  private branchTaken(project: Project, name: string, taskId: number): boolean {
+    const recorded = this.db.prepare('SELECT 1 FROM bridge_tasks WHERE project = ? AND branch = ? AND id <> ? LIMIT 1').get(project.name, name, taskId);
+    if (recorded) return true;
+    const repo = project.repo_path;
+    if (!isGitWorkTree(repo)) return false;
+    return Boolean(resolveCommit(repo, `refs/heads/${name}`) || resolveCommit(repo, `refs/remotes/origin/${name}`) || hasBranchesUnder(repo, name));
   }
 
   /** Only projects whose repo_path is the root of a git work tree get task branches. */
@@ -52,8 +83,9 @@ export class BranchService {
   }
 
   /**
-   * Make sure the task's branch exists (created from the base branch, or origin/<base> when
-   * there is no local base). Idempotent. Returns null for tasks without a branch (non-git).
+   * Make sure the task's branch exists: created from the requirement's target branch (created first,
+   * from the repository's base, when this repository lacks it) or from the base branch. Idempotent.
+   * Returns null for tasks without a branch (non-git).
    */
   public ensureTaskBranch(taskId: number): { branch: string; baseSha: string } | null {
     const task = this.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(taskId) as BridgeTask | undefined;
@@ -69,14 +101,36 @@ export class BranchService {
       return { branch: task.branch, baseSha };
     }
 
-    const base = this.baseBranchFor(project);
-    const start = resolveCommit(repo, `refs/heads/${base}`) ?? resolveCommit(repo, `refs/remotes/origin/${base}`);
+    const created: string[] = [];
+    const base = this.baseBranchFor(project, task.req_id);
+    let start = resolveCommit(repo, `refs/heads/${base}`) ?? resolveCommit(repo, `refs/remotes/origin/${base}`);
+    const projectBase = this.projectBaseBranch(project);
+    if (!start && base !== projectBase) {
+      // The requirement's target branch is new to this repository: create it from the repository's base.
+      const from = resolveCommit(repo, `refs/heads/${projectBase}`) ?? resolveCommit(repo, `refs/remotes/origin/${projectBase}`);
+      if (!from) throw new Error(`Base branch "${projectBase}" was not found in ${repo}`);
+      createBranch(repo, base, from);
+      created.push(base);
+      this.recordEvent('target_branch_created', task.req_id, task.id, { reqId: task.req_id, project: project.name, branch: base, from: projectBase });
+      start = from;
+    }
     if (!start) {
       throw new Error(`Base branch "${base}" was not found in ${repo}`);
     }
     createBranch(repo, task.branch, start);
+    created.push(task.branch);
     this.recordBase(taskId, start);
+    this.afterCreate(repo, created, taskId);
     return { branch: task.branch, baseSha: start };
+  }
+
+  /** Hook for newly created branches (Task 5 pushes them). */
+  private afterCreate(_repo: string, _branches: string[], _taskId: number): void {}
+
+  private recordEvent(type: string, reqId: string, taskId: number, payload: Record<string, unknown>) {
+    this.db
+      .prepare('INSERT INTO events (req_id, task_id, type, payload, read, at) VALUES (?, ?, ?, ?, 0, ?)')
+      .run(reqId, taskId, type, JSON.stringify(payload), new Date().toISOString());
   }
 
   private recordBase(taskId: number, sha: string) {

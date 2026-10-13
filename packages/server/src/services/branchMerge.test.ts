@@ -16,6 +16,7 @@ import { StoneforgeAdapter } from '../adapters/stoneforgeAdapter.js';
 import { makeRepo, headOf, commitOnBranch, sh } from '../testing/gitFixture.js';
 import { MergeGateService, tempDirPrefix } from './mergeGate.js';
 import { SettingsService } from './settingsService.js';
+import { prepareRetry } from './taskRetry.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const tempRoot = path.resolve(__dirname, '../../.temp/sp-test-branch-merge');
@@ -90,7 +91,7 @@ describe('Branch per task', () => {
     for (const goal of goals) {
       const row = h.task(goal.id);
       const repo = goal.project === 'backend' ? h.backendRepo.repo : h.mobileRepo.repo;
-      expect(row.branch).toBe(`req/${req.id}/task-${goal.id}`);
+      expect(row.branch).toBe(req.id);
       expect(headOf(repo, row.branch)).toBe(headOf(repo, 'develop'));
       expect(row.base_sha).toBe(headOf(repo, 'develop'));
       const body = h.engineBody(goal.project as 'backend' | 'mobile', goal.engine_task_id!);
@@ -111,7 +112,7 @@ describe('Branch per task', () => {
     );
 
     const ticket = h.task(t.ticketId);
-    expect(ticket.branch).toBe(`req/${req.id}/task-${t.ticketId}`);
+    expect(ticket.branch).toBe(`${req.id}-ticket-${t.ticketId}`);
     expect(headOf(h.backendRepo.repo, ticket.branch)).toBe(headOf(h.backendRepo.repo, 'develop'));
     expect(h.engineBody('backend', ticket.engine_task_id)).toContain(ticket.branch);
   });
@@ -664,5 +665,129 @@ describe('Merge gate review fixes', () => {
 
     expect(outcome.ok).toBe(true);
     if (outcome.ok) expect(outcome.warnings.join('\n')).toMatch(/no new commits/);
+  });
+});
+
+describe('Task branch names', () => {
+  let h: GitHarness;
+  beforeEach(() => { h = makeGitHarness(); });
+  afterEach(() => h.db.close());
+
+  it('adds -2 when the name is already taken in the repository', async () => {
+    const req = h.createRequirement(['backend']);
+    sh(h.backendRepo.repo, ['branch', req.id]);
+    const [goal] = await h.fanOutService.execute(req.id);
+    expect(h.task(goal.id).branch).toBe(`${req.id}-2`);
+  });
+
+  it('a branch under the name counts as taken', async () => {
+    const req = h.createRequirement(['backend']);
+    sh(h.backendRepo.repo, ['branch', `${req.id}/old`]);
+    const [goal] = await h.fanOutService.execute(req.id);
+    expect(h.task(goal.id).branch).toBe(`${req.id}-2`);
+  });
+
+  it('follows the Settings pattern', async () => {
+    new SettingsService(h.db).updateBranchMergeSettings({ task_branch_pattern: '{project}/{req}' });
+    const req = h.createRequirement(['backend']);
+    const [goal] = await h.fanOutService.execute(req.id);
+    expect(h.task(goal.id).branch).toBe(`backend/${req.id}`);
+  });
+
+  it('changing the pattern renames nothing', async () => {
+    const req = h.createRequirement(['backend']);
+    const [goal] = await h.fanOutService.execute(req.id);
+    new SettingsService(h.db).updateBranchMergeSettings({ task_branch_pattern: 'feature/{req}' });
+    h.db.prepare("UPDATE bridge_tasks SET status = 'failed' WHERE id = ?").run(goal.id);
+    await prepareRetry(h.db, goal.id, 'goal', (name) => h.adapters[name]);
+    await h.fanOutService.dispatchGoal(goal.id);
+    expect(h.task(goal.id).branch).toBe(req.id);
+  });
+});
+
+describe('Requirement target branch', () => {
+  let h: GitHarness;
+  beforeEach(() => { h = makeGitHarness(); });
+  afterEach(() => h.db.close());
+  const targetEvents = () =>
+    (h.db.prepare("SELECT payload FROM events WHERE type = 'target_branch_created'").all() as Array<{ payload: string }>).map((r) => JSON.parse(r.payload));
+
+  it('creates a missing target branch from the base and starts the task branch from it', async () => {
+    const req = h.createRequirement(['backend']);
+    h.requirementService.updateRunSettings(req.id, { target_branch: 'release/1.3' });
+    const [goal] = await h.fanOutService.execute(req.id);
+    const repo = h.backendRepo.repo;
+    expect(headOf(repo, 'release/1.3')).toBe(headOf(repo, 'develop'));
+    expect(h.task(goal.id).base_sha).toBe(headOf(repo, 'release/1.3'));
+    expect(h.engineBody('backend', goal.engine_task_id!)).toContain('release/1.3');
+    expect(targetEvents()).toEqual([{ reqId: req.id, project: 'backend', branch: 'release/1.3', from: 'develop' }]);
+  });
+
+  it('uses an existing target branch as it is', async () => {
+    const repo = h.backendRepo.repo;
+    sh(repo, ['branch', 'release/1.3']);
+    const tip = commitOnBranch(repo, 'release/1.3', 'release.txt', 'r\n');
+    const req = h.createRequirement(['backend']);
+    h.requirementService.updateRunSettings(req.id, { target_branch: 'release/1.3' });
+    const [goal] = await h.fanOutService.execute(req.id);
+    expect(h.task(goal.id).base_sha).toBe(tip);
+    expect(targetEvents()).toEqual([]);
+  });
+
+  it('two requirements with the same new target branch share it', async () => {
+    const first = h.createRequirement(['backend']);
+    const second = h.createRequirement(['backend']);
+    h.requirementService.updateRunSettings(first.id, { target_branch: 'release/1.3' });
+    h.requirementService.updateRunSettings(second.id, { target_branch: 'release/1.3' });
+    await h.fanOutService.execute(first.id);
+    const [goal] = await h.fanOutService.execute(second.id);
+    expect(h.task(goal.id).base_sha).toBe(headOf(h.backendRepo.repo, 'release/1.3'));
+    expect(targetEvents()).toHaveLength(1);
+  });
+
+  it('a target branch that only exists on origin', async () => {
+    const { repo, origin } = h.backendRepo;
+    const tip = commitOnBranch(repo, 'develop', 'next.txt', 'n\n');
+    sh(repo, ['push', '-q', 'origin', `${tip}:refs/heads/release/1.3`]);
+    sh(repo, ['reset', '-q', '--hard', 'HEAD~1']);
+    sh(repo, ['fetch', '-q', 'origin']);
+    const req = h.createRequirement(['backend']);
+    h.requirementService.updateRunSettings(req.id, { target_branch: 'release/1.3' });
+    const [goal] = await h.fanOutService.execute(req.id);
+    expect(h.task(goal.id).base_sha).toBe(tip);
+    commitOnBranch(repo, h.task(goal.id).branch, 'feature.txt', 'f\n');
+    h.db.prepare("UPDATE bridge_tasks SET status = 'in_review' WHERE id = ?").run(goal.id);
+    h.requirementService.updateStatus(req.id, 'in_review');
+    expect((await h.gate.start(req.id, 'manual').done).ok).toBe(true);
+    expect(sh(origin!, ['show', 'release/1.3:feature.txt'])).toBe('f');
+    expect(headOf(repo, 'release/1.3')).toBe(headOf(origin!, 'release/1.3'));
+  });
+
+  it('a ticket of the requirement branches from the target in its own repository', async () => {
+    const req = h.createRequirement(['mobile']);
+    h.requirementService.updateRunSettings(req.id, { target_branch: 'release/1.3' });
+    const [mobileGoal] = await h.fanOutService.execute(req.id);
+    const t = await h.ticketService.createTicket(
+      { to: 'backend', type: 'api_request', title: 'GET /loc', body: 'Provide location endpoint', blocking: false },
+      'mobile',
+      mobileGoal.engine_task_id!
+    );
+    const ticket = h.task(t.ticketId);
+    expect(ticket.branch).toBe(`${req.id}-ticket-${t.ticketId}`);
+    expect(ticket.base_sha).toBe(headOf(h.backendRepo.repo, 'release/1.3'));
+  });
+
+  it('merges into the target branch and leaves develop alone', async () => {
+    const req = h.createRequirement(['backend']);
+    h.requirementService.updateRunSettings(req.id, { target_branch: 'release/1.3' });
+    const [goal] = await h.fanOutService.execute(req.id);
+    const { repo, origin } = h.backendRepo;
+    const developBefore = headOf(origin!, 'develop');
+    commitOnBranch(repo, h.task(goal.id).branch, 'feature.txt', 'f\n');
+    h.db.prepare("UPDATE bridge_tasks SET status = 'in_review' WHERE id = ?").run(goal.id);
+    h.requirementService.updateStatus(req.id, 'in_review');
+    expect((await h.gate.start(req.id, 'manual').done).ok).toBe(true);
+    expect(sh(origin!, ['show', 'release/1.3:feature.txt'])).toBe('f');
+    expect(headOf(origin!, 'develop')).toBe(developBefore);
   });
 });

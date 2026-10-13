@@ -8,7 +8,7 @@ import { HttpError, conflict } from '../lib/httpError.js';
 import { RequirementStatus, normalizeMergePolicy } from '@sp-kickstack/shared';
 import { cancelOrphan } from './orphans.js';
 import { MAX_DISPATCH_ATTEMPTS, shouldNotifyFailure } from '../lib/retryPolicy.js';
-import { BranchService, branchInstructions, taskBranchName } from './branchService.js';
+import { BranchService, branchInstructions } from './branchService.js';
 import { isRateLimit } from '../adapters/rateLimit.js';
 import { pauseForRateLimit } from './rateLimitPause.js';
 import { prepareRetry } from './taskRetry.js';
@@ -44,8 +44,8 @@ export class FanOutService {
   ): string {
     const mergePolicyDesc =
       normalizeMergePolicy(mergePolicy) === 'auto_merge'
-        ? 'Changes on develop branch will be automatically merged to main upon task completion & green tests.'
-        : 'All changes remain on develop branch and require human operator review and manual approval before merging into main.';
+        ? `Your work is merged into \`${baseBranch}\` automatically once all work for the requirement is in review and the tests pass.`
+        : `Your work stays on its branch until a person reviews it; it is then merged into \`${baseBranch}\`.`;
 
     const assetsBlock =
       sharedAssets.length > 0
@@ -104,13 +104,11 @@ ${wrapUntrusted('requirement', requirementMd)}
     }
 
     // Retrieve branch and merge settings
-    let defaultBaseBranch = 'develop';
     let mergePolicy = 'manual_review_merge';
     try {
       const row = this.db.prepare("SELECT value FROM settings WHERE key = 'branch_merge_settings'").get() as any;
       if (row?.value) {
         const parsed = JSON.parse(row.value);
-        if (parsed.default_base_branch) defaultBaseBranch = parsed.default_base_branch;
         if (parsed.merge_policy) mergePolicy = parsed.merge_policy;
       }
     } catch {
@@ -155,14 +153,14 @@ ${wrapUntrusted('requirement', requirementMd)}
     const nameBranch = this.db.prepare('UPDATE bridge_tasks SET branch = ?, body_md = ? WHERE id = ?');
     this.db.transaction(() => {
       for (const project of projects) {
-        const baseBranch = project.base_branch || defaultBaseBranch;
+        const baseBranch = this.branches.baseBranchFor(project, req.id);
         const title = `${req.id}: ${req.title}`;
         const bodyMd = this.formatGoalBody(req.id, req.title, project.name, req.body_md, baseBranch, mergePolicy, sharedAssets);
         const inserted = reserve.run(req.id, project.name, title, bodyMd, req.revision, now, now);
         if (inserted.changes === 1) {
           const id = Number(inserted.lastInsertRowid);
           if (branching.get(project.name)) {
-            const branch = taskBranchName(req.id, id);
+            const branch = this.branches.nameTaskBranch(project, req.id, id, 'goal');
             nameBranch.run(
               branch,
               this.formatGoalBody(req.id, req.title, project.name, req.body_md, baseBranch, mergePolicy, sharedAssets, branch),

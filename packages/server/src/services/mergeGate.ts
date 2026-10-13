@@ -225,7 +225,7 @@ export class MergeGateService {
     const project = this.projectService.getProject(name);
     if (!project) throw new GateFailure(`${name}: project not found`);
     const repo = project.repo_path;
-    const base = this.branches.baseBranchFor(project);
+    const base = this.branches.baseBranchFor(project, reqId);
     const remote = git.hasRemote(repo);
 
     const gitTimeout = this.options.gitTimeoutMs;

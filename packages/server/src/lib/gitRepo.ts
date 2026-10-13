@@ -100,6 +100,12 @@ export function createBranch(repo: string, name: string, startSha: string): void
   runGit(repo, ['branch', '--', name, startSha]);
 }
 
+/** True when a branch lives under `<name>/` locally or on origin (git then refuses a branch named `name`). */
+export function hasBranchesUnder(repo: string, name: string): boolean {
+  const refs = tryGit(repo, ['for-each-ref', '--count=1', '--format=%(refname)', `refs/heads/${name}/`, `refs/remotes/origin/${name}/`]);
+  return (refs ?? '').trim() !== '';
+}
+
 export async function addDetachedWorktree(repo: string, dir: string, sha: string, timeoutMs?: number): Promise<void> {
   await runGitAsync(repo, ['worktree', 'add', '--quiet', '--detach', dir, sha], { timeoutMs });
 }

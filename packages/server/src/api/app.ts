@@ -586,6 +586,12 @@ export function createApp(deps: AppDependencies): Express {
   // Tasks. Filters (all optional, combinable): req, project, status, workspace (the requirement's
   // workspace) and role (comma separated). Each row carries its requirement's title, priority and status.
   app.get('/api/tasks', (req, res) => {
+    // A filter given twice (?workspace=a&workspace=b) or as ?workspace[]=a / ?workspace[x]=a arrives as an array
+    // or an object. Ignoring it would answer with the unfiltered list, so refuse it instead.
+    const filterNames = ['req', 'project', 'status', 'workspace', 'role'] as const;
+    if (filterNames.some((name) => req.query[name] !== undefined && typeof req.query[name] !== 'string')) {
+      return res.status(400).json({ error: 'Each filter takes one value, e.g. ?workspace=default' });
+    }
     const one = (value: unknown) => (typeof value === 'string' && value !== '' ? value : undefined);
     const reqId = one(req.query.req);
     const project = one(req.query.project);

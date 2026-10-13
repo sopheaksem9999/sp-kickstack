@@ -1727,6 +1727,7 @@ describe('Agent Queue: GET /api/tasks filters and requirement metadata', () => {
   let defaultReqId: string;
   let otherReqId: string;
   let questionId: number;
+  let ticketId: number;
 
   beforeEach(async () => {
     h = makeHarness();
@@ -1777,6 +1778,15 @@ describe('Agent Queue: GET /api/tasks filters and requirement metadata', () => {
         )
         .run(defaultReqId, now, now).lastInsertRowid
     );
+    // A ticket (work another project asked for) is agent work too, so `role=goal,ticket` must include it.
+    ticketId = Number(
+      h.db
+        .prepare(
+          `INSERT INTO bridge_tasks (req_id, project, role, title, status, revision, depth, attempts, created_at, updated_at)
+           VALUES (?, 'backend', 'ticket', 'GET /locations', 'pending', 1, 0, 0, ?, ?)`
+        )
+        .run(defaultReqId, now, now).lastInsertRowid
+    );
   });
   afterEach(() => h.db.close());
 
@@ -1822,8 +1832,13 @@ describe('Agent Queue: GET /api/tasks filters and requirement metadata', () => {
     const agentWork = await testRequest(h.app, 'GET', '/api/tasks?workspace=default&role=goal,ticket');
     expect(agentWork.status).toBe(200);
     const roles = new Set((agentWork.body as any[]).map((t) => t.role));
-    expect(roles).toEqual(new Set(['goal']));
-    expect((agentWork.body as any[]).map((t) => t.id)).not.toContain(questionId);
+    expect(roles).toEqual(new Set(['goal', 'ticket']));
+    const ids = (agentWork.body as any[]).map((t) => t.id);
+    expect(ids).toContain(ticketId);
+    expect(ids).not.toContain(questionId);
+
+    const ticketsOnly = await testRequest(h.app, 'GET', '/api/tasks?role=ticket');
+    expect((ticketsOnly.body as any[]).map((t) => t.id)).toEqual([ticketId]);
 
     const questions = await testRequest(h.app, 'GET', '/api/tasks?role=question');
     expect((questions.body as any[]).map((t) => t.id)).toEqual([questionId]);
@@ -1841,5 +1856,35 @@ describe('Agent Queue: GET /api/tasks filters and requirement metadata', () => {
 
     const one = await testRequest(h.app, 'GET', `/api/tasks?req=${defaultReqId}&project=backend&status=queued`);
     expect((one.body as any[]).map((t) => t.project)).toEqual(['backend']);
+  });
+
+  it('refuses a filter that is repeated or not a plain value instead of ignoring it', async () => {
+    const message = 'Each filter takes one value, e.g. ?workspace=default';
+    const urls = [
+      '/api/tasks?workspace=default&workspace=ws-b',
+      '/api/tasks?workspace[]=default',
+      '/api/tasks?workspace[x]=default',
+      '/api/tasks?role[]=goal',
+      '/api/tasks?role=goal&role=ticket',
+      '/api/tasks?req[]=REQ-001',
+      '/api/tasks?project[]=backend',
+      '/api/tasks?status[]=queued',
+      '/api/tasks?status[x]=queued',
+    ];
+    for (const url of urls) {
+      const res = await testRequest(h.app, 'GET', url);
+      expect({ url, status: res.status }).toEqual({ url, status: 400 });
+      expect(res.body).toEqual({ error: message });
+    }
+  });
+
+  it('still answers single values, comma separated roles and an empty filter as before', async () => {
+    const single = await testRequest(h.app, 'GET', '/api/tasks?workspace=default&status=queued&role=goal');
+    expect(single.status).toBe(200);
+    expect((single.body as any[]).length).toBeGreaterThan(0);
+
+    const empty = await testRequest(h.app, 'GET', '/api/tasks?workspace=');
+    expect(empty.status).toBe(200);
+    expect(new Set((empty.body as any[]).map((t) => t.req_id))).toEqual(new Set([defaultReqId, otherReqId]));
   });
 });

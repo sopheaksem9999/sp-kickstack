@@ -56,10 +56,8 @@ the merge and nothing is pushed. See [Review, QA and merge](06-review-qa-and-mer
 
 ## Engine types
 
-Only **Manual** and **Stoneforge** work today.
+Three engine types work: **Manual**, **Local AI CLI** and **Stoneforge**.
 
-- The **Engine Type** list also shows **Command**. The server does not accept it: saving fails
-  with a validation error that names `engine_type`.
 - `clinekanban` is accepted when saving, but any work sent to it fails with
   `clinekanban adapter is not yet implemented`.
 
@@ -75,6 +73,56 @@ People (or your own tools) do the work. The bridge does not poll anything for Ma
   task and its card shows no model (see
   [Model and effort sent to the engine](#model-and-effort-sent-to-the-engine)).
 - Optional: a GitHub webhook can move tasks for you (see below).
+
+### Local AI CLI
+
+An AI CLI on this PC does the work: Claude Code, AGY or Codex, whichever **Settings → AI & Local
+Engines → Local AI CLI engine** picks (by default the same CLI as your AI default). No engine URL is
+needed.
+
+After **Start Fan-Out**, each task of the repository moves by itself:
+
+1. **QUEUED**: waiting for a free slot. At most 2 agents run at once (change it in Settings).
+2. **IN PROGRESS**: the agent works in its own copy of the repository, a git worktree on the task
+   branch (`req/<REQ-ID>/task-<id>`) in the `agent-worktrees` folder of the server workspace. Your own
+   checkout is never touched. Open **Logs** on the task to watch it: its messages, the commands it
+   runs (`→ Bash: npm test`) and the files it edits.
+3. **IN REVIEW**: the agent finished and the branch has commits. Your merge policy takes over.
+
+Other endings:
+
+| The agent… | The task shows | What to do |
+|---|---|---|
+| finished without committing | NEEDS HUMAN, `Finished without committing anything` | Read **Logs**, then **Retry** or **Request changes** with more detail. |
+| failed | FAILED, with the last lines of its output | Read **Logs**, then **Retry**. |
+| ran longer than the time limit (60 minutes) | FAILED, `Stopped after the 60 minute time limit …` | Raise the limit in Settings or split the work, then **Retry**. |
+| reached its CLI's usage limit | RATE LIMITED until the reset | Nothing: it continues by itself at the reset time. |
+| asked you a question (`xticket ask`) | WAITING / HELD | Answer it; the agent continues with your answer. |
+
+- **Notes** are saved and given to the agent when its next run starts (after an answer, a usage
+  limit, **Retry** or **Request changes**). An agent that is running does not see them.
+- **Model and effort** are passed to the CLI. Without a choice, the CLI's model and effort from
+  Settings are used. A Claude model name such as `opus` may not exist in AGY or Codex; the run then
+  fails with the CLI's own message.
+- **Restarts**: if the server stops while agents run (for example `npm run dev` restarting after a
+  code change), the agents are stopped and continue from their branch when the server is back.
+- **Safety**: the agent's commands run as your user account. Codex is limited to the worktree;
+  Claude Code and AGY are told to stay in it but are not blocked from leaving it.
+- The worktree is removed once the task is COMPLETE or CANCELLED (kept while it has uncommitted
+  changes).
+
+### Switch a Manual repository to Local AI CLI
+
+Tasks fanned out to a Manual repository wait until someone does the work. To let agents do it, edit
+the repository (see [Edit or delete a project](#edit-or-delete-a-project)), set **Engine Type** to
+**Local AI CLI** and save:
+
+- Every QUEUED task of that repository goes to the local engine and starts within a few seconds.
+- Tasks in other states (WAITING / HELD, IN REVIEW, COMPLETE, …) are left as they are.
+
+Example: REQ-008 has tasks #8 (`backend`) and #9 (`frontend`) QUEUED on Manual. Switch `backend` and
+`frontend` to **Local AI CLI**: both tasks move to IN PROGRESS (2 agents at once), and **Logs** shows
+their work.
 
 ### Stoneforge
 

@@ -9,12 +9,29 @@ Open **Settings** in the sidebar.
 
 | Tab | What it is for |
 |---|---|
-| **AI & Local Engines** | Which AI drafts requirements and answers in the AI chats (**Auto (Recommended)**, **Claude Code CLI**, **Antigravity CLI (agy)**, **Codex CLI**, **Local Ollama**, **Built-in Heuristic**), and the model for each. Save with **Save AI Configuration**. This does not affect the agents that do the work: their engines decide that, unless you choose a model and effort for a workspace, a requirement or a task (see [03](03-requirements-and-fan-out.md#choose-the-agent-model-and-effort)). |
+| **AI & Local Engines** | Which AI drafts requirements and answers in the AI chats (**Auto (Recommended)**, **Claude Code CLI**, **Antigravity CLI (agy)**, **Codex CLI**, **Local Ollama**, **Built-in Heuristic**), and the model for each. Save with **Save AI Configuration**. This does not affect the agents that do the work: their engines decide that, unless you choose a model and effort for a workspace, a requirement or a task (see [03](03-requirements-and-fan-out.md#choose-the-agent-model-and-effort)). The **Local AI CLI engine** card on this tab controls the agents of Local AI CLI repositories (see below). |
 | **Git & Branch Rules** | The default base branch and the default merge policy. See below. |
 | **Notifications** | Slack, Telegram and webhook channels, event switches and the link address. See [Notifications](07-notifications.md). |
 | **Embedded IDE (VS Code)** | A local code-server or OpenVSCode server for browsing project code: **Local Port** (8443 by default), **Custom Binary Path (Optional)**, **External or Existing IDE URL (Optional)**, **Start Server** / **Stop Server**, **Save IDE Configuration**. |
 | **Appearance & Theme** | Light or dark mode. The sidebar's **Light** / **Dark** button does the same. |
 | **Safety & System Limits** | Shows the built-in limits: `MAX_DEPTH` 3 (ticket chain depth), `MAX_TICKETS_PER_REQ` 10, `WATCH_INTERVAL_MS` 5000 ms, `MAX_BODY_BYTES` 20 KB. Read only; this tab always shows 5000 ms even if you set `WATCH_INTERVAL_MS`. |
+
+### Local AI CLI engine
+
+On **AI & Local Engines**, the **Local AI CLI engine** card controls the agents of repositories whose
+engine is **Local AI CLI** (see [02](02-projects-and-engines.md#local-ai-cli)).
+
+| Setting | Default | Meaning |
+|---|---|---|
+| **Run agents on this PC** | on | Off: tasks wait in QUEUED and the engine shows as Down. |
+| **Agent CLI** | **Use AI default** | Which CLI runs agents. **Use AI default** follows the AI default above; when that is Ollama, the heuristic or Auto, the first installed and active of Claude Code, AGY and Codex is used. |
+| **Parallel agents** | 2 | 1 to 8 agents at once, all workspaces together. |
+| **Time limit per run** | 60 minutes | 5 to 480. A longer run is stopped and the task FAILS; **Retry** continues it. |
+| **Worktree folder** | `agent-worktrees` in the server workspace | Where task copies are made: an absolute path, or empty for the default. |
+
+Below the settings the card shows which CLI the next run uses; how many runs are running, queued,
+waiting for a person and rate limited; and for each CLI **Installed on PC** / **Not Detected** and
+**HEALTHY** / **PAUSED until …** (a usage limit). Click **Save Local Engine** to save.
 
 ### Git & Branch Rules
 

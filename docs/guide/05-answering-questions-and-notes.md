@@ -179,6 +179,9 @@ Use a note to correct course while an agent works ("use the v2 endpoint").
 - The engine decides when the agent reads it. As the dialog says: "Whether it reads it right
   away depends on its engine." A note does not resume a paused task and does not restart a
   finished one.
+- **Local AI CLI** repositories: the note is saved and the agent reads it when its next run starts
+  (after an answer, a usage limit, **Retry** or **Request changes**). An agent that is running now
+  does not see it.
 
 ### Limits of notes
 

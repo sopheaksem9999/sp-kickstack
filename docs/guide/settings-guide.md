@@ -154,6 +154,15 @@ Configuration cards are rendered **only for the engines enabled in Step 1**:
 - **Ollama Model**: Presets include `DeepSeek R1` (latest, 14B, 8B), `Llama 3.3 (70B)`, `Llama 3.2 (3B)`, `Qwen 2.5 Coder (32B / 7B)`, and `Phi-4`.
 - **Ollama Host URL**: Default is `http://127.0.0.1:11434`. Update this address if you are hosting Ollama inside Docker or on a dedicated local network GPU server.
 
+### 5. Local AI CLI Engine (Step 5)
+
+The last card on this tab runs fan-out tasks with an AI CLI on this PC for repositories whose engine is
+**Local AI CLI**: each task in its own git worktree on its task branch, at most **Parallel agents** (2)
+at a time, stopped after **Time limit per run** (60 minutes). **Agent CLI** picks Claude Code, AGY or
+Codex, or follows the default engine above. The card shows live **Installed on PC** / **Not Detected**
+and **HEALTHY** / **PAUSED** badges per CLI and the number of running, queued, waiting and
+rate-limited runs. Details: [09 Settings and environment](09-settings-and-environment.md#local-ai-cli-engine).
+
 ---
 
 ## 3. Module 2: Git & Branch Merge Strategy
@@ -284,7 +293,7 @@ Clicking the header indicator opens the **Engine Quick View Popover**:
 ### Frequently Asked Questions:
 
 #### Q: How do I know if Claude or AGY is authenticated?
-Run `claude` or `agy` in your terminal once. If it presents an interactive prompt without errors, SP-Kickstack will be able to dispatch headless tasks through it.
+Run `claude` or `agy` in your terminal once and sign in. Repositories whose engine is **Local AI CLI** then run their tasks through it headless (see the Local AI CLI Engine section above and [02 Projects and engines](02-projects-and-engines.md#local-ai-cli)).
 
 #### Q: My binary is installed via nvm / brew, but SP-Kickstack says "✕ Not Detected".
 When launching SP-Kickstack from a desktop shortcut or system process, the system environment `$PATH` may differ from your interactive shell. In **Settings > AI & Local Engines**, paste the absolute binary path (e.g., `/Users/yourname/.nvm/versions/node/v22.19.0/bin/claude`) into the **Custom Binary Path** field and click **Save**.

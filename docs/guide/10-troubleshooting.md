@@ -39,6 +39,11 @@ messages appear as red toasts in the app; `<REQ-ID>`, `<id>` and similar parts a
 | `Task #<id> is <status>; only finished work can be sent back` | **Request changes** only works on IN REVIEW or COMPLETE tasks. | Wait, or use **Note**. |
 | `Question #<id> is already answered` | Someone answered first. | Reload to see the answer. |
 | `Base branch "<base>" was not found in <repo>` | The project's base branch does not exist. | Create it or fix **Base Branch**, then **Retry**. |
+| `Branch req/<REQ-ID>/task-<id> is checked out in <path>; switch that checkout to another branch, then Retry` | Local AI CLI: the agent needs its own worktree on the task branch, and git allows a branch in one checkout only. | Switch that checkout to another branch, then **Retry**. |
+| `Local AI CLI needs a git repository: <path> is not the top of a git work tree` | The repository path is not the root of a git repository. | Fix **Repository Path**, or use the Manual engine. |
+| `Finished without committing anything` | Local AI CLI: the agent ended without a commit on its branch. | Read **Logs**, then **Retry** or **Request changes** with clearer instructions. |
+| `Stopped after the <n> minute time limit (Settings → AI & Local Engines)` | Local AI CLI: the run took longer than the limit. | Raise the limit or split the work, then **Retry**. |
+| `Interrupted 3 times (the server stopped while the agent was running); Retry starts it again` | The server crashed three times during this run. | **Retry**. |
 
 ## Messages about the connection
 
@@ -84,6 +89,19 @@ A held task waits for something. Find out what:
 3. Check **Links in messages** if the links are missing or wrong.
 4. Remember that a failed delivery is not retried and not shown anywhere. See
    [How delivery works](07-notifications.md#how-delivery-works).
+
+## A Local AI CLI task stays QUEUED
+
+Open **Settings → AI & Local Engines** and look at the **Local AI CLI engine** card:
+
+- **Turned off: tasks wait in QUEUED.** Switch **Run agents on this PC** on and save.
+- **No AI CLI that can edit code is installed and turned on**, or `<CLI> is chosen for the Local AI CLI
+  engine but …`: install that CLI, turn it on in Step 1 of the tab, or pick another **Agent CLI**.
+- **PAUSED until …** next to the CLI: a usage limit. Runs continue at that time.
+- As many runs **running** as **Parallel agents**: the task waits for a free slot.
+
+The repository's engine must be **Local AI CLI**. A task fanned out while the repository was Manual
+starts when you switch it (see [02](02-projects-and-engines.md#switch-a-manual-repository-to-local-ai-cli)).
 
 ## An engine stays Down
 

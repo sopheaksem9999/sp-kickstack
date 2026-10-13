@@ -32,6 +32,20 @@ await esbuild.build({
 
 console.log('✅ Server JavaScript bundle created at resources/server/index.mjs');
 
+// Local AI CLI agents call xticket; the server finds it next to index.mjs (see localEngine/xticketLauncher.ts).
+await esbuild.build({
+  entryPoints: [path.join(rootDir, 'packages', 'xticket', 'src', 'cli.ts')],
+  bundle: true,
+  platform: 'node',
+  target: 'node20',
+  format: 'esm',
+  outfile: path.join(outDir, 'xticket.mjs'),
+  sourcemap: false,
+  minify: false,
+});
+
+console.log('✅ xticket CLI bundle created at resources/server/xticket.mjs');
+
 // 2. Prepare node_modules in resources/server with native better-sqlite3
 const targetNodeModules = path.join(outDir, 'node_modules');
 fs.mkdirSync(targetNodeModules, { recursive: true });

@@ -112,17 +112,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path18) {
-      const ctrl = callVisitor(key, node, visitor, path18);
+    function visit_(key, node, visitor, path21) {
+      const ctrl = callVisitor(key, node, visitor, path21);
       if (identity3.isNode(ctrl) || identity3.isPair(ctrl)) {
-        replaceNode(key, path18, ctrl);
-        return visit_(key, ctrl, visitor, path18);
+        replaceNode(key, path21, ctrl);
+        return visit_(key, ctrl, visitor, path21);
       }
       if (typeof ctrl !== "symbol") {
         if (identity3.isCollection(node)) {
-          path18 = Object.freeze(path18.concat(node));
+          path21 = Object.freeze(path21.concat(node));
           for (let i2 = 0; i2 < node.items.length; ++i2) {
-            const ci = visit_(i2, node.items[i2], visitor, path18);
+            const ci = visit_(i2, node.items[i2], visitor, path21);
             if (typeof ci === "number")
               i2 = ci - 1;
             else if (ci === BREAK)
@@ -133,13 +133,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity3.isPair(node)) {
-          path18 = Object.freeze(path18.concat(node));
-          const ck = visit_("key", node.key, visitor, path18);
+          path21 = Object.freeze(path21.concat(node));
+          const ck = visit_("key", node.key, visitor, path21);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path18);
+          const cv = visit_("value", node.value, visitor, path21);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -160,17 +160,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path18) {
-      const ctrl = await callVisitor(key, node, visitor, path18);
+    async function visitAsync_(key, node, visitor, path21) {
+      const ctrl = await callVisitor(key, node, visitor, path21);
       if (identity3.isNode(ctrl) || identity3.isPair(ctrl)) {
-        replaceNode(key, path18, ctrl);
-        return visitAsync_(key, ctrl, visitor, path18);
+        replaceNode(key, path21, ctrl);
+        return visitAsync_(key, ctrl, visitor, path21);
       }
       if (typeof ctrl !== "symbol") {
         if (identity3.isCollection(node)) {
-          path18 = Object.freeze(path18.concat(node));
+          path21 = Object.freeze(path21.concat(node));
           for (let i2 = 0; i2 < node.items.length; ++i2) {
-            const ci = await visitAsync_(i2, node.items[i2], visitor, path18);
+            const ci = await visitAsync_(i2, node.items[i2], visitor, path21);
             if (typeof ci === "number")
               i2 = ci - 1;
             else if (ci === BREAK)
@@ -181,13 +181,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity3.isPair(node)) {
-          path18 = Object.freeze(path18.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path18);
+          path21 = Object.freeze(path21.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path21);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path18);
+          const cv = await visitAsync_("value", node.value, visitor, path21);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -214,23 +214,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path18) {
+    function callVisitor(key, node, visitor, path21) {
       if (typeof visitor === "function")
-        return visitor(key, node, path18);
+        return visitor(key, node, path21);
       if (identity3.isMap(node))
-        return visitor.Map?.(key, node, path18);
+        return visitor.Map?.(key, node, path21);
       if (identity3.isSeq(node))
-        return visitor.Seq?.(key, node, path18);
+        return visitor.Seq?.(key, node, path21);
       if (identity3.isPair(node))
-        return visitor.Pair?.(key, node, path18);
+        return visitor.Pair?.(key, node, path21);
       if (identity3.isScalar(node))
-        return visitor.Scalar?.(key, node, path18);
+        return visitor.Scalar?.(key, node, path21);
       if (identity3.isAlias(node))
-        return visitor.Alias?.(key, node, path18);
+        return visitor.Alias?.(key, node, path21);
       return void 0;
     }
-    function replaceNode(key, path18, node) {
-      const parent = path18[path18.length - 1];
+    function replaceNode(key, path21, node) {
+      const parent = path21[path21.length - 1];
       if (identity3.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity3.isPair(parent)) {
@@ -394,7 +394,7 @@ var require_directives = __commonJS({
         return tag[0] === "!" ? tag : `!<${tag}>`;
       }
       toString(doc) {
-        const lines = this.yaml.explicit ? [`%YAML ${this.yaml.version || "1.2"}`] : [];
+        const lines2 = this.yaml.explicit ? [`%YAML ${this.yaml.version || "1.2"}`] : [];
         const tagEntries = Object.entries(this.tags);
         let tagNames;
         if (doc && tagEntries.length > 0 && identity3.isNode(doc.contents)) {
@@ -410,9 +410,9 @@ var require_directives = __commonJS({
           if (handle === "!!" && prefix === "tag:yaml.org,2002:")
             continue;
           if (!doc || tagNames.some((tn) => tn.startsWith(prefix)))
-            lines.push(`%TAG ${handle} ${prefix}`);
+            lines2.push(`%TAG ${handle} ${prefix}`);
         }
-        return lines.join("\n");
+        return lines2.join("\n");
       }
     };
     Directives.defaultYaml = { explicit: false, version: "1.2" };
@@ -842,10 +842,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity3 = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path18, value) {
+    function collectionFromPath(schema, path21, value) {
       let v = value;
-      for (let i2 = path18.length - 1; i2 >= 0; --i2) {
-        const k = path18[i2];
+      for (let i2 = path21.length - 1; i2 >= 0; --i2) {
+        const k = path21[i2];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a2 = [];
           a2[k] = v;
@@ -864,7 +864,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path18) => path18 == null || typeof path18 === "object" && !!path18[Symbol.iterator]().next().done;
+    var isEmptyPath = (path21) => path21 == null || typeof path21 === "object" && !!path21[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -894,11 +894,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path18, value) {
-        if (isEmptyPath(path18))
+      addIn(path21, value) {
+        if (isEmptyPath(path21))
           this.add(value);
         else {
-          const [key, ...rest] = path18;
+          const [key, ...rest] = path21;
           const node = this.get(key, true);
           if (identity3.isCollection(node))
             node.addIn(rest, value);
@@ -912,8 +912,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path18) {
-        const [key, ...rest] = path18;
+      deleteIn(path21) {
+        const [key, ...rest] = path21;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -927,8 +927,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path18, keepScalar) {
-        const [key, ...rest] = path18;
+      getIn(path21, keepScalar) {
+        const [key, ...rest] = path21;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity3.isScalar(node) ? node.value : node;
@@ -946,8 +946,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path18) {
-        const [key, ...rest] = path18;
+      hasIn(path21) {
+        const [key, ...rest] = path21;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -957,8 +957,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path18, value) {
-        const [key, ...rest] = path18;
+      setIn(path21, value) {
+        const [key, ...rest] = path21;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -1873,22 +1873,22 @@ var require_stringifyCollection = __commonJS({
       const { indent, options: { commentString } } = ctx;
       const itemCtx = Object.assign({}, ctx, { indent: itemIndent, type: null });
       let chompKeep = false;
-      const lines = [];
+      const lines2 = [];
       for (let i2 = 0; i2 < items.length; ++i2) {
         const item = items[i2];
         let comment2 = null;
         if (identity3.isNode(item)) {
           if (!chompKeep && item.spaceBefore)
-            lines.push("");
-          addCommentBefore(ctx, lines, item.commentBefore, chompKeep);
+            lines2.push("");
+          addCommentBefore(ctx, lines2, item.commentBefore, chompKeep);
           if (item.comment)
             comment2 = item.comment;
         } else if (identity3.isPair(item)) {
           const ik = identity3.isNode(item.key) ? item.key : null;
           if (ik) {
             if (!chompKeep && ik.spaceBefore)
-              lines.push("");
-            addCommentBefore(ctx, lines, ik.commentBefore, chompKeep);
+              lines2.push("");
+            addCommentBefore(ctx, lines2, ik.commentBefore, chompKeep);
           }
         }
         chompKeep = false;
@@ -1897,15 +1897,15 @@ var require_stringifyCollection = __commonJS({
           str2 += stringifyComment.lineComment(str2, itemIndent, commentString(comment2));
         if (chompKeep && comment2)
           chompKeep = false;
-        lines.push(blockItemPrefix + str2);
+        lines2.push(blockItemPrefix + str2);
       }
       let str;
-      if (lines.length === 0) {
+      if (lines2.length === 0) {
         str = flowChars.start + flowChars.end;
       } else {
-        str = lines[0];
-        for (let i2 = 1; i2 < lines.length; ++i2) {
-          const line = lines[i2];
+        str = lines2[0];
+        for (let i2 = 1; i2 < lines2.length; ++i2) {
+          const line = lines2[i2];
           str += line ? `
 ${indent}${line}` : "\n";
         }
@@ -1928,22 +1928,22 @@ ${indent}${line}` : "\n";
       });
       let reqNewline = false;
       let linesAtValue = 0;
-      const lines = [];
+      const lines2 = [];
       for (let i2 = 0; i2 < items.length; ++i2) {
         const item = items[i2];
         let comment = null;
         if (identity3.isNode(item)) {
           if (item.spaceBefore)
-            lines.push("");
-          addCommentBefore(ctx, lines, item.commentBefore, false);
+            lines2.push("");
+          addCommentBefore(ctx, lines2, item.commentBefore, false);
           if (item.comment)
             comment = item.comment;
         } else if (identity3.isPair(item)) {
           const ik = identity3.isNode(item.key) ? item.key : null;
           if (ik) {
             if (ik.spaceBefore)
-              lines.push("");
-            addCommentBefore(ctx, lines, ik.commentBefore, false);
+              lines2.push("");
+            addCommentBefore(ctx, lines2, ik.commentBefore, false);
             if (ik.comment)
               reqNewline = true;
           }
@@ -1960,12 +1960,12 @@ ${indent}${line}` : "\n";
         if (comment)
           reqNewline = true;
         let str = stringify.stringify(item, itemCtx, () => comment = null);
-        reqNewline || (reqNewline = lines.length > linesAtValue || str.includes("\n"));
+        reqNewline || (reqNewline = lines2.length > linesAtValue || str.includes("\n"));
         if (i2 < items.length - 1) {
           str += ",";
         } else if (ctx.options.trailingComma) {
           if (ctx.options.lineWidth > 0) {
-            reqNewline || (reqNewline = lines.reduce((sum, line) => sum + line.length + 2, 2) + (str.length + 2) > ctx.options.lineWidth);
+            reqNewline || (reqNewline = lines2.reduce((sum, line) => sum + line.length + 2, 2) + (str.length + 2) > ctx.options.lineWidth);
           }
           if (reqNewline) {
             str += ",";
@@ -1973,35 +1973,35 @@ ${indent}${line}` : "\n";
         }
         if (comment)
           str += stringifyComment.lineComment(str, itemIndent, commentString(comment));
-        lines.push(str);
-        linesAtValue = lines.length;
+        lines2.push(str);
+        linesAtValue = lines2.length;
       }
       const { start, end } = flowChars;
-      if (lines.length === 0) {
+      if (lines2.length === 0) {
         return start + end;
       } else {
         if (!reqNewline) {
-          const len = lines.reduce((sum, line) => sum + line.length + 2, 2);
+          const len = lines2.reduce((sum, line) => sum + line.length + 2, 2);
           reqNewline = ctx.options.lineWidth > 0 && len > ctx.options.lineWidth;
         }
         if (reqNewline) {
           let str = start;
-          for (const line of lines)
+          for (const line of lines2)
             str += line ? `
 ${indentStep}${indent}${line}` : "\n";
           return `${str}
 ${indent}${end}`;
         } else {
-          return `${start}${fcPadding}${lines.join(" ")}${fcPadding}${end}`;
+          return `${start}${fcPadding}${lines2.join(" ")}${fcPadding}${end}`;
         }
       }
     }
-    function addCommentBefore({ indent, options: { commentString } }, lines, comment, chompKeep) {
+    function addCommentBefore({ indent, options: { commentString } }, lines2, comment, chompKeep) {
       if (comment && chompKeep)
         comment = comment.replace(/^\n+/, "");
       if (comment) {
         const ic = stringifyComment.indentComment(commentString(comment), indent);
-        lines.push(ic.trimStart());
+        lines2.push(ic.trimStart());
       }
     }
     exports.stringifyCollection = stringifyCollection;
@@ -2639,11 +2639,11 @@ var require_binary = __commonJS({
         if (type !== Scalar.Scalar.QUOTE_DOUBLE) {
           const lineWidth = Math.max(ctx.options.lineWidth - ctx.indent.length, ctx.options.minContentWidth);
           const n2 = Math.ceil(str.length / lineWidth);
-          const lines = new Array(n2);
+          const lines2 = new Array(n2);
           for (let i2 = 0, o2 = 0; i2 < n2; ++i2, o2 += lineWidth) {
-            lines[i2] = str.substr(o2, lineWidth);
+            lines2[i2] = str.substr(o2, lineWidth);
           }
-          str = lines.join(type === Scalar.Scalar.BLOCK_LITERAL ? "\n" : " ");
+          str = lines2.join(type === Scalar.Scalar.BLOCK_LITERAL ? "\n" : " ");
         }
         return stringifyString.stringifyString({ comment, type, value: str }, ctx, onComment, onChompKeep);
       }
@@ -3323,35 +3323,35 @@ var require_stringifyDocument = __commonJS({
     var stringify = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyDocument(doc, options) {
-      const lines = [];
+      const lines2 = [];
       let hasDirectives = options.directives === true;
       if (options.directives !== false && doc.directives) {
         const dir = doc.directives.toString(doc);
         if (dir) {
-          lines.push(dir);
+          lines2.push(dir);
           hasDirectives = true;
         } else if (doc.directives.docStart)
           hasDirectives = true;
       }
       if (hasDirectives)
-        lines.push("---");
+        lines2.push("---");
       const ctx = stringify.createStringifyContext(doc, options);
       const { commentString } = ctx.options;
       if (doc.commentBefore) {
-        if (lines.length !== 1)
-          lines.unshift("");
+        if (lines2.length !== 1)
+          lines2.unshift("");
         const cs = commentString(doc.commentBefore);
-        lines.unshift(stringifyComment.indentComment(cs, ""));
+        lines2.unshift(stringifyComment.indentComment(cs, ""));
       }
       let chompKeep = false;
       let contentComment = null;
       if (doc.contents) {
         if (identity3.isNode(doc.contents)) {
           if (doc.contents.spaceBefore && hasDirectives)
-            lines.push("");
+            lines2.push("");
           if (doc.contents.commentBefore) {
             const cs = commentString(doc.contents.commentBefore);
-            lines.push(stringifyComment.indentComment(cs, ""));
+            lines2.push(stringifyComment.indentComment(cs, ""));
           }
           ctx.forceBlockIndent = !!doc.comment;
           contentComment = doc.contents.comment;
@@ -3360,36 +3360,36 @@ var require_stringifyDocument = __commonJS({
         let body = stringify.stringify(doc.contents, ctx, () => contentComment = null, onChompKeep);
         if (contentComment)
           body += stringifyComment.lineComment(body, "", commentString(contentComment));
-        if ((body[0] === "|" || body[0] === ">") && lines[lines.length - 1] === "---") {
-          lines[lines.length - 1] = `--- ${body}`;
+        if ((body[0] === "|" || body[0] === ">") && lines2[lines2.length - 1] === "---") {
+          lines2[lines2.length - 1] = `--- ${body}`;
         } else
-          lines.push(body);
+          lines2.push(body);
       } else {
-        lines.push(stringify.stringify(doc.contents, ctx));
+        lines2.push(stringify.stringify(doc.contents, ctx));
       }
       if (doc.directives?.docEnd) {
         if (doc.comment) {
           const cs = commentString(doc.comment);
           if (cs.includes("\n")) {
-            lines.push("...");
-            lines.push(stringifyComment.indentComment(cs, ""));
+            lines2.push("...");
+            lines2.push(stringifyComment.indentComment(cs, ""));
           } else {
-            lines.push(`... ${cs}`);
+            lines2.push(`... ${cs}`);
           }
         } else {
-          lines.push("...");
+          lines2.push("...");
         }
       } else {
         let dc = doc.comment;
         if (dc && chompKeep)
           dc = dc.replace(/^\n+/, "");
         if (dc) {
-          if ((!chompKeep || contentComment) && lines[lines.length - 1] !== "")
-            lines.push("");
-          lines.push(stringifyComment.indentComment(commentString(dc), ""));
+          if ((!chompKeep || contentComment) && lines2[lines2.length - 1] !== "")
+            lines2.push("");
+          lines2.push(stringifyComment.indentComment(commentString(dc), ""));
         }
       }
-      return lines.join("\n") + "\n";
+      return lines2.join("\n") + "\n";
     }
     exports.stringifyDocument = stringifyDocument;
   }
@@ -3473,9 +3473,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path18, value) {
+      addIn(path21, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path18, value);
+          this.contents.addIn(path21, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3550,14 +3550,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path18) {
-        if (Collection.isEmptyPath(path18)) {
+      deleteIn(path21) {
+        if (Collection.isEmptyPath(path21)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path18) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path21) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3572,10 +3572,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path18, keepScalar) {
-        if (Collection.isEmptyPath(path18))
+      getIn(path21, keepScalar) {
+        if (Collection.isEmptyPath(path21))
           return !keepScalar && identity3.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity3.isCollection(this.contents) ? this.contents.getIn(path18, keepScalar) : void 0;
+        return identity3.isCollection(this.contents) ? this.contents.getIn(path21, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3586,10 +3586,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path18) {
-        if (Collection.isEmptyPath(path18))
+      hasIn(path21) {
+        if (Collection.isEmptyPath(path21))
           return this.contents !== void 0;
-        return identity3.isCollection(this.contents) ? this.contents.hasIn(path18) : false;
+        return identity3.isCollection(this.contents) ? this.contents.hasIn(path21) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3606,13 +3606,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path18, value) {
-        if (Collection.isEmptyPath(path18)) {
+      setIn(path21, value) {
+        if (Collection.isEmptyPath(path21)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path18), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path21), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path18, value);
+          this.contents.setIn(path21, value);
         }
       }
       /**
@@ -4450,17 +4450,17 @@ var require_resolve_block_scalar = __commonJS({
       if (!header)
         return { value: "", type: null, comment: "", range: [start, start, start] };
       const type = header.mode === ">" ? Scalar.Scalar.BLOCK_FOLDED : Scalar.Scalar.BLOCK_LITERAL;
-      const lines = scalar.source ? splitLines(scalar.source) : [];
-      let chompStart = lines.length;
-      for (let i2 = lines.length - 1; i2 >= 0; --i2) {
-        const content = lines[i2][1];
+      const lines2 = scalar.source ? splitLines(scalar.source) : [];
+      let chompStart = lines2.length;
+      for (let i2 = lines2.length - 1; i2 >= 0; --i2) {
+        const content = lines2[i2][1];
         if (content === "" || content === "\r")
           chompStart = i2;
         else
           break;
       }
       if (chompStart === 0) {
-        const value2 = header.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
+        const value2 = header.chomp === "+" && lines2.length > 0 ? "\n".repeat(Math.max(1, lines2.length - 1)) : "";
         let end2 = start + header.length;
         if (scalar.source)
           end2 += scalar.source.length;
@@ -4470,7 +4470,7 @@ var require_resolve_block_scalar = __commonJS({
       let offset = scalar.offset + header.length;
       let contentStart = 0;
       for (let i2 = 0; i2 < chompStart; ++i2) {
-        const [indent, content] = lines[i2];
+        const [indent, content] = lines2[i2];
         if (content === "" || content === "\r") {
           if (header.indent === 0 && indent.length > trimIndent)
             trimIndent = indent.length;
@@ -4490,17 +4490,17 @@ var require_resolve_block_scalar = __commonJS({
         }
         offset += indent.length + content.length + 1;
       }
-      for (let i2 = lines.length - 1; i2 >= chompStart; --i2) {
-        if (lines[i2][0].length > trimIndent)
+      for (let i2 = lines2.length - 1; i2 >= chompStart; --i2) {
+        if (lines2[i2][0].length > trimIndent)
           chompStart = i2 + 1;
       }
       let value = "";
       let sep = "";
       let prevMoreIndented = false;
       for (let i2 = 0; i2 < contentStart; ++i2)
-        value += lines[i2][0].slice(trimIndent) + "\n";
+        value += lines2[i2][0].slice(trimIndent) + "\n";
       for (let i2 = contentStart; i2 < chompStart; ++i2) {
-        let [indent, content] = lines[i2];
+        let [indent, content] = lines2[i2];
         offset += indent.length + content.length + 1;
         const crlf = content[content.length - 1] === "\r";
         if (crlf)
@@ -4537,8 +4537,8 @@ var require_resolve_block_scalar = __commonJS({
         case "-":
           break;
         case "+":
-          for (let i2 = chompStart; i2 < lines.length; ++i2)
-            value += "\n" + lines[i2][0].slice(trimIndent);
+          for (let i2 = chompStart; i2 < lines2.length; ++i2)
+            value += "\n" + lines2[i2][0].slice(trimIndent);
           if (value[value.length - 1] !== "\n")
             value += "\n";
           break;
@@ -4611,10 +4611,10 @@ var require_resolve_block_scalar = __commonJS({
       const first = split[0];
       const m = first.match(/^( *)/);
       const line0 = m?.[1] ? [m[1], first.slice(m[1].length)] : ["", first];
-      const lines = [line0];
+      const lines2 = [line0];
       for (let i2 = 1; i2 < split.length; i2 += 2)
-        lines.push([split[i2], split[i2 + 1]]);
-      return lines;
+        lines2.push([split[i2], split[i2 + 1]]);
+      return lines2;
     }
     exports.resolveBlockScalar = resolveBlockScalar;
   }
@@ -5568,9 +5568,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path18) => {
+    visit.itemAtPath = (cst, path21) => {
       let item = cst;
-      for (const [field, index] of path18) {
+      for (const [field, index] of path21) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5579,23 +5579,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path18) => {
-      const parent = visit.itemAtPath(cst, path18.slice(0, -1));
-      const field = path18[path18.length - 1][0];
+    visit.parentCollection = (cst, path21) => {
+      const parent = visit.itemAtPath(cst, path21.slice(0, -1));
+      const field = path21[path21.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path18, item, visitor) {
-      let ctrl = visitor(item, path18);
+    function _visit(path21, item, visitor) {
+      let ctrl = visitor(item, path21);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i2 = 0; i2 < token.items.length; ++i2) {
-            const ci = _visit(Object.freeze(path18.concat([[field, i2]])), token.items[i2], visitor);
+            const ci = _visit(Object.freeze(path21.concat([[field, i2]])), token.items[i2], visitor);
             if (typeof ci === "number")
               i2 = ci - 1;
             else if (ci === BREAK)
@@ -5606,10 +5606,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path18);
+            ctrl = ctrl(item, path21);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path18) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path21) : ctrl;
     }
     exports.visit = visit;
   }
@@ -6903,14 +6903,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs13 = this.flowScalar(this.type);
+              const fs17 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start, key: fs13, sep: [] });
+                map.items.push({ start, key: fs17, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs13);
+                this.stack.push(fs17);
               } else {
-                Object.assign(it, { key: fs13, sep: [] });
+                Object.assign(it, { key: fs17, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -7038,13 +7038,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs13 = this.flowScalar(this.type);
+              const fs17 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs13, sep: [] });
+                fc.items.push({ start: [], key: fs17, sep: [] });
               else if (it.sep)
-                this.stack.push(fs13);
+                this.stack.push(fs17);
               else
-                Object.assign(it, { key: fs13, sep: [] });
+                Object.assign(it, { key: fs17, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -8611,8 +8611,8 @@ var require_node = __commonJS({
           }
           break;
         case "FILE":
-          var fs13 = __require("fs");
-          stream2 = new fs13.SyncWriteStream(fd2, { autoClose: false });
+          var fs17 = __require("fs");
+          stream2 = new fs17.SyncWriteStream(fd2, { autoClose: false });
           stream2._type = "fs";
           break;
         case "PIPE":
@@ -21399,11 +21399,11 @@ var require_mime_types = __commonJS({
       }
       return exts[0];
     }
-    function lookup(path18) {
-      if (!path18 || typeof path18 !== "string") {
+    function lookup(path21) {
+      if (!path21 || typeof path21 !== "string") {
         return false;
       }
-      var extension2 = extname("x." + path18).toLowerCase().substr(1);
+      var extension2 = extname("x." + path21).toLowerCase().substr(1);
       if (!extension2) {
         return false;
       }
@@ -25056,8 +25056,8 @@ var require_node2 = __commonJS({
           }
           break;
         case "FILE":
-          var fs13 = __require("fs");
-          stream2 = new fs13.SyncWriteStream(fd2, { autoClose: false });
+          var fs17 = __require("fs");
+          stream2 = new fs17.SyncWriteStream(fd2, { autoClose: false });
           stream2._type = "fs";
           break;
         case "PIPE":
@@ -25769,8 +25769,8 @@ var require_node3 = __commonJS({
           }
           break;
         case "FILE":
-          var fs13 = __require("fs");
-          stream2 = new fs13.SyncWriteStream(fd2, { autoClose: false });
+          var fs17 = __require("fs");
+          stream2 = new fs17.SyncWriteStream(fd2, { autoClose: false });
           stream2._type = "fs";
           break;
         case "PIPE":
@@ -25858,7 +25858,7 @@ var require_path_to_regexp = __commonJS({
   "node_modules/path-to-regexp/index.js"(exports, module) {
     module.exports = pathToRegexp;
     var MATCHING_GROUP_REGEXP = /\\.|\((?:\?<(.*?)>)?(?!\?)/g;
-    function pathToRegexp(path18, keys, options) {
+    function pathToRegexp(path21, keys, options) {
       options = options || {};
       keys = keys || [];
       var strict = options.strict;
@@ -25872,8 +25872,8 @@ var require_path_to_regexp = __commonJS({
       var pos = 0;
       var backtrack = "";
       var m;
-      if (path18 instanceof RegExp) {
-        while (m = MATCHING_GROUP_REGEXP.exec(path18.source)) {
+      if (path21 instanceof RegExp) {
+        while (m = MATCHING_GROUP_REGEXP.exec(path21.source)) {
           if (m[0][0] === "\\") continue;
           keys.push({
             name: m[1] || name++,
@@ -25881,18 +25881,18 @@ var require_path_to_regexp = __commonJS({
             offset: m.index
           });
         }
-        return path18;
+        return path21;
       }
-      if (Array.isArray(path18)) {
-        path18 = path18.map(function(value) {
+      if (Array.isArray(path21)) {
+        path21 = path21.map(function(value) {
           return pathToRegexp(value, keys, options).source;
         });
-        return new RegExp(path18.join("|"), flags);
+        return new RegExp(path21.join("|"), flags);
       }
-      if (typeof path18 !== "string") {
+      if (typeof path21 !== "string") {
         throw new TypeError("path must be a string, array of strings, or regular expression");
       }
-      path18 = path18.replace(
+      path21 = path21.replace(
         /\\.|(\/)?(\.)?:(\w+)(\(.*?\))?(\*)?(\?)?|[.*]|\/\(/g,
         function(match, slash, format2, key, capture, star, optional, offset) {
           if (match[0] === "\\") {
@@ -25909,7 +25909,7 @@ var require_path_to_regexp = __commonJS({
           if (slash || format2) {
             backtrack = "";
           } else {
-            backtrack += path18.slice(pos, offset);
+            backtrack += path21.slice(pos, offset);
           }
           pos = offset + match.length;
           if (match === "*") {
@@ -25939,7 +25939,7 @@ var require_path_to_regexp = __commonJS({
           return result;
         }
       );
-      while (m = MATCHING_GROUP_REGEXP.exec(path18)) {
+      while (m = MATCHING_GROUP_REGEXP.exec(path21)) {
         if (m[0][0] === "\\") continue;
         if (keysOffset + i2 === keys.length || keys[keysOffset + i2].offset > m.index) {
           keys.splice(keysOffset + i2, 0, {
@@ -25951,13 +25951,13 @@ var require_path_to_regexp = __commonJS({
         }
         i2++;
       }
-      path18 += strict ? "" : path18[path18.length - 1] === "/" ? "?" : "/?";
+      path21 += strict ? "" : path21[path21.length - 1] === "/" ? "?" : "/?";
       if (end) {
-        path18 += "$";
-      } else if (path18[path18.length - 1] !== "/") {
-        path18 += lookahead ? "(?=/|$)" : "(?:/|$)";
+        path21 += "$";
+      } else if (path21[path21.length - 1] !== "/") {
+        path21 += lookahead ? "(?=/|$)" : "(?:/|$)";
       }
-      return new RegExp("^" + path18, flags);
+      return new RegExp("^" + path21, flags);
     }
   }
 });
@@ -25970,19 +25970,19 @@ var require_layer = __commonJS({
     var debug = require_src3()("express:router:layer");
     var hasOwnProperty = Object.prototype.hasOwnProperty;
     module.exports = Layer;
-    function Layer(path18, options, fn) {
+    function Layer(path21, options, fn) {
       if (!(this instanceof Layer)) {
-        return new Layer(path18, options, fn);
+        return new Layer(path21, options, fn);
       }
-      debug("new %o", path18);
+      debug("new %o", path21);
       var opts = options || {};
       this.handle = fn;
       this.name = fn.name || "<anonymous>";
       this.params = void 0;
       this.path = void 0;
-      this.regexp = pathRegexp(path18, this.keys = [], opts);
-      this.regexp.fast_star = path18 === "*";
-      this.regexp.fast_slash = path18 === "/" && opts.end === false;
+      this.regexp = pathRegexp(path21, this.keys = [], opts);
+      this.regexp.fast_star = path21 === "*";
+      this.regexp.fast_slash = path21 === "/" && opts.end === false;
     }
     Layer.prototype.handle_error = function handle_error(error, req, res, next) {
       var fn = this.handle;
@@ -26006,20 +26006,20 @@ var require_layer = __commonJS({
         next(err);
       }
     };
-    Layer.prototype.match = function match(path18) {
+    Layer.prototype.match = function match(path21) {
       var match2;
-      if (path18 != null) {
+      if (path21 != null) {
         if (this.regexp.fast_slash) {
           this.params = {};
           this.path = "";
           return true;
         }
         if (this.regexp.fast_star) {
-          this.params = { "0": decode_param(path18) };
-          this.path = path18;
+          this.params = { "0": decode_param(path21) };
+          this.path = path21;
           return true;
         }
-        match2 = this.regexp.exec(path18);
+        match2 = this.regexp.exec(path21);
       }
       if (!match2) {
         this.params = void 0;
@@ -26112,10 +26112,10 @@ var require_route = __commonJS({
     var slice = Array.prototype.slice;
     var toString2 = Object.prototype.toString;
     module.exports = Route;
-    function Route(path18) {
-      this.path = path18;
+    function Route(path21) {
+      this.path = path21;
       this.stack = [];
-      debug("new %o", path18);
+      debug("new %o", path21);
       this.methods = {};
     }
     Route.prototype._handles_method = function _handles_method(method) {
@@ -26327,8 +26327,8 @@ var require_router = __commonJS({
         if (++sync > 100) {
           return setImmediate(next, err);
         }
-        var path18 = getPathname(req);
-        if (path18 == null) {
+        var path21 = getPathname(req);
+        if (path21 == null) {
           return done(layerError);
         }
         var layer;
@@ -26336,7 +26336,7 @@ var require_router = __commonJS({
         var route;
         while (match !== true && idx < stack.length) {
           layer = stack[idx++];
-          match = matchLayer(layer, path18);
+          match = matchLayer(layer, path21);
           route = layer.route;
           if (typeof match !== "boolean") {
             layerError = layerError || match;
@@ -26374,18 +26374,18 @@ var require_router = __commonJS({
           } else if (route) {
             layer.handle_request(req, res, next);
           } else {
-            trim_prefix(layer, layerError, layerPath, path18);
+            trim_prefix(layer, layerError, layerPath, path21);
           }
           sync = 0;
         });
       }
-      function trim_prefix(layer, layerError, layerPath, path18) {
+      function trim_prefix(layer, layerError, layerPath, path21) {
         if (layerPath.length !== 0) {
-          if (layerPath !== path18.slice(0, layerPath.length)) {
+          if (layerPath !== path21.slice(0, layerPath.length)) {
             next(layerError);
             return;
           }
-          var c3 = path18[layerPath.length];
+          var c3 = path21[layerPath.length];
           if (c3 && c3 !== "/" && c3 !== ".") return next(layerError);
           debug("trim prefix (%s) from url %s", layerPath, req.url);
           removed = layerPath;
@@ -26463,7 +26463,7 @@ var require_router = __commonJS({
     };
     proto.use = function use(fn) {
       var offset = 0;
-      var path18 = "/";
+      var path21 = "/";
       if (typeof fn !== "function") {
         var arg = fn;
         while (Array.isArray(arg) && arg.length !== 0) {
@@ -26471,7 +26471,7 @@ var require_router = __commonJS({
         }
         if (typeof arg !== "function") {
           offset = 1;
-          path18 = fn;
+          path21 = fn;
         }
       }
       var callbacks = flatten(slice.call(arguments, offset));
@@ -26483,8 +26483,8 @@ var require_router = __commonJS({
         if (typeof fn !== "function") {
           throw new TypeError("Router.use() requires a middleware function but got a " + gettype(fn));
         }
-        debug("use %o %s", path18, fn.name || "<anonymous>");
-        var layer = new Layer(path18, {
+        debug("use %o %s", path21, fn.name || "<anonymous>");
+        var layer = new Layer(path21, {
           sensitive: this.caseSensitive,
           strict: false,
           end: false
@@ -26494,9 +26494,9 @@ var require_router = __commonJS({
       }
       return this;
     };
-    proto.route = function route(path18) {
-      var route2 = new Route(path18);
-      var layer = new Layer(path18, {
+    proto.route = function route(path21) {
+      var route2 = new Route(path21);
+      var layer = new Layer(path21, {
         sensitive: this.caseSensitive,
         strict: this.strict,
         end: true
@@ -26506,8 +26506,8 @@ var require_router = __commonJS({
       return route2;
     };
     methods.concat("all").forEach(function(method) {
-      proto[method] = function(path18) {
-        var route = this.route(path18);
+      proto[method] = function(path21) {
+        var route = this.route(path21);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
       };
@@ -26543,9 +26543,9 @@ var require_router = __commonJS({
       }
       return toString2.call(obj).replace(objectRegExp, "$1");
     }
-    function matchLayer(layer, path18) {
+    function matchLayer(layer, path21) {
       try {
-        return layer.match(path18);
+        return layer.match(path21);
       } catch (err) {
         return err;
       }
@@ -26663,13 +26663,13 @@ var require_view = __commonJS({
   "node_modules/express/lib/view.js"(exports, module) {
     "use strict";
     var debug = require_src3()("express:view");
-    var path18 = __require("path");
-    var fs13 = __require("fs");
-    var dirname = path18.dirname;
-    var basename = path18.basename;
-    var extname = path18.extname;
-    var join = path18.join;
-    var resolve = path18.resolve;
+    var path21 = __require("path");
+    var fs17 = __require("fs");
+    var dirname = path21.dirname;
+    var basename = path21.basename;
+    var extname = path21.extname;
+    var join = path21.join;
+    var resolve = path21.resolve;
     module.exports = View;
     function View(name, options) {
       var opts = options || {};
@@ -26698,17 +26698,17 @@ var require_view = __commonJS({
       this.path = this.lookup(fileName);
     }
     View.prototype.lookup = function lookup(name) {
-      var path19;
+      var path22;
       var roots = [].concat(this.root);
       debug('lookup "%s"', name);
-      for (var i2 = 0; i2 < roots.length && !path19; i2++) {
+      for (var i2 = 0; i2 < roots.length && !path22; i2++) {
         var root = roots[i2];
         var loc = resolve(root, name);
         var dir = dirname(loc);
         var file = basename(loc);
-        path19 = this.resolve(dir, file);
+        path22 = this.resolve(dir, file);
       }
-      return path19;
+      return path22;
     };
     View.prototype.render = function render(options, callback) {
       debug('render "%s"', this.path);
@@ -26716,21 +26716,21 @@ var require_view = __commonJS({
     };
     View.prototype.resolve = function resolve2(dir, file) {
       var ext = this.ext;
-      var path19 = join(dir, file);
-      var stat = tryStat(path19);
+      var path22 = join(dir, file);
+      var stat = tryStat(path22);
       if (stat && stat.isFile()) {
-        return path19;
+        return path22;
       }
-      path19 = join(dir, basename(file, ext), "index" + ext);
-      stat = tryStat(path19);
+      path22 = join(dir, basename(file, ext), "index" + ext);
+      stat = tryStat(path22);
       if (stat && stat.isFile()) {
-        return path19;
+        return path22;
       }
     };
-    function tryStat(path19) {
-      debug('stat "%s"', path19);
+    function tryStat(path22) {
+      debug('stat "%s"', path22);
       try {
-        return fs13.statSync(path19);
+        return fs17.statSync(path22);
       } catch (e) {
         return void 0;
       }
@@ -27335,8 +27335,8 @@ var require_node4 = __commonJS({
           }
           break;
         case "FILE":
-          var fs13 = __require("fs");
-          stream2 = new fs13.SyncWriteStream(fd2, { autoClose: false });
+          var fs17 = __require("fs");
+          stream2 = new fs17.SyncWriteStream(fd2, { autoClose: false });
           stream2._type = "fs";
           break;
         case "PIPE":
@@ -27508,8 +27508,8 @@ var require_types = __commonJS({
 // node_modules/mime/mime.js
 var require_mime = __commonJS({
   "node_modules/mime/mime.js"(exports, module) {
-    var path18 = __require("path");
-    var fs13 = __require("fs");
+    var path21 = __require("path");
+    var fs17 = __require("fs");
     function Mime() {
       this.types = /* @__PURE__ */ Object.create(null);
       this.extensions = /* @__PURE__ */ Object.create(null);
@@ -27530,16 +27530,16 @@ var require_mime = __commonJS({
     };
     Mime.prototype.load = function(file) {
       this._loading = file;
-      var map = {}, content = fs13.readFileSync(file, "ascii"), lines = content.split(/[\r\n]+/);
-      lines.forEach(function(line) {
+      var map = {}, content = fs17.readFileSync(file, "ascii"), lines2 = content.split(/[\r\n]+/);
+      lines2.forEach(function(line) {
         var fields = line.replace(/\s*#.*|^\s*|\s*$/g, "").split(/\s+/);
         map[fields.shift()] = fields;
       });
       this.define(map);
       this._loading = null;
     };
-    Mime.prototype.lookup = function(path19, fallback) {
-      var ext = path19.replace(/^.*[\.\/\\]/, "").toLowerCase();
+    Mime.prototype.lookup = function(path22, fallback) {
+      var ext = path22.replace(/^.*[\.\/\\]/, "").toLowerCase();
       return this.types[ext] || fallback || this.default_type;
     };
     Mime.prototype.extension = function(mimeType) {
@@ -27768,33 +27768,33 @@ var require_send = __commonJS({
     var escapeHtml = require_escape_html();
     var etag = require_etag();
     var fresh = require_fresh();
-    var fs13 = __require("fs");
+    var fs17 = __require("fs");
     var mime = require_mime();
     var ms = require_ms5();
     var onFinished = require_on_finished();
     var parseRange = require_range_parser();
-    var path18 = __require("path");
+    var path21 = __require("path");
     var statuses = require_statuses();
     var Stream = __require("stream");
     var util2 = __require("util");
-    var extname = path18.extname;
-    var join = path18.join;
-    var normalize = path18.normalize;
-    var resolve = path18.resolve;
-    var sep = path18.sep;
+    var extname = path21.extname;
+    var join = path21.join;
+    var normalize = path21.normalize;
+    var resolve = path21.resolve;
+    var sep = path21.sep;
     var BYTES_RANGE_REGEXP = /^ *bytes=/;
     var MAX_MAXAGE = 60 * 60 * 24 * 365 * 1e3;
     var UP_PATH_REGEXP = /(?:^|[\\/])\.\.(?:[\\/]|$)/;
     module.exports = send;
     module.exports.mime = mime;
-    function send(req, path19, options) {
-      return new SendStream(req, path19, options);
+    function send(req, path22, options) {
+      return new SendStream(req, path22, options);
     }
-    function SendStream(req, path19, options) {
+    function SendStream(req, path22, options) {
       Stream.call(this);
       var opts = options || {};
       this.options = opts;
-      this.path = path19;
+      this.path = path22;
       this.req = req;
       this._acceptRanges = opts.acceptRanges !== void 0 ? Boolean(opts.acceptRanges) : true;
       this._cacheControl = opts.cacheControl !== void 0 ? Boolean(opts.cacheControl) : true;
@@ -27840,8 +27840,8 @@ var require_send = __commonJS({
       this._index = index2;
       return this;
     }, "send.index: pass index as option");
-    SendStream.prototype.root = function root(path19) {
-      this._root = resolve(String(path19));
+    SendStream.prototype.root = function root(path22) {
+      this._root = resolve(String(path22));
       debug("root %s", this._root);
       return this;
     };
@@ -27954,10 +27954,10 @@ var require_send = __commonJS({
       var lastModified = this.res.getHeader("Last-Modified");
       return parseHttpDate(lastModified) <= parseHttpDate(ifRange);
     };
-    SendStream.prototype.redirect = function redirect(path19) {
+    SendStream.prototype.redirect = function redirect(path22) {
       var res = this.res;
       if (hasListeners(this, "directory")) {
-        this.emit("directory", res, path19);
+        this.emit("directory", res, path22);
         return;
       }
       if (this.hasTrailingSlash()) {
@@ -27977,42 +27977,42 @@ var require_send = __commonJS({
     SendStream.prototype.pipe = function pipe(res) {
       var root = this._root;
       this.res = res;
-      var path19 = decode(this.path);
-      if (path19 === -1) {
+      var path22 = decode(this.path);
+      if (path22 === -1) {
         this.error(400);
         return res;
       }
-      if (~path19.indexOf("\0")) {
+      if (~path22.indexOf("\0")) {
         this.error(400);
         return res;
       }
       var parts;
       if (root !== null) {
-        if (path19) {
-          path19 = normalize("." + sep + path19);
+        if (path22) {
+          path22 = normalize("." + sep + path22);
         }
-        if (UP_PATH_REGEXP.test(path19)) {
-          debug('malicious path "%s"', path19);
+        if (UP_PATH_REGEXP.test(path22)) {
+          debug('malicious path "%s"', path22);
           this.error(403);
           return res;
         }
-        parts = path19.split(sep);
-        path19 = normalize(join(root, path19));
+        parts = path22.split(sep);
+        path22 = normalize(join(root, path22));
       } else {
-        if (UP_PATH_REGEXP.test(path19)) {
-          debug('malicious path "%s"', path19);
+        if (UP_PATH_REGEXP.test(path22)) {
+          debug('malicious path "%s"', path22);
           this.error(403);
           return res;
         }
-        parts = normalize(path19).split(sep);
-        path19 = resolve(path19);
+        parts = normalize(path22).split(sep);
+        path22 = resolve(path22);
       }
       if (containsDotFile(parts)) {
         var access = this._dotfiles;
         if (access === void 0) {
           access = parts[parts.length - 1][0] === "." ? this._hidden ? "allow" : "ignore" : "allow";
         }
-        debug('%s dotfile "%s"', access, path19);
+        debug('%s dotfile "%s"', access, path22);
         switch (access) {
           case "allow":
             break;
@@ -28026,13 +28026,13 @@ var require_send = __commonJS({
         }
       }
       if (this._index.length && this.hasTrailingSlash()) {
-        this.sendIndex(path19);
+        this.sendIndex(path22);
         return res;
       }
-      this.sendFile(path19);
+      this.sendFile(path22);
       return res;
     };
-    SendStream.prototype.send = function send2(path19, stat) {
+    SendStream.prototype.send = function send2(path22, stat) {
       var len = stat.size;
       var options = this.options;
       var opts = {};
@@ -28044,9 +28044,9 @@ var require_send = __commonJS({
         this.headersAlreadySent();
         return;
       }
-      debug('pipe "%s"', path19);
-      this.setHeader(path19, stat);
-      this.type(path19);
+      debug('pipe "%s"', path22);
+      this.setHeader(path22, stat);
+      this.type(path22);
       if (this.isConditionalGET()) {
         if (this.isPreconditionFailure()) {
           this.error(412);
@@ -28095,28 +28095,28 @@ var require_send = __commonJS({
         res.end();
         return;
       }
-      this.stream(path19, opts);
+      this.stream(path22, opts);
     };
-    SendStream.prototype.sendFile = function sendFile(path19) {
+    SendStream.prototype.sendFile = function sendFile(path22) {
       var i2 = 0;
       var self = this;
-      debug('stat "%s"', path19);
-      fs13.stat(path19, function onstat(err, stat) {
-        if (err && err.code === "ENOENT" && !extname(path19) && path19[path19.length - 1] !== sep) {
+      debug('stat "%s"', path22);
+      fs17.stat(path22, function onstat(err, stat) {
+        if (err && err.code === "ENOENT" && !extname(path22) && path22[path22.length - 1] !== sep) {
           return next(err);
         }
         if (err) return self.onStatError(err);
-        if (stat.isDirectory()) return self.redirect(path19);
-        self.emit("file", path19, stat);
-        self.send(path19, stat);
+        if (stat.isDirectory()) return self.redirect(path22);
+        self.emit("file", path22, stat);
+        self.send(path22, stat);
       });
       function next(err) {
         if (self._extensions.length <= i2) {
           return err ? self.onStatError(err) : self.error(404);
         }
-        var p = path19 + "." + self._extensions[i2++];
+        var p = path22 + "." + self._extensions[i2++];
         debug('stat "%s"', p);
-        fs13.stat(p, function(err2, stat) {
+        fs17.stat(p, function(err2, stat) {
           if (err2) return next(err2);
           if (stat.isDirectory()) return next();
           self.emit("file", p, stat);
@@ -28124,7 +28124,7 @@ var require_send = __commonJS({
         });
       }
     };
-    SendStream.prototype.sendIndex = function sendIndex(path19) {
+    SendStream.prototype.sendIndex = function sendIndex(path22) {
       var i2 = -1;
       var self = this;
       function next(err) {
@@ -28132,9 +28132,9 @@ var require_send = __commonJS({
           if (err) return self.onStatError(err);
           return self.error(404);
         }
-        var p = join(path19, self._index[i2]);
+        var p = join(path22, self._index[i2]);
         debug('stat "%s"', p);
-        fs13.stat(p, function(err2, stat) {
+        fs17.stat(p, function(err2, stat) {
           if (err2) return next(err2);
           if (stat.isDirectory()) return next();
           self.emit("file", p, stat);
@@ -28143,10 +28143,10 @@ var require_send = __commonJS({
       }
       next();
     };
-    SendStream.prototype.stream = function stream(path19, options) {
+    SendStream.prototype.stream = function stream(path22, options) {
       var self = this;
       var res = this.res;
-      var stream2 = fs13.createReadStream(path19, options);
+      var stream2 = fs17.createReadStream(path22, options);
       this.emit("stream", stream2);
       stream2.pipe(res);
       function cleanup() {
@@ -28161,10 +28161,10 @@ var require_send = __commonJS({
         self.emit("end");
       });
     };
-    SendStream.prototype.type = function type(path19) {
+    SendStream.prototype.type = function type(path22) {
       var res = this.res;
       if (res.getHeader("Content-Type")) return;
-      var type2 = mime.lookup(path19);
+      var type2 = mime.lookup(path22);
       if (!type2) {
         debug("no content-type");
         return;
@@ -28173,9 +28173,9 @@ var require_send = __commonJS({
       debug("content-type %s", type2);
       res.setHeader("Content-Type", type2 + (charset ? "; charset=" + charset : ""));
     };
-    SendStream.prototype.setHeader = function setHeader(path19, stat) {
+    SendStream.prototype.setHeader = function setHeader(path22, stat) {
       var res = this.res;
-      this.emit("headers", res, path19, stat);
+      this.emit("headers", res, path22, stat);
       if (this._acceptRanges && !res.getHeader("Accept-Ranges")) {
         debug("accept ranges");
         res.setHeader("Accept-Ranges", "bytes");
@@ -28234,9 +28234,9 @@ var require_send = __commonJS({
       }
       return err instanceof Error ? createError(status, err, { expose: false }) : createError(status, err);
     }
-    function decode(path19) {
+    function decode(path22) {
       try {
-        return decodeURIComponent(path19);
+        return decodeURIComponent(path22);
       } catch (err) {
         return -1;
       }
@@ -29161,10 +29161,10 @@ var require_utils2 = __commonJS({
     var querystring = __require("querystring");
     exports.etag = createETagGenerator({ weak: false });
     exports.wetag = createETagGenerator({ weak: true });
-    exports.isAbsolute = function(path18) {
-      if ("/" === path18[0]) return true;
-      if (":" === path18[1] && ("\\" === path18[2] || "/" === path18[2])) return true;
-      if ("\\\\" === path18.substring(0, 2)) return true;
+    exports.isAbsolute = function(path21) {
+      if ("/" === path21[0]) return true;
+      if (":" === path21[1] && ("\\" === path21[2] || "/" === path21[2])) return true;
+      if ("\\\\" === path21.substring(0, 2)) return true;
     };
     exports.flatten = deprecate.function(
       flatten,
@@ -29376,7 +29376,7 @@ var require_application = __commonJS({
     };
     app2.use = function use(fn) {
       var offset = 0;
-      var path18 = "/";
+      var path21 = "/";
       if (typeof fn !== "function") {
         var arg = fn;
         while (Array.isArray(arg) && arg.length !== 0) {
@@ -29384,7 +29384,7 @@ var require_application = __commonJS({
         }
         if (typeof arg !== "function") {
           offset = 1;
-          path18 = fn;
+          path21 = fn;
         }
       }
       var fns = flatten(slice.call(arguments, offset));
@@ -29395,12 +29395,12 @@ var require_application = __commonJS({
       var router = this._router;
       fns.forEach(function(fn2) {
         if (!fn2 || !fn2.handle || !fn2.set) {
-          return router.use(path18, fn2);
+          return router.use(path21, fn2);
         }
-        debug(".use app under %s", path18);
-        fn2.mountpath = path18;
+        debug(".use app under %s", path21);
+        fn2.mountpath = path21;
         fn2.parent = this;
-        router.use(path18, function mounted_app(req, res, next) {
+        router.use(path21, function mounted_app(req, res, next) {
           var orig = req.app;
           fn2.handle(req, res, function(err) {
             setPrototypeOf(req, orig.request);
@@ -29412,9 +29412,9 @@ var require_application = __commonJS({
       }, this);
       return this;
     };
-    app2.route = function route(path18) {
+    app2.route = function route(path21) {
       this.lazyrouter();
-      return this._router.route(path18);
+      return this._router.route(path21);
     };
     app2.engine = function engine(ext, fn) {
       if (typeof fn !== "function") {
@@ -29465,7 +29465,7 @@ var require_application = __commonJS({
       }
       return this;
     };
-    app2.path = function path18() {
+    app2.path = function path21() {
       return this.parent ? this.parent.path() + this.mountpath : "";
     };
     app2.enabled = function enabled(setting) {
@@ -29481,19 +29481,19 @@ var require_application = __commonJS({
       return this.set(setting, false);
     };
     methods.forEach(function(method) {
-      app2[method] = function(path18) {
+      app2[method] = function(path21) {
         if (method === "get" && arguments.length === 1) {
-          return this.set(path18);
+          return this.set(path21);
         }
         this.lazyrouter();
-        var route = this._router.route(path18);
+        var route = this._router.route(path21);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
       };
     });
-    app2.all = function all(path18) {
+    app2.all = function all(path21) {
       this.lazyrouter();
-      var route = this._router.route(path18);
+      var route = this._router.route(path21);
       var args = slice.call(arguments, 1);
       for (var i2 = 0; i2 < methods.length; i2++) {
         route[methods[i2]].apply(route, args);
@@ -30252,7 +30252,7 @@ var require_request = __commonJS({
       var subdomains2 = !isIP(hostname2) ? hostname2.split(".").reverse() : [hostname2];
       return subdomains2.slice(offset);
     });
-    defineGetter(req, "path", function path18() {
+    defineGetter(req, "path", function path21() {
       return parse(this).pathname;
     });
     defineGetter(req, "hostname", function hostname2() {
@@ -30574,7 +30574,7 @@ var require_response = __commonJS({
     var http2 = __require("http");
     var isAbsolute = require_utils2().isAbsolute;
     var onFinished = require_on_finished();
-    var path18 = __require("path");
+    var path21 = __require("path");
     var statuses = require_statuses();
     var merge = require_utils_merge();
     var sign = require_cookie_signature().sign;
@@ -30583,9 +30583,9 @@ var require_response = __commonJS({
     var setCharset = require_utils2().setCharset;
     var cookie = require_cookie();
     var send = require_send();
-    var extname = path18.extname;
+    var extname = path21.extname;
     var mime = send.mime;
-    var resolve = path18.resolve;
+    var resolve = path21.resolve;
     var vary = require_vary();
     var res = Object.create(http2.ServerResponse.prototype);
     module.exports = res;
@@ -30761,26 +30761,26 @@ var require_response = __commonJS({
       this.type("txt");
       return this.send(body);
     };
-    res.sendFile = function sendFile(path19, options, callback) {
+    res.sendFile = function sendFile(path22, options, callback) {
       var done = callback;
       var req = this.req;
       var res2 = this;
       var next = req.next;
       var opts = options || {};
-      if (!path19) {
+      if (!path22) {
         throw new TypeError("path argument is required to res.sendFile");
       }
-      if (typeof path19 !== "string") {
+      if (typeof path22 !== "string") {
         throw new TypeError("path must be a string to res.sendFile");
       }
       if (typeof options === "function") {
         done = options;
         opts = {};
       }
-      if (!opts.root && !isAbsolute(path19)) {
+      if (!opts.root && !isAbsolute(path22)) {
         throw new TypeError("path must be absolute or specify root to res.sendFile");
       }
-      var pathname = encodeURI(path19);
+      var pathname = encodeURI(path22);
       var file = send(req, pathname, opts);
       sendfile(res2, file, opts, function(err) {
         if (done) return done(err);
@@ -30790,7 +30790,7 @@ var require_response = __commonJS({
         }
       });
     };
-    res.sendfile = function(path19, options, callback) {
+    res.sendfile = function(path22, options, callback) {
       var done = callback;
       var req = this.req;
       var res2 = this;
@@ -30800,7 +30800,7 @@ var require_response = __commonJS({
         done = options;
         opts = {};
       }
-      var file = send(req, path19, opts);
+      var file = send(req, path22, opts);
       sendfile(res2, file, opts, function(err) {
         if (done) return done(err);
         if (err && err.code === "EISDIR") return next();
@@ -30813,7 +30813,7 @@ var require_response = __commonJS({
       res.sendfile,
       "res.sendfile: Use res.sendFile instead"
     );
-    res.download = function download(path19, filename, options, callback) {
+    res.download = function download(path22, filename, options, callback) {
       var done = callback;
       var name = filename;
       var opts = options || null;
@@ -30830,7 +30830,7 @@ var require_response = __commonJS({
         opts = filename;
       }
       var headers = {
-        "Content-Disposition": contentDisposition(name || path19)
+        "Content-Disposition": contentDisposition(name || path22)
       };
       if (opts && opts.headers) {
         var keys = Object.keys(opts.headers);
@@ -30843,7 +30843,7 @@ var require_response = __commonJS({
       }
       opts = Object.create(opts);
       opts.headers = headers;
-      var fullPath = !opts.root ? resolve(path19) : path19;
+      var fullPath = !opts.root ? resolve(path22) : path22;
       return this.sendFile(fullPath, opts, done);
     };
     res.contentType = res.type = function contentType(type) {
@@ -31143,11 +31143,11 @@ var require_serve_static = __commonJS({
         }
         var forwardError = !fallthrough;
         var originalUrl = parseUrl.original(req);
-        var path18 = parseUrl(req).pathname;
-        if (path18 === "/" && originalUrl.pathname.substr(-1) !== "/") {
-          path18 = "";
+        var path21 = parseUrl(req).pathname;
+        if (path21 === "/" && originalUrl.pathname.substr(-1) !== "/") {
+          path21 = "";
         }
-        var stream = send(req, path18, opts);
+        var stream = send(req, path21, opts);
         stream.on("directory", onDirectory);
         if (setHeaders) {
           stream.on("headers", setHeaders);
@@ -31658,8 +31658,8 @@ var require_windows = __commonJS({
   "node_modules/isexe/windows.js"(exports, module) {
     module.exports = isexe;
     isexe.sync = sync;
-    var fs13 = __require("fs");
-    function checkPathExt(path18, options) {
+    var fs17 = __require("fs");
+    function checkPathExt(path21, options) {
       var pathext = options.pathExt !== void 0 ? options.pathExt : process.env.PATHEXT;
       if (!pathext) {
         return true;
@@ -31670,25 +31670,25 @@ var require_windows = __commonJS({
       }
       for (var i2 = 0; i2 < pathext.length; i2++) {
         var p = pathext[i2].toLowerCase();
-        if (p && path18.substr(-p.length).toLowerCase() === p) {
+        if (p && path21.substr(-p.length).toLowerCase() === p) {
           return true;
         }
       }
       return false;
     }
-    function checkStat(stat, path18, options) {
+    function checkStat(stat, path21, options) {
       if (!stat.isSymbolicLink() && !stat.isFile()) {
         return false;
       }
-      return checkPathExt(path18, options);
+      return checkPathExt(path21, options);
     }
-    function isexe(path18, options, cb) {
-      fs13.stat(path18, function(er, stat) {
-        cb(er, er ? false : checkStat(stat, path18, options));
+    function isexe(path21, options, cb) {
+      fs17.stat(path21, function(er, stat) {
+        cb(er, er ? false : checkStat(stat, path21, options));
       });
     }
-    function sync(path18, options) {
-      return checkStat(fs13.statSync(path18), path18, options);
+    function sync(path21, options) {
+      return checkStat(fs17.statSync(path21), path21, options);
     }
   }
 });
@@ -31698,14 +31698,14 @@ var require_mode = __commonJS({
   "node_modules/isexe/mode.js"(exports, module) {
     module.exports = isexe;
     isexe.sync = sync;
-    var fs13 = __require("fs");
-    function isexe(path18, options, cb) {
-      fs13.stat(path18, function(er, stat) {
+    var fs17 = __require("fs");
+    function isexe(path21, options, cb) {
+      fs17.stat(path21, function(er, stat) {
         cb(er, er ? false : checkStat(stat, options));
       });
     }
-    function sync(path18, options) {
-      return checkStat(fs13.statSync(path18), options);
+    function sync(path21, options) {
+      return checkStat(fs17.statSync(path21), options);
     }
     function checkStat(stat, options) {
       return stat.isFile() && checkMode(stat, options);
@@ -31729,7 +31729,7 @@ var require_mode = __commonJS({
 // node_modules/isexe/index.js
 var require_isexe = __commonJS({
   "node_modules/isexe/index.js"(exports, module) {
-    var fs13 = __require("fs");
+    var fs17 = __require("fs");
     var core;
     if (process.platform === "win32" || global.TESTING_WINDOWS) {
       core = require_windows();
@@ -31738,7 +31738,7 @@ var require_isexe = __commonJS({
     }
     module.exports = isexe;
     isexe.sync = sync;
-    function isexe(path18, options, cb) {
+    function isexe(path21, options, cb) {
       if (typeof options === "function") {
         cb = options;
         options = {};
@@ -31748,7 +31748,7 @@ var require_isexe = __commonJS({
           throw new TypeError("callback not provided");
         }
         return new Promise(function(resolve, reject) {
-          isexe(path18, options || {}, function(er, is) {
+          isexe(path21, options || {}, function(er, is) {
             if (er) {
               reject(er);
             } else {
@@ -31757,7 +31757,7 @@ var require_isexe = __commonJS({
           });
         });
       }
-      core(path18, options || {}, function(er, is) {
+      core(path21, options || {}, function(er, is) {
         if (er) {
           if (er.code === "EACCES" || options && options.ignoreErrors) {
             er = null;
@@ -31767,9 +31767,9 @@ var require_isexe = __commonJS({
         cb(er, is);
       });
     }
-    function sync(path18, options) {
+    function sync(path21, options) {
       try {
-        return core.sync(path18, options || {});
+        return core.sync(path21, options || {});
       } catch (er) {
         if (options && options.ignoreErrors || er.code === "EACCES") {
           return false;
@@ -31785,7 +31785,7 @@ var require_isexe = __commonJS({
 var require_which = __commonJS({
   "node_modules/which/which.js"(exports, module) {
     var isWindows = process.platform === "win32" || process.env.OSTYPE === "cygwin" || process.env.OSTYPE === "msys";
-    var path18 = __require("path");
+    var path21 = __require("path");
     var COLON = isWindows ? ";" : ":";
     var isexe = require_isexe();
     var getNotFoundError = (cmd) => Object.assign(new Error(`not found: ${cmd}`), { code: "ENOENT" });
@@ -31823,7 +31823,7 @@ var require_which = __commonJS({
           return opt.all && found.length ? resolve(found) : reject(getNotFoundError(cmd));
         const ppRaw = pathEnv[i2];
         const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-        const pCmd = path18.join(pathPart, cmd);
+        const pCmd = path21.join(pathPart, cmd);
         const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
         resolve(subStep(p, i2, 0));
       });
@@ -31850,7 +31850,7 @@ var require_which = __commonJS({
       for (let i2 = 0; i2 < pathEnv.length; i2++) {
         const ppRaw = pathEnv[i2];
         const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-        const pCmd = path18.join(pathPart, cmd);
+        const pCmd = path21.join(pathPart, cmd);
         const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
         for (let j = 0; j < pathExt.length; j++) {
           const cur = p + pathExt[j];
@@ -31898,7 +31898,7 @@ var require_path_key = __commonJS({
 var require_resolveCommand = __commonJS({
   "node_modules/cross-spawn/lib/util/resolveCommand.js"(exports, module) {
     "use strict";
-    var path18 = __require("path");
+    var path21 = __require("path");
     var which = require_which();
     var getPathKey = require_path_key();
     function resolveCommandAttempt(parsed, withoutPathExt) {
@@ -31916,7 +31916,7 @@ var require_resolveCommand = __commonJS({
       try {
         resolved = which.sync(parsed.command, {
           path: env[getPathKey({ env })],
-          pathExt: withoutPathExt ? path18.delimiter : void 0
+          pathExt: withoutPathExt ? path21.delimiter : void 0
         });
       } catch (e) {
       } finally {
@@ -31925,7 +31925,7 @@ var require_resolveCommand = __commonJS({
         }
       }
       if (resolved) {
-        resolved = path18.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
+        resolved = path21.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
       }
       return resolved;
     }
@@ -31979,8 +31979,8 @@ var require_shebang_command = __commonJS({
       if (!match) {
         return null;
       }
-      const [path18, argument] = match[0].replace(/#! ?/, "").split(" ");
-      const binary = path18.split("/").pop();
+      const [path21, argument] = match[0].replace(/#! ?/, "").split(" ");
+      const binary = path21.split("/").pop();
       if (binary === "env") {
         return argument;
       }
@@ -31993,16 +31993,16 @@ var require_shebang_command = __commonJS({
 var require_readShebang = __commonJS({
   "node_modules/cross-spawn/lib/util/readShebang.js"(exports, module) {
     "use strict";
-    var fs13 = __require("fs");
+    var fs17 = __require("fs");
     var shebangCommand = require_shebang_command();
     function readShebang(command) {
       const size = 150;
       const buffer = Buffer.alloc(size);
       let fd;
       try {
-        fd = fs13.openSync(command, "r");
-        fs13.readSync(fd, buffer, 0, size, 0);
-        fs13.closeSync(fd);
+        fd = fs17.openSync(command, "r");
+        fs17.readSync(fd, buffer, 0, size, 0);
+        fs17.closeSync(fd);
       } catch (e) {
       }
       return shebangCommand(buffer.toString());
@@ -32015,7 +32015,7 @@ var require_readShebang = __commonJS({
 var require_parse2 = __commonJS({
   "node_modules/cross-spawn/lib/parse.js"(exports, module) {
     "use strict";
-    var path18 = __require("path");
+    var path21 = __require("path");
     var resolveCommand = require_resolveCommand();
     var escape2 = require_escape();
     var readShebang = require_readShebang();
@@ -32040,7 +32040,7 @@ var require_parse2 = __commonJS({
       const needsShell = !isExecutableRegExp.test(commandFile);
       if (parsed.options.forceShell || needsShell) {
         const needsDoubleEscapeMetaChars = isCmdShimRegExp.test(commandFile);
-        parsed.command = path18.normalize(parsed.command);
+        parsed.command = path21.normalize(parsed.command);
         parsed.command = escape2.command(parsed.command);
         parsed.args = parsed.args.map((arg) => escape2.argument(arg, needsDoubleEscapeMetaChars));
         const shellCommand = [parsed.command].concat(parsed.args).join(" ");
@@ -32130,7 +32130,7 @@ var require_cross_spawn = __commonJS({
     var cp = __require("child_process");
     var parse = require_parse2();
     var enoent = require_enoent();
-    function spawn5(command, args, options) {
+    function spawn6(command, args, options) {
       const parsed = parse(command, args, options);
       const spawned = cp.spawn(parsed.command, parsed.args, parsed.options);
       enoent.hookChildProcess(spawned, parsed);
@@ -32142,8 +32142,8 @@ var require_cross_spawn = __commonJS({
       result.error = result.error || enoent.verifyENOENTSync(result.status, parsed);
       return result;
     }
-    module.exports = spawn5;
-    module.exports.spawn = spawn5;
+    module.exports = spawn6;
+    module.exports.spawn = spawn6;
     module.exports.sync = spawnSync2;
     module.exports._parse = parse;
     module.exports._enoent = enoent;
@@ -32151,8 +32151,8 @@ var require_cross_spawn = __commonJS({
 });
 
 // packages/server/src/index.ts
-import path17 from "node:path";
-import fs12 from "node:fs";
+import path20 from "node:path";
+import fs16 from "node:fs";
 
 // packages/server/src/db/index.ts
 import Database from "better-sqlite3";
@@ -32484,6 +32484,44 @@ var MIGRATIONS = [
       for (const column of ["model", "effort", "model_override", "effort_override"]) {
         addColumn(db2, "bridge_tasks", column, "TEXT");
       }
+    }
+  },
+  {
+    version: 8,
+    name: "Local AI CLI engine runs",
+    up: (db2) => {
+      db2.exec(`
+        CREATE TABLE IF NOT EXISTS local_runs (
+          id                  TEXT PRIMARY KEY,
+          bridge_task_id      INTEGER NOT NULL,
+          project             TEXT NOT NULL,
+          title               TEXT NOT NULL,
+          body_md             TEXT NOT NULL,
+          model               TEXT,
+          effort              TEXT,
+          cli                 TEXT,
+          status              TEXT NOT NULL DEFAULT 'queued',
+          notes_md            TEXT NOT NULL DEFAULT '',
+          continuation        INTEGER NOT NULL DEFAULT 0,
+          worktree            TEXT,
+          start_sha           TEXT,
+          end_sha             TEXT,
+          pid                 INTEGER,
+          pid_started_at      TEXT,
+          exit_code           INTEGER,
+          error               TEXT,
+          resume_at           TEXT,
+          interruptions       INTEGER NOT NULL DEFAULT 0,
+          hold_requested_at   TEXT,
+          cancel_requested_at TEXT,
+          created_at          TEXT NOT NULL,
+          started_at          TEXT,
+          finished_at         TEXT,
+          updated_at          TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_local_runs_status ON local_runs(status);
+        CREATE INDEX IF NOT EXISTS idx_local_runs_task ON local_runs(bridge_task_id);
+      `);
     }
   }
 ];
@@ -33015,8 +33053,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path18, errorMaps, issueData } = params;
-  const fullPath = [...path18, ...issueData.path || []];
+  const { data, path: path21, errorMaps, issueData } = params;
+  const fullPath = [...path21, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -33132,11 +33170,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path18, key) {
+  constructor(parent, value, path21, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path18;
+    this._path = path21;
     this._key = key;
   }
   get path() {
@@ -36602,7 +36640,7 @@ var RequirementStatusSchema = external_exports.enum([
   "cancelled"
 ]);
 var PrioritySchema = external_exports.enum(["low", "normal", "high", "urgent"]);
-var EngineTypeSchema = external_exports.enum(["stoneforge", "clinekanban", "manual"]);
+var EngineTypeSchema = external_exports.enum(["stoneforge", "clinekanban", "manual", "local"]);
 var DoneMeansSchema = external_exports.enum(["merged", "pr_opened"]);
 var TaskRoleSchema = external_exports.enum(["goal", "ticket", "waiting", "question"]);
 var LinkStateSchema = external_exports.enum([
@@ -36854,6 +36892,16 @@ var AiCliSettingsSchema = external_exports.object({
     enabled: external_exports.boolean().default(true)
   }).default({ enabled: true })
 });
+var AGENT_CLI_IDS = ["claude-cli", "agy-cli", "codex-cli"];
+var isAbsolutePath = (value) => value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value);
+var LocalEngineSettingsSchema = external_exports.object({
+  enabled: external_exports.boolean().default(true),
+  agentCli: external_exports.enum(["default", "claude-cli", "agy-cli", "codex-cli"]).default("default"),
+  maxParallel: external_exports.number().int().min(1).max(8).default(2),
+  runTimeoutMinutes: external_exports.number().int().min(5).max(480).default(60),
+  worktreeRoot: external_exports.string().trim().max(1e3).refine((v) => v === "" || isAbsolutePath(v), "must be an absolute path, or empty for the default").default("")
+});
+var UpdateLocalEngineSettingsInputSchema = LocalEngineSettingsSchema.partial().strict();
 var DraftRequirementResultSchema = external_exports.object({
   title: external_exports.string(),
   goal: external_exports.string(),
@@ -37880,6 +37928,26 @@ var SettingsService = class {
     `).run(JSON.stringify(updated));
     return updated;
   }
+  getLocalEngineSettings() {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'local_engine_settings'").get();
+    if (row) {
+      try {
+        return LocalEngineSettingsSchema.parse(JSON.parse(row.value));
+      } catch {
+      }
+    }
+    return LocalEngineSettingsSchema.parse({});
+  }
+  /** Partial update; unknown fields and out-of-range values are refused (400 through the API). */
+  updateLocalEngineSettings(updates) {
+    const patch = UpdateLocalEngineSettingsInputSchema.parse(updates ?? {});
+    const updated = LocalEngineSettingsSchema.parse({ ...this.getLocalEngineSettings(), ...patch });
+    this.db.prepare(`
+        INSERT INTO settings (key, value) VALUES ('local_engine_settings', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run(JSON.stringify(updated));
+    return updated;
+  }
   getNotificationSettings() {
     const row = this.db.prepare("SELECT value FROM settings WHERE key = 'notification_settings'").get();
     let stored = {};
@@ -38479,7 +38547,7 @@ ${wrapUntrusted("requirement", requirementMd)}
         const adapter = this.getAdapter(task.project);
         const profile = resolveAgentProfile(this.db, taskId);
         const recorded = recordedProfile(profile, this.projectService.getProject(task.project)?.engine_type);
-        const engineTask = await adapter.createGoal({ title: task.title, bodyMd: task.body_md || "", ...engineProfile(profile) });
+        const engineTask = await adapter.createGoal({ title: task.title, bodyMd: task.body_md || "", ...engineProfile(profile), bridgeTaskId: taskId });
         const stored = this.db.prepare(`
             UPDATE bridge_tasks
             SET engine_task_id = ?, status = 'queued', engine_status_raw = ?, engine_url = ?, last_error = NULL,
@@ -38898,7 +38966,8 @@ ${input.body}`)}
       const engineTask = await adapter.createTask({
         title: ticket.title,
         bodyMd: ticket.body_md || "",
-        ...engineProfile(profile)
+        ...engineProfile(profile),
+        bridgeTaskId: ticketId
       });
       const stored = this.db.prepare(`
           UPDATE bridge_tasks
@@ -39154,15 +39223,17 @@ var EngineWatcher = class {
     const pauseChanged = pausedUntil !== (task.paused_until ?? null);
     if (!statusChanged && !rawChanged && !prChanged && !pauseChanged) return false;
     const oldStatus = task.status;
+    const problem = (engineTask.status === "failed" || engineTask.status === "needs_human") && engineTask.summary ? oneLine(engineTask.summary, 500) : null;
     const updated = this.db.prepare(`
         UPDATE bridge_tasks
-        SET status = ?, engine_status_raw = ?, pr_url = COALESCE(?, pr_url), paused_until = ?, updated_at = ?
+        SET status = ?, engine_status_raw = ?, pr_url = COALESCE(?, pr_url), paused_until = ?, last_error = COALESCE(?, last_error), updated_at = ?
         WHERE id = ? AND status = ?
       `).run(
       engineTask.status,
       engineTask.rawStatus,
       engineTask.prUrl || null,
       pausedUntil,
+      problem,
       (/* @__PURE__ */ new Date()).toISOString(),
       task.id,
       oldStatus
@@ -39363,6 +39434,10 @@ function resumeAtOf(data) {
   return typeof value === "string" && value ? value : void 0;
 }
 var RATE_LIMIT_STATUSES = /* @__PURE__ */ new Set(["rate_limited", "rate-limited", "ratelimited", "quota_exceeded", "usage_limited", "throttled"]);
+function engineBody(input) {
+  const { title, bodyMd, priority, labels, model, effort } = input;
+  return { title, bodyMd, priority, labels, model, effort };
+}
 var StoneforgeAdapter = class {
   constructor(baseUrl, repoPath, token, customFetch = globalThis.fetch, timeoutMs = Number(process.env.ENGINE_TIMEOUT_MS) || 1e4) {
     this.baseUrl = baseUrl;
@@ -39372,8 +39447,8 @@ var StoneforgeAdapter = class {
     this.timeoutMs = timeoutMs;
   }
   type = "stoneforge";
-  async fetchJson(path18, options = {}) {
-    const url = `${this.baseUrl}${path18}`;
+  async fetchJson(path21, options = {}) {
+    const url = `${this.baseUrl}${path21}`;
     const headers = {
       "Content-Type": "application/json",
       ...this.token ? { Authorization: `Bearer ${this.token}` } : {},
@@ -39420,7 +39495,7 @@ var StoneforgeAdapter = class {
   async createGoal(input) {
     const data = await this.fetchJson("/api/goals", {
       method: "POST",
-      body: JSON.stringify(input)
+      body: JSON.stringify(engineBody(input))
     });
     return {
       id: String(data.id),
@@ -39436,7 +39511,7 @@ var StoneforgeAdapter = class {
   async createTask(input) {
     const data = await this.fetchJson("/api/tasks", {
       method: "POST",
-      body: JSON.stringify(input)
+      body: JSON.stringify(engineBody(input))
     });
     return {
       id: String(data.id),
@@ -39567,8 +39642,79 @@ var ManualAdapter = class {
   }
 };
 
+// packages/server/src/adapters/localCliAdapter.ts
+var STATUS = {
+  queued: "queued",
+  running: "running",
+  held: "held",
+  rate_limited: "rate_limited",
+  review: "in_review",
+  no_changes: "needs_human",
+  failed: "failed",
+  timed_out: "failed",
+  cancelled: "cancelled"
+};
+function toEngineTask(run) {
+  return {
+    id: run.id,
+    title: run.title,
+    status: STATUS[run.status],
+    rawStatus: run.status,
+    ...run.status === "rate_limited" && run.resume_at ? { resumeAt: run.resume_at } : {},
+    ...run.error ? { summary: run.error } : {}
+  };
+}
+var LocalCliAdapter = class {
+  constructor(project, engine) {
+    this.project = project;
+    this.engine = engine;
+  }
+  type = "local";
+  async health() {
+    return this.engine.health();
+  }
+  async createGoal(input) {
+    return this.create(input);
+  }
+  async createTask(input) {
+    return this.create(input);
+  }
+  async getTask(id) {
+    const run = this.engine.runs.get(id);
+    return run ? toEngineTask(run) : null;
+  }
+  async listTasks(ids) {
+    return ids.map((id) => this.engine.runs.get(id)).filter((r) => Boolean(r)).map(toEngineTask);
+  }
+  async holdTask(id, reason) {
+    this.engine.hold(id, reason);
+  }
+  async releaseTask(id, context) {
+    this.engine.release(id, context);
+  }
+  async appendNote(id, bodyMd) {
+    this.engine.note(id, bodyMd);
+  }
+  async cancelTask(id) {
+    await this.engine.cancel(id);
+  }
+  create(input) {
+    if (!input.bridgeTaskId) throw new Error("The Local AI CLI engine needs the bridge task id");
+    const run = this.engine.runs.create({
+      bridgeTaskId: input.bridgeTaskId,
+      project: this.project.name,
+      title: input.title,
+      bodyMd: input.bodyMd,
+      model: input.model ?? null,
+      effort: input.effort ?? null
+    });
+    this.engine.nudge();
+    return toEngineTask(run);
+  }
+};
+
 // packages/server/src/adapters/index.ts
-function createAdapter(project) {
+function createAdapter(project, deps = {}) {
   switch (project.engine_type) {
     case "stoneforge":
       if (!project.engine_url) {
@@ -39577,6 +39723,9 @@ function createAdapter(project) {
       return new StoneforgeAdapter(project.engine_url, project.repo_path);
     case "manual":
       return new ManualAdapter();
+    case "local":
+      if (!deps.local) throw new Error("The Local AI CLI engine runs only inside the bridge server");
+      return new LocalCliAdapter(project, deps.local);
     case "clinekanban":
       throw new Error(`clinekanban adapter is not yet implemented`);
     default:
@@ -40725,7 +40874,7 @@ var joinCommand = (filePath, rawArguments) => {
   const escapedCommand = fileAndArguments.map((fileAndArgument) => quoteString(escapeControlCharacters(fileAndArgument))).join(" ");
   return { command, escapedCommand };
 };
-var escapeLines = (lines) => stripVTControlCharacters(lines).split("\n").map((line) => escapeControlCharacters(line)).join("\n");
+var escapeLines = (lines2) => stripVTControlCharacters(lines2).split("\n").map((line) => escapeControlCharacters(line)).join("\n");
 var escapeControlCharacters = (line) => line.replaceAll(SPECIAL_CHAR_REGEXP, (character) => escapeControlCharacter(character));
 var escapeControlCharacter = (character) => {
   const commonEscape = COMMON_ESCAPES[character];
@@ -42685,7 +42834,7 @@ var normalizeOptions = (filePath, rawArguments, rawOptions) => {
   options.env = getEnv(options);
   options.killSignal = normalizeKillSignal(options.killSignal);
   options.forceKillAfterDelay = normalizeForceKillAfterDelay(options.forceKillAfterDelay);
-  options.lines = options.lines.map((lines, fdNumber) => lines && !BINARY_ENCODINGS.has(options.encoding) && options.buffer[fdNumber]);
+  options.lines = options.lines.map((lines2, fdNumber) => lines2 && !BINARY_ENCODINGS.has(options.encoding) && options.buffer[fdNumber]);
   if (process6.platform === "win32" && path9.basename(file, ".exe") === "cmd") {
     commandArguments.unshift("/q");
   }
@@ -43134,23 +43283,23 @@ var stringMethods = {
 Object.assign(nodeImports, { on, finished });
 
 // node_modules/execa/lib/io/max-buffer.js
-var handleMaxBuffer = ({ error, stream, readableObjectMode, lines, encoding, fdNumber }) => {
+var handleMaxBuffer = ({ error, stream, readableObjectMode, lines: lines2, encoding, fdNumber }) => {
   if (!(error instanceof MaxBufferError)) {
     throw error;
   }
   if (fdNumber === "all") {
     return error;
   }
-  const unit = getMaxBufferUnit(readableObjectMode, lines, encoding);
+  const unit = getMaxBufferUnit(readableObjectMode, lines2, encoding);
   error.maxBufferInfo = { fdNumber, unit };
   stream.destroy();
   throw error;
 };
-var getMaxBufferUnit = (readableObjectMode, lines, encoding) => {
+var getMaxBufferUnit = (readableObjectMode, lines2, encoding) => {
   if (readableObjectMode) {
     return "objects";
   }
-  if (lines) {
+  if (lines2) {
     return "lines";
   }
   if (encoding === "buffer") {
@@ -44753,7 +44902,7 @@ var transformOutputSync = ({ fileDescriptors, syncResult: { output }, options, i
   }, options));
   return { output: transformedOutput, ...state };
 };
-var transformOutputResultSync = ({ result, fileDescriptors, fdNumber, state, outputFiles, isMaxBuffer, verboseInfo }, { buffer, encoding, lines, stripFinalNewline: stripFinalNewline2, maxBuffer }) => {
+var transformOutputResultSync = ({ result, fileDescriptors, fdNumber, state, outputFiles, isMaxBuffer, verboseInfo }, { buffer, encoding, lines: lines2, stripFinalNewline: stripFinalNewline2, maxBuffer }) => {
   if (result === null) {
     return;
   }
@@ -44765,7 +44914,7 @@ var transformOutputResultSync = ({ result, fileDescriptors, fdNumber, state, out
     chunks,
     objectMode,
     encoding,
-    lines,
+    lines: lines2,
     stripFinalNewline: stripFinalNewline2,
     fdNumber
   });
@@ -44797,7 +44946,7 @@ var runOutputGeneratorsSync = (chunks, stdioItems, encoding, state) => {
     return chunks;
   }
 };
-var serializeChunks = ({ chunks, objectMode, encoding, lines, stripFinalNewline: stripFinalNewline2, fdNumber }) => {
+var serializeChunks = ({ chunks, objectMode, encoding, lines: lines2, stripFinalNewline: stripFinalNewline2, fdNumber }) => {
   if (objectMode) {
     return { serializedResult: chunks };
   }
@@ -44805,7 +44954,7 @@ var serializeChunks = ({ chunks, objectMode, encoding, lines, stripFinalNewline:
     return { serializedResult: joinToUint8Array(chunks) };
   }
   const serializedResult = joinToString(chunks, encoding);
-  if (lines[fdNumber]) {
+  if (lines2[fdNumber]) {
     return { serializedResult, finalResult: splitLinesSync(serializedResult, !stripFinalNewline2[fdNumber], objectMode) };
   }
   return { serializedResult };
@@ -44827,13 +44976,13 @@ var logOutputSync = ({ serializedResult, fdNumber, state, verboseInfo, encoding,
   }
 };
 var writeToFiles = (serializedResult, stdioItems, outputFiles) => {
-  for (const { path: path18, append } of stdioItems.filter(({ type }) => FILE_TYPES.has(type))) {
-    const pathString = typeof path18 === "string" ? path18 : path18.toString();
+  for (const { path: path21, append } of stdioItems.filter(({ type }) => FILE_TYPES.has(type))) {
+    const pathString = typeof path21 === "string" ? path21 : path21.toString();
     if (append || outputFiles.has(pathString)) {
-      appendFileSync(path18, serializedResult);
+      appendFileSync(path21, serializedResult);
     } else {
       outputFiles.add(pathString);
-      writeFileSync(path18, serializedResult);
+      writeFileSync(path21, serializedResult);
     }
   }
 };
@@ -46172,7 +46321,7 @@ var stopReadingOnExit = async (subprocess, controller) => {
     controller.abort();
   }
 };
-var iterateForResult = ({ stream, onStreamEnd, lines, encoding, stripFinalNewline: stripFinalNewline2, allMixed }) => {
+var iterateForResult = ({ stream, onStreamEnd, lines: lines2, encoding, stripFinalNewline: stripFinalNewline2, allMixed }) => {
   const controller = new AbortController();
   stopReadingOnStreamEnd(onStreamEnd, controller, stream);
   const objectMode = stream.readableObjectMode && !allMixed;
@@ -46182,7 +46331,7 @@ var iterateForResult = ({ stream, onStreamEnd, lines, encoding, stripFinalNewlin
     binary: encoding === "buffer",
     shouldEncode: !objectMode,
     encoding,
-    shouldSplit: !objectMode && lines,
+    shouldSplit: !objectMode && lines2,
     preserveNewlines: !stripFinalNewline2
   });
 };
@@ -46242,7 +46391,7 @@ var getGenerators = ({ binary, shouldEncode, encoding, shouldSplit, preserveNewl
 ].filter(Boolean);
 
 // node_modules/execa/lib/io/contents.js
-var getStreamOutput = async ({ stream, onStreamEnd, fdNumber, encoding, buffer, maxBuffer, lines, allMixed, stripFinalNewline: stripFinalNewline2, verboseInfo, streamInfo }) => {
+var getStreamOutput = async ({ stream, onStreamEnd, fdNumber, encoding, buffer, maxBuffer, lines: lines2, allMixed, stripFinalNewline: stripFinalNewline2, verboseInfo, streamInfo }) => {
   const logPromise = logOutputAsync({
     stream,
     onStreamEnd,
@@ -46260,7 +46409,7 @@ var getStreamOutput = async ({ stream, onStreamEnd, fdNumber, encoding, buffer, 
   const iterable = iterateForResult({
     stream,
     onStreamEnd,
-    lines,
+    lines: lines2,
     encoding,
     stripFinalNewline: stripFinalNewlineValue,
     allMixed
@@ -46272,7 +46421,7 @@ var getStreamOutput = async ({ stream, onStreamEnd, fdNumber, encoding, buffer, 
       fdNumber,
       encoding,
       maxBuffer,
-      lines
+      lines: lines2
     }),
     logPromise
   ]);
@@ -46303,9 +46452,9 @@ var resumeStream = async (stream) => {
     stream.resume();
   }
 };
-var getStreamContents2 = async ({ stream, stream: { readableObjectMode }, iterable, fdNumber, encoding, maxBuffer, lines }) => {
+var getStreamContents2 = async ({ stream, stream: { readableObjectMode }, iterable, fdNumber, encoding, maxBuffer, lines: lines2 }) => {
   try {
-    if (readableObjectMode || lines) {
+    if (readableObjectMode || lines2) {
       return await getStreamAsArray(iterable, { maxBuffer });
     }
     if (encoding === "buffer") {
@@ -46317,7 +46466,7 @@ var getStreamContents2 = async ({ stream, stream: { readableObjectMode }, iterab
       error,
       stream,
       readableObjectMode,
-      lines,
+      lines: lines2,
       encoding,
       fdNumber
     }));
@@ -46386,19 +46535,19 @@ var isStreamAbort = (error) => error?.code === "ERR_STREAM_PREMATURE_CLOSE";
 var isStreamEpipe = (error) => error?.code === "EPIPE";
 
 // node_modules/execa/lib/resolve/stdio.js
-var waitForStdioStreams = ({ subprocess, encoding, buffer, maxBuffer, lines, stripFinalNewline: stripFinalNewline2, verboseInfo, streamInfo }) => subprocess.stdio.map((stream, fdNumber) => waitForSubprocessStream({
+var waitForStdioStreams = ({ subprocess, encoding, buffer, maxBuffer, lines: lines2, stripFinalNewline: stripFinalNewline2, verboseInfo, streamInfo }) => subprocess.stdio.map((stream, fdNumber) => waitForSubprocessStream({
   stream,
   fdNumber,
   encoding,
   buffer: buffer[fdNumber],
   maxBuffer: maxBuffer[fdNumber],
-  lines: lines[fdNumber],
+  lines: lines2[fdNumber],
   allMixed: false,
   stripFinalNewline: stripFinalNewline2,
   verboseInfo,
   streamInfo
 }));
-var waitForSubprocessStream = async ({ stream, fdNumber, encoding, buffer, maxBuffer, lines, allMixed, stripFinalNewline: stripFinalNewline2, verboseInfo, streamInfo }) => {
+var waitForSubprocessStream = async ({ stream, fdNumber, encoding, buffer, maxBuffer, lines: lines2, allMixed, stripFinalNewline: stripFinalNewline2, verboseInfo, streamInfo }) => {
   if (!stream) {
     return;
   }
@@ -46415,7 +46564,7 @@ var waitForSubprocessStream = async ({ stream, fdNumber, encoding, buffer, maxBu
       encoding,
       buffer,
       maxBuffer,
-      lines,
+      lines: lines2,
       allMixed,
       stripFinalNewline: stripFinalNewline2,
       verboseInfo,
@@ -46428,12 +46577,12 @@ var waitForSubprocessStream = async ({ stream, fdNumber, encoding, buffer, maxBu
 
 // node_modules/execa/lib/resolve/all-async.js
 var makeAllStream = ({ stdout, stderr }, { all }) => all && (stdout || stderr) ? mergeStreams([stdout, stderr].filter(Boolean)) : void 0;
-var waitForAllStream = ({ subprocess, encoding, buffer, maxBuffer, lines, stripFinalNewline: stripFinalNewline2, verboseInfo, streamInfo }) => waitForSubprocessStream({
+var waitForAllStream = ({ subprocess, encoding, buffer, maxBuffer, lines: lines2, stripFinalNewline: stripFinalNewline2, verboseInfo, streamInfo }) => waitForSubprocessStream({
   ...getAllStream(subprocess, buffer),
   fdNumber: "all",
   encoding,
   maxBuffer: maxBuffer[1] + maxBuffer[2],
-  lines: lines[1] || lines[2],
+  lines: lines2[1] || lines2[2],
   allMixed: getAllMixed(subprocess),
   stripFinalNewline: stripFinalNewline2,
   verboseInfo,
@@ -46514,7 +46663,7 @@ var waitForSubprocessResult = async ({
     encoding,
     buffer,
     maxBuffer,
-    lines,
+    lines: lines2,
     timeoutDuration: timeout,
     cancelSignal,
     gracefulCancel,
@@ -46543,7 +46692,7 @@ var waitForSubprocessResult = async ({
     encoding,
     buffer,
     maxBuffer,
-    lines,
+    lines: lines2,
     stripFinalNewline: stripFinalNewline2,
     verboseInfo,
     streamInfo
@@ -46553,7 +46702,7 @@ var waitForSubprocessResult = async ({
     encoding,
     buffer,
     maxBuffer,
-    lines,
+    lines: lines2,
     stripFinalNewline: stripFinalNewline2,
     verboseInfo,
     streamInfo
@@ -47951,8 +48100,8 @@ Requirement: ${prompt}`;
     return JSON.parse(cleaned);
   }
   draftWithHeuristic(prompt, knownProjects = ["backend", "frontend", "mobile"]) {
-    const lines = prompt.split("\n").map((l) => l.trim()).filter(Boolean);
-    const firstLine = lines[0] || "New Feature Specification";
+    const lines2 = prompt.split("\n").map((l) => l.trim()).filter(Boolean);
+    const firstLine = lines2[0] || "New Feature Specification";
     let title = firstLine.replace(/^(we need|please add|create a|implement|build|add)\s+/i, "").replace(/[.!?:;]+$/, "");
     title = title.charAt(0).toUpperCase() + title.slice(1);
     if (title.length > 70) {
@@ -48977,10 +49126,10 @@ ${reqLines.join("\n")}` : ""}
       }
     }
     let goal = "";
-    const lines = rawContent.split("\n");
+    const lines2 = rawContent.split("\n");
     let foundHeading = false;
     const goalParagraphs = [];
-    for (const line of lines) {
+    for (const line of lines2) {
       const trimmed = line.trim();
       if (trimmed.startsWith("#")) {
         if (!foundHeading) {
@@ -50246,8 +50395,8 @@ function resolveLocalPcEnvironment(shell, repoPath) {
           stdio: ["ignore", "pipe", "ignore"],
           timeout: 3e3
         });
-        const lines = rawEnv.split("\n");
-        for (const line of lines) {
+        const lines2 = rawEnv.split("\n");
+        for (const line of lines2) {
           const eqIdx = line.indexOf("=");
           if (eqIdx > 0) {
             const key = line.slice(0, eqIdx).trim();
@@ -50267,8 +50416,8 @@ function resolveLocalPcEnvironment(shell, repoPath) {
             stdio: ["ignore", "pipe", "ignore"],
             timeout: 2500
           });
-          const lines = rawEnv.split("\n");
-          for (const line of lines) {
+          const lines2 = rawEnv.split("\n");
+          for (const line of lines2) {
             const eqIdx = line.indexOf("=");
             if (eqIdx > 0) {
               const key = line.slice(0, eqIdx).trim();
@@ -50611,8 +50760,8 @@ var GateFailure = class extends Error {
     this.note = note;
   }
 };
-function tail(text, lines) {
-  return text.trimEnd().split("\n").slice(-lines).join("\n");
+function tail(text, lines2) {
+  return text.trimEnd().split("\n").slice(-lines2).join("\n");
 }
 var MergeGateService = class {
   constructor(db2, projectService2, requirementService2, reactor2, options = {}) {
@@ -50884,7 +51033,10 @@ ${tail(run.output, 50)}`);
 Your branch \`${m.task.branch}\` was merged at ${sha}.` : `## Merged into \`${p.base}\`
 Your branch \`${m.task.branch}\` had no new commits, so nothing changed.`
         );
-        if (deleteBranches) deleteMergedBranch(p.repo, m.task.branch, p.resultSha);
+        if (deleteBranches) {
+          this.options.releaseWorktree?.(m.task.id);
+          deleteMergedBranch(p.repo, m.task.branch, p.resultSha);
+        }
       }
     }
     this.reactor.recordEvent("merge_succeeded", reqId, void 0, {
@@ -51538,6 +51690,45 @@ function registerHumanLoopRoutes(app2, deps) {
   });
 }
 
+// packages/server/src/api/localEngineRoutes.ts
+function registerLocalEngineRoutes(app2, deps) {
+  app2.get("/api/settings/local-engine", (_req, res) => {
+    res.json(deps.settingsService.getLocalEngineSettings());
+  });
+  app2.put("/api/settings/local-engine", (req, res, next) => {
+    try {
+      const updated = deps.settingsService.updateLocalEngineSettings(req.body);
+      deps.broadcaster.broadcast({ type: "settings_updated", payload: { local_engine: updated } });
+      deps.localEngine?.nudge();
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  });
+  app2.get("/api/local-engine/status", (_req, res) => {
+    if (!deps.localEngine) return res.status(503).json({ error: "The Local AI CLI engine is not running in this server" });
+    res.json(deps.localEngine.status());
+  });
+}
+
+// packages/server/src/localEngine/handover.ts
+async function handOverManualTasks(db2, project, dispatch) {
+  const rows = db2.prepare(`
+      SELECT id, role FROM bridge_tasks
+      WHERE project = ? AND status = 'queued' AND role IN ('goal', 'ticket') AND engine_task_id LIKE 'manual-%'
+      ORDER BY id
+    `).all(project);
+  const claim = db2.prepare(`
+    UPDATE bridge_tasks
+    SET status = 'pending', engine_task_id = NULL, engine_status_raw = NULL, engine_url = NULL, last_error = NULL,
+        model = NULL, effort = NULL, updated_at = ?
+    WHERE id = ? AND status = 'queued' AND engine_task_id LIKE 'manual-%'
+  `);
+  const claimed = rows.filter((row) => claim.run((/* @__PURE__ */ new Date()).toISOString(), row.id).changes === 1);
+  await Promise.allSettled(claimed.map((row) => row.role === "goal" ? dispatch.dispatchGoal(row.id) : dispatch.dispatchTicket(row.id)));
+  return claimed.map((row) => row.id);
+}
+
 // packages/server/src/notify/notificationService.ts
 var CURSOR_KEY = "notification_cursor";
 function parsePayload(raw) {
@@ -51774,9 +51965,17 @@ function createApp(deps) {
       next(err);
     }
   });
-  app2.put("/api/projects/:name", (req, res, next) => {
+  app2.put("/api/projects/:name", async (req, res, next) => {
     try {
+      const before = deps.projectService.getProject(req.params.name);
       const updated = deps.projectService.updateProject(req.params.name, req.body);
+      if (before?.engine_type === "manual" && updated.engine_type === "local") {
+        const handedOver = await handOverManualTasks(deps.db, updated.name, {
+          dispatchGoal: (id) => deps.fanOutService.dispatchGoal(id),
+          dispatchTicket: (id) => deps.ticketService.dispatchTicket(id)
+        });
+        for (const taskId of handedOver) deps.broadcaster.broadcast({ type: "task_updated", payload: { taskId } });
+      }
       res.json(updated);
     } catch (err) {
       next(err);
@@ -52256,6 +52455,7 @@ function createApp(deps) {
   app2.post("/api/tickets", requireAgentToken, handleCreateTicket);
   app2.post("/api/agent/tickets", requireAgentToken, handleCreateTicket);
   registerHumanLoopRoutes(app2, { questionService: questionService2, reviewService, requirementService: deps.requirementService, settingsService: settingsService2, notificationService: notificationService2, broadcaster: deps.broadcaster, requireAgentToken });
+  registerLocalEngineRoutes(app2, { settingsService: settingsService2, broadcaster: deps.broadcaster, localEngine: deps.localEngine });
   const hasValidGitHubSignature = (req) => {
     if (!deps.webhookSecret) return true;
     const signature = req.headers["x-hub-signature-256"];
@@ -52930,19 +53130,1110 @@ function startScheduler(jobs, intervalMs) {
   return () => clearInterval(timer);
 }
 
+// packages/server/src/localEngine/agentRunner.ts
+import fs15 from "node:fs";
+import path19 from "node:path";
+import readline from "node:readline";
+
+// packages/server/src/localEngine/runStore.ts
+import { randomUUID as randomUUID2 } from "node:crypto";
+var FINISHED_RUN_STATUSES = ["review", "no_changes", "failed", "timed_out", "cancelled"];
+var PATCHABLE = /* @__PURE__ */ new Set([
+  "title",
+  "body_md",
+  "model",
+  "effort",
+  "cli",
+  "status",
+  "notes_md",
+  "continuation",
+  "worktree",
+  "start_sha",
+  "end_sha",
+  "pid",
+  "pid_started_at",
+  "exit_code",
+  "error",
+  "resume_at",
+  "interruptions",
+  "hold_requested_at",
+  "cancel_requested_at",
+  "started_at",
+  "finished_at"
+]);
+var RunStore = class {
+  constructor(db2) {
+    this.db = db2;
+  }
+  /**
+   * Queue a new run. Notes that earlier runs of the same task never delivered (sent after they
+   * finished) move to the new run, so Retry and Request changes do not lose them.
+   */
+  create(input) {
+    const id = `local-${randomUUID2()}`;
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    this.db.transaction(() => {
+      const pending = this.db.prepare("SELECT notes_md FROM local_runs WHERE bridge_task_id = ? AND notes_md <> '' ORDER BY created_at, rowid").all(input.bridgeTaskId);
+      if (pending.length) {
+        this.db.prepare("UPDATE local_runs SET notes_md = '', updated_at = ? WHERE bridge_task_id = ? AND notes_md <> ''").run(now, input.bridgeTaskId);
+      }
+      this.db.prepare(`
+          INSERT INTO local_runs (id, bridge_task_id, project, title, body_md, model, effort, status, notes_md, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)
+        `).run(
+        id,
+        input.bridgeTaskId,
+        input.project,
+        input.title,
+        input.bodyMd,
+        input.model ?? null,
+        input.effort ?? null,
+        pending.map((r) => r.notes_md).join("\n\n"),
+        now,
+        now
+      );
+    })();
+    return this.get(id);
+  }
+  get(id) {
+    return this.db.prepare("SELECT * FROM local_runs WHERE id = ?").get(id);
+  }
+  /** Change fields without a status check. */
+  update(id, patch) {
+    const { sql, values } = this.setClause(patch);
+    this.db.prepare(`UPDATE local_runs SET ${sql} WHERE id = ?`).run(...values, id);
+  }
+  /** Compare-and-set: apply `patch` only while the run is in one of `from`. True when applied. */
+  transition(id, from, patch) {
+    const { sql, values } = this.setClause(patch);
+    const marks = from.map(() => "?").join(", ");
+    return this.db.prepare(`UPDATE local_runs SET ${sql} WHERE id = ? AND status IN (${marks})`).run(...values, id, ...from).changes === 1;
+  }
+  appendNote(id, note) {
+    const text = note.trim();
+    if (!text) return false;
+    return this.db.prepare("UPDATE local_runs SET notes_md = CASE WHEN notes_md = '' THEN ? ELSE notes_md || char(10) || char(10) || ? END, updated_at = ? WHERE id = ?").run(text, text, (/* @__PURE__ */ new Date()).toISOString(), id).changes === 1;
+  }
+  /** Queued runs, oldest first. */
+  queued() {
+    return this.withStatus(["queued"]);
+  }
+  withStatus(statuses) {
+    const marks = statuses.map(() => "?").join(", ");
+    return this.db.prepare(`SELECT * FROM local_runs WHERE status IN (${marks}) ORDER BY created_at, rowid`).all(...statuses);
+  }
+  forTask(taskId) {
+    return this.db.prepare("SELECT * FROM local_runs WHERE bridge_task_id = ? ORDER BY created_at, rowid").all(taskId);
+  }
+  count(status) {
+    return this.db.prepare("SELECT COUNT(*) AS n FROM local_runs WHERE status = ?").get(status).n;
+  }
+  /** CLIs paused by a usage limit: the latest future resume time among their rate-limited runs. */
+  pausedClis(now = Date.now()) {
+    const rows = this.db.prepare(`
+        SELECT cli, MAX(resume_at) AS until FROM local_runs
+        WHERE status = 'rate_limited' AND cli IS NOT NULL AND resume_at > ?
+        GROUP BY cli
+      `).all(new Date(now).toISOString());
+    return new Map(rows.map((r) => [r.cli, r.until]));
+  }
+  setClause(patch) {
+    const keys = Object.keys(patch);
+    for (const key of keys) {
+      if (!PATCHABLE.has(key)) throw new Error(`local_runs.${key} cannot be changed`);
+    }
+    const values = keys.map((k) => patch[k] ?? null);
+    return {
+      sql: [...keys.map((k) => `${k} = ?`), "updated_at = ?"].join(", "),
+      values: [...values, (/* @__PURE__ */ new Date()).toISOString()]
+    };
+  }
+};
+
+// packages/server/src/localEngine/worktrees.ts
+import fs12 from "node:fs";
+import path17 from "node:path";
+var real = (p) => {
+  try {
+    return fs12.realpathSync(p);
+  } catch {
+    return path17.resolve(p);
+  }
+};
+function folderName(project) {
+  return project.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+|-+$/g, "") || "project";
+}
+var AgentWorktrees = class {
+  constructor(root) {
+    this.root = root;
+  }
+  pathFor(project, taskId) {
+    return path17.join(this.root(), folderName(project), `task-${taskId}`);
+  }
+  /** Create the worktree for `branch` at `dir`, or reuse it. Throws an Error a person can act on. */
+  ensure(repo, branch, dir) {
+    if (!isGitWorkTree(repo)) throw new Error(`Local AI CLI needs a git repository: ${repo} is not the top of a git work tree`);
+    runGit(repo, ["worktree", "prune"]);
+    const checkout = checkoutPathOf(repo, branch);
+    if (checkout && real(checkout) === real(dir)) return;
+    if (checkout) throw new Error(`Branch ${branch} is checked out in ${checkout}; switch that checkout to another branch, then Retry`);
+    if (fs12.existsSync(dir)) {
+      if (fs12.readdirSync(dir).length > 0) throw new Error(`Folder ${dir} already exists and is not the worktree of ${branch}; move it away, then Retry`);
+      fs12.rmdirSync(dir);
+    }
+    fs12.mkdirSync(path17.dirname(dir), { recursive: true });
+    runGit(repo, ["worktree", "add", "--quiet", dir, branch]);
+  }
+  /** Remove a worktree that has no uncommitted changes. */
+  removeIfClean(repo, dir) {
+    if (!fs12.existsSync(dir)) {
+      try {
+        runGit(repo, ["worktree", "prune"]);
+      } catch {
+      }
+      return "missing";
+    }
+    if (!isClean(dir)) return "dirty";
+    runGit(repo, ["worktree", "remove", dir]);
+    return "removed";
+  }
+  /** Paths with uncommitted changes, as `git status --porcelain` lists them. */
+  uncommitted(dir) {
+    try {
+      return runGit(dir, ["status", "--porcelain"]).split("\n").map((l) => l.slice(3).trim()).filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+  /** The repository's shared .git folder (absolute). */
+  gitCommonDir(repo) {
+    return path17.resolve(repo, runGit(repo, ["rev-parse", "--git-common-dir"]).trim());
+  }
+};
+
+// packages/server/src/localEngine/cliProfiles.ts
+import fs13 from "node:fs";
+import { execFile as execFile4 } from "node:child_process";
+var CLI_LABELS = { "claude-cli": "Claude Code", "agy-cli": "AGY", "codex-cli": "Codex" };
+var BINARY = { "claude-cli": "claude", "agy-cli": "agy", "codex-cli": "codex" };
+function configOf(cli, ai) {
+  if (cli === "claude-cli") return ai.claude;
+  if (cli === "agy-cli") return ai.agy;
+  return ai.codex;
+}
+function isExecutableFile(file) {
+  try {
+    fs13.accessSync(file, fs13.constants.X_OK);
+    return fs13.statSync(file).isFile();
+  } catch {
+    return false;
+  }
+}
+function cliBinary(cli, ai, find = findCliBinary) {
+  const custom2 = configOf(cli, ai)?.customPath?.trim();
+  if (custom2) return isExecutableFile(custom2) ? custom2 : null;
+  return find(BINARY[cli]);
+}
+function cliEnabled(cli, ai) {
+  if (configOf(cli, ai)?.enabled === false) return false;
+  return !ai.enabledEngines || ai.enabledEngines.includes(cli);
+}
+function chooseCli(local, ai, find = findCliBinary) {
+  const usable = (cli) => cliEnabled(cli, ai) ? cliBinary(cli, ai, find) : null;
+  if (local.agentCli !== "default") {
+    const bin = usable(local.agentCli);
+    if (bin) return { cli: local.agentCli, bin, problem: null };
+    const why = cliEnabled(local.agentCli, ai) ? "is not installed on this PC" : "is turned off in Settings \u2192 AI & Local Engines";
+    return { cli: null, bin: null, problem: `${CLI_LABELS[local.agentCli]} is chosen for the Local AI CLI engine but ${why}` };
+  }
+  const preferred = AGENT_CLI_IDS.includes(ai.defaultProvider) ? [ai.defaultProvider] : [];
+  for (const cli of [...preferred, ...AGENT_CLI_IDS]) {
+    const bin = usable(cli);
+    if (bin) return { cli, bin, problem: null };
+  }
+  return { cli: null, bin: null, problem: "No AI CLI that can edit code is installed and turned on (Claude Code, AGY or Codex)" };
+}
+var unset = (value) => !value || value === "default";
+function runModel(cli, chosen, ai) {
+  if (!unset(chosen)) return chosen;
+  const fallback = configOf(cli, ai)?.model;
+  return unset(fallback) ? null : fallback;
+}
+function runEffort(cli, chosen, ai) {
+  return chosen || configOf(cli, ai)?.effort || null;
+}
+var CODEX_EFFORT = { low: "low", medium: "medium", high: "high", xhigh: "high", max: "high" };
+function buildCommand(cli, bin, input) {
+  const { prompt, model, effort } = input;
+  if (cli === "claude-cli") {
+    return {
+      bin,
+      args: [
+        "-p",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--permission-mode",
+        "bypassPermissions",
+        ...model ? ["--model", model] : [],
+        ...effort ? ["--effort", effort] : []
+      ],
+      stdin: prompt
+    };
+  }
+  if (cli === "agy-cli") {
+    return {
+      bin,
+      args: [
+        "-p",
+        prompt,
+        "--output-format",
+        "stream-json",
+        "--dangerously-skip-permissions",
+        ...model ? ["--model", model] : [],
+        ...effort ? ["--effort", effort] : []
+      ],
+      stdin: null
+    };
+  }
+  const codexEffort = effort ? CODEX_EFFORT[effort] : void 0;
+  return {
+    bin,
+    args: [
+      "exec",
+      "--json",
+      "--sandbox",
+      "workspace-write",
+      "--add-dir",
+      input.gitCommonDir,
+      "-C",
+      input.worktree,
+      ...model ? ["-m", model] : [],
+      ...codexEffort ? ["-c", `model_reasoning_effort="${codexEffort}"`] : [],
+      "-"
+    ],
+    stdin: prompt
+  };
+}
+function agyQuotaResetAt(bin, timeoutMs = 8e3) {
+  return new Promise((resolve) => {
+    execFile4(bin, ["-p", "/usage", "--output-format", "json"], { timeout: timeoutMs, encoding: "utf8" }, (err, stdout) => {
+      if (err) return resolve(null);
+      try {
+        const groups = JSON.parse(stdout)?.command?.data?.groups ?? [];
+        const resets = groups.flatMap((g) => g.buckets ?? []).filter((b) => typeof b.remaining_fraction === "number" && b.remaining_fraction <= 0 && typeof b.reset_time === "string").map((b) => Date.parse(b.reset_time)).filter((t) => !Number.isNaN(t));
+        resolve(resets.length ? new Date(Math.max(...resets)).toISOString() : null);
+      } catch {
+        resolve(null);
+      }
+    });
+  });
+}
+function quotaResetAt(cli, bin) {
+  return cli === "agy-cli" ? agyQuotaResetAt(bin) : Promise.resolve(null);
+}
+
+// packages/server/src/localEngine/outputParsers.ts
+var RATE_LIMIT_TEXT = /usage limit|rate[ _-]?limit|quota (?:exceeded|exhausted)|resource[ _]exhausted|too many requests|\b429\b/i;
+function looksLikeRateLimit(text) {
+  return RATE_LIMIT_TEXT.test(text);
+}
+function resetFromText(text) {
+  const match = /\|(\d{10})\b/.exec(text);
+  return match ? new Date(Number(match[1]) * 1e3).toISOString() : null;
+}
+var NONE = { logs: [] };
+var plain = (line) => line.trim() ? { logs: [line] } : { logs: [] };
+var lines = (text) => text.split("\n").map((l) => l.trimEnd()).filter((l) => l.trim() !== "");
+var cut = (text, max = 200) => text.length > max ? `${text.slice(0, max - 1)}\u2026` : text;
+function describeTool(name, input) {
+  const pick = (...keys) => {
+    for (const key of keys) {
+      const value = input?.[key];
+      if (typeof value === "string" && value.trim()) return value;
+    }
+    return null;
+  };
+  const detail = pick("command", "CommandLine", "cmd") ?? pick("file_path", "TargetFile", "AbsolutePath", "path", "notebook_path") ?? pick("pattern", "Query", "query", "url", "Url", "description") ?? (input && Object.keys(input).length ? JSON.stringify(input) : "");
+  return `\u2192 ${name}${detail ? `: ${cut(detail.replace(/\s+/g, " ").trim())}` : ""}`;
+}
+function parseJson(line) {
+  if (!line.startsWith("{")) return null;
+  try {
+    const value = JSON.parse(line);
+    return value && typeof value === "object" ? value : null;
+  } catch {
+    return null;
+  }
+}
+function failure(text) {
+  const error = cut(text.trim(), 1e3);
+  return {
+    logs: [`\u2717 ${error}`],
+    error,
+    ...looksLikeRateLimit(text) ? { rateLimit: { resetAt: resetFromText(text) } } : {}
+  };
+}
+function claudeParser() {
+  return {
+    push(line) {
+      const e = parseJson(line);
+      if (!e) return plain(line);
+      switch (e.type) {
+        case "system": {
+          if (e.subtype !== "init") return NONE;
+          const version = e.claude_code_version ? ` ${e.claude_code_version}` : "";
+          return { logs: [`Agent started: Claude Code${version}${e.model ? ` \xB7 ${e.model}` : ""}`] };
+        }
+        case "rate_limit_event": {
+          const info = e.rate_limit_info ?? {};
+          if (info.status !== "rejected") return NONE;
+          const resetAt = typeof info.resetsAt === "number" ? new Date(info.resetsAt * 1e3).toISOString() : null;
+          return {
+            logs: [`Usage limit reached${info.rateLimitType ? ` (${info.rateLimitType})` : ""}${resetAt ? `; resets ${resetAt}` : ""}`],
+            rateLimit: { resetAt }
+          };
+        }
+        case "assistant": {
+          const out = [];
+          for (const part of e.message?.content ?? []) {
+            if (part?.type === "text" && typeof part.text === "string") out.push(...lines(part.text));
+            else if (part?.type === "tool_use") out.push(describeTool(String(part.name ?? "tool"), part.input));
+          }
+          return { logs: out };
+        }
+        case "user": {
+          const out = [];
+          for (const part of e.message?.content ?? []) {
+            if (part?.type !== "tool_result" || !part.is_error) continue;
+            const text = typeof part.content === "string" ? part.content : JSON.stringify(part.content ?? "");
+            out.push(`  \u2717 ${cut(lines(text)[0] ?? "failed")}`);
+          }
+          return { logs: out };
+        }
+        case "result": {
+          const summary = `Finished: ${e.subtype ?? "done"}` + (typeof e.num_turns === "number" ? ` \xB7 ${e.num_turns} turns` : "") + (typeof e.duration_ms === "number" ? ` \xB7 ${Math.round(e.duration_ms / 1e3)} s` : "") + (typeof e.total_cost_usd === "number" ? ` \xB7 $${e.total_cost_usd.toFixed(2)}` : "");
+          if (!e.is_error) return { logs: [summary] };
+          const text = typeof e.result === "string" && e.result ? e.result : `Claude Code reported an error (${e.subtype ?? "unknown"})`;
+          const failed = failure(text);
+          if (e.api_error_status === 429 && !failed.rateLimit) failed.rateLimit = { resetAt: resetFromText(text) };
+          return { ...failed, logs: [summary, ...failed.logs] };
+        }
+        default:
+          return NONE;
+      }
+    },
+    flush: () => NONE
+  };
+}
+function agyParser() {
+  const text = /* @__PURE__ */ new Map();
+  const seenTools = /* @__PURE__ */ new Set();
+  const flushStep = (index) => {
+    const buffered = text.get(index);
+    text.delete(index);
+    return buffered ? lines(buffered) : [];
+  };
+  const flushAll = () => [...text.keys()].flatMap(flushStep);
+  return {
+    push(line) {
+      const e = parseJson(line);
+      if (!e) return plain(line);
+      if (e.event === "init") return { logs: [`Agent started: AGY${e.init?.permission_mode ? ` \xB7 ${e.init.permission_mode}` : ""}`] };
+      if (e.event === "step_update") {
+        const step = e.step_update ?? {};
+        const index = Number(step.step_index);
+        if (step.step_type === "agent_response") {
+          if (typeof step.text_delta === "string") text.set(index, (text.get(index) ?? "") + step.text_delta);
+          return step.state === "DONE" ? { logs: flushStep(index) } : NONE;
+        }
+        if (step.step_type === "tool" && !seenTools.has(index)) {
+          seenTools.add(index);
+          return { logs: [describeTool(String(step.tool_name ?? step.tool_info?.name ?? "tool"), step.tool_info?.parameters)] };
+        }
+        return NONE;
+      }
+      if (e.event === "result") {
+        const result = e.result ?? {};
+        const pending = flushAll();
+        const status = result.status === void 0 ? "SUCCESS" : String(result.status);
+        const summary = `Finished: ${status.toLowerCase()}${typeof result.duration_seconds === "number" ? ` \xB7 ${Math.round(result.duration_seconds)} s` : ""}`;
+        if (status === "SUCCESS") return { logs: [...pending, summary] };
+        const failed = failure(String(result.error ?? result.message ?? result.response ?? `AGY finished with status ${status}`));
+        return { ...failed, logs: [...pending, summary, ...failed.logs] };
+      }
+      if (e.event === "error") return failure(String(e.error?.message ?? e.message ?? JSON.stringify(e)));
+      return NONE;
+    },
+    flush: () => ({ logs: flushAll() })
+  };
+}
+function codexParser() {
+  return {
+    push(line) {
+      const e = parseJson(line);
+      if (!e) return plain(line);
+      const item = e.item ?? {};
+      switch (e.type) {
+        case "thread.started":
+          return { logs: ["Agent started: Codex"] };
+        case "item.started":
+          return item.type === "command_execution" ? { logs: [describeTool("shell", { command: item.command })] } : NONE;
+        case "item.completed":
+          if (item.type === "agent_message" && typeof item.text === "string") return { logs: lines(item.text) };
+          if (item.type === "file_change") return { logs: (item.changes ?? []).map((c3) => `\u2192 ${c3.kind ?? "edit"}: ${c3.path}`) };
+          if (item.type === "command_execution" && typeof item.exit_code === "number" && item.exit_code !== 0) return { logs: [`  \u2717 exit ${item.exit_code}`] };
+          if (item.type === "error" && item.message) return { logs: [`  \u2717 ${cut(String(item.message))}`] };
+          return NONE;
+        case "turn.completed":
+          return { logs: ["Finished"] };
+        case "turn.failed":
+          return failure(String(e.error?.message ?? "Codex turn failed"));
+        case "error":
+          return failure(String(e.message ?? e.error?.message ?? "Codex error"));
+        default:
+          return NONE;
+      }
+    },
+    flush: () => NONE
+  };
+}
+function createParser(cli) {
+  if (cli === "claude-cli") return claudeParser();
+  if (cli === "agy-cli") return agyParser();
+  return codexParser();
+}
+
+// packages/server/src/localEngine/prompt.ts
+function buildRunPrompt(input) {
+  const parts = [
+    input.bodyMd.trimEnd(),
+    `## Local run
+- You run unattended in \`${input.worktree}\`, a separate copy of the repository on branch \`${input.branch}\`. Nobody reads your messages until you finish, so do not wait for confirmation.
+- Stay inside this folder: do not read or change files outside it.
+- Commit your work on \`${input.branch}\` (git add, git commit) before you finish. Uncommitted changes are not reviewed.
+- Never push, never switch or create branches, and never rewrite commits already on the branch.
+- For a product decision only a person can make, use \`xticket ask\` as described above, commit your work in progress, then stop.`
+  ];
+  if (input.continuation) {
+    parts.push(`## Continue
+This task was started before and stopped (a question, a usage limit or a server restart). Run \`git log\` and \`git status\` first, then continue from the work already on \`${input.branch}\`.`);
+  }
+  if (input.notesMd.trim()) parts.push(`## Notes since your last run
+${input.notesMd.trim()}`);
+  return `${parts.join("\n\n")}
+`;
+}
+
+// packages/server/src/localEngine/xticketLauncher.ts
+import fs14 from "node:fs";
+import path18 from "node:path";
+import { fileURLToPath as fileURLToPath3 } from "node:url";
+var here = path18.dirname(fileURLToPath3(import.meta.url));
+function xticketCandidates() {
+  return [process.env.XTICKET_CLI ?? "", path18.join(here, "xticket.mjs"), path18.resolve(here, "../../../xticket/dist/cli.js")].filter(Boolean);
+}
+function findXticketScript(candidates = xticketCandidates()) {
+  return candidates.find((c3) => fs14.existsSync(c3)) ?? null;
+}
+function writeXticketLauncher(binDir, nodePath, script) {
+  fs14.mkdirSync(binDir, { recursive: true });
+  const quote = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
+  const missing = "xticket is not available: run npm run build in SP-Kickstack";
+  const shell = script ? `#!/bin/sh
+exec ${quote(nodePath)} ${quote(script)} "$@"
+` : `#!/bin/sh
+echo "${missing}" >&2
+exit 1
+`;
+  const launcher = path18.join(binDir, "xticket");
+  fs14.writeFileSync(launcher, shell);
+  fs14.chmodSync(launcher, 493);
+  const cmd = script ? `@"${nodePath}" "${script}" %*\r
+` : `@echo ${missing} 1>&2\r
+@exit /b 1\r
+`;
+  fs14.writeFileSync(path18.join(binDir, "xticket.cmd"), cmd);
+  return binDir;
+}
+
+// packages/server/src/localEngine/processes.ts
+import { spawn as spawn5, execFileSync as execFileSync4 } from "node:child_process";
+var POSIX = process.platform !== "win32";
+var OUTPUT_DRAIN_MS = 2e3;
+function spawnAgent(cmd, cwd, env) {
+  const child = spawn5(cmd.bin, cmd.args, { cwd, env, detached: POSIX, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+  const exited = new Promise((resolve) => {
+    let spawnError = null;
+    let status = null;
+    const done = () => resolve({ code: status?.code ?? null, signal: status?.signal ?? null, spawnError });
+    child.once("error", (err) => {
+      spawnError = err.message;
+      setTimeout(done, 100);
+    });
+    child.once("exit", (code, signal) => {
+      status = { code, signal };
+      setTimeout(done, OUTPUT_DRAIN_MS);
+    });
+    child.once("close", (code, signal) => {
+      status = status ?? { code, signal };
+      done();
+    });
+  });
+  child.stdin?.on("error", () => {
+  });
+  child.stdin?.end(cmd.stdin ?? void 0);
+  const pid = child.pid ?? -1;
+  return { child, pid, startedAt: pid > 0 ? processStartTime(pid) : null, exited };
+}
+function processStartTime(pid) {
+  if (!POSIX) return null;
+  try {
+    return execFileSync4("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+function isAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err?.code === "EPERM";
+  }
+}
+function isSameProcess(pid, startedAt) {
+  return Boolean(pid && pid > 0 && startedAt && isAlive(pid) && processStartTime(pid) === startedAt);
+}
+function signalGroup(pid, signal) {
+  if (!POSIX) {
+    try {
+      execFileSync4("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore" });
+    } catch {
+    }
+    return;
+  }
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try {
+      process.kill(pid, signal);
+    } catch {
+    }
+  }
+}
+var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function stopGroup(pid, exited, graceMs) {
+  if (pid <= 0) return;
+  signalGroup(pid, "SIGTERM");
+  if (exited) {
+    const done = await Promise.race([exited.then(() => true), sleep(graceMs).then(() => false)]);
+    if (!done) {
+      signalGroup(pid, "SIGKILL");
+      await Promise.race([exited, sleep(graceMs)]);
+    }
+    return;
+  }
+  const deadline = Date.now() + graceMs;
+  while (isAlive(pid) && Date.now() < deadline) await sleep(100);
+  if (isAlive(pid)) signalGroup(pid, "SIGKILL");
+}
+function killGroupLeftovers(pid) {
+  if (!POSIX || pid <= 0) return;
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch {
+  }
+}
+
+// packages/server/src/localEngine/agentRunner.ts
+var MAX_LOG_LINES = 5e3;
+var MAX_LINE_CHARS = 2e3;
+var TAIL_LINES = 20;
+var MAX_INTERRUPTIONS = 3;
+var DEFAULT_LIMIT_WAIT_MS = 15 * 60 * 1e3;
+var MAX_LIMIT_WAIT_MS = 24 * 60 * 60 * 1e3;
+var AgentRunner = class {
+  constructor(opts) {
+    this.opts = opts;
+    this.runs = new RunStore(opts.db);
+    this.find = opts.findBinary ?? findCliBinary;
+    this.now = opts.now ?? Date.now;
+    this.worktrees = new AgentWorktrees(() => this.settings().worktreeRoot || path19.join(opts.workspaceDir, "agent-worktrees"));
+  }
+  runs;
+  worktrees;
+  active = /* @__PURE__ */ new Map();
+  ticking = null;
+  again = false;
+  stopping = false;
+  binDir = null;
+  dirtyLogged = /* @__PURE__ */ new Set();
+  find;
+  now;
+  health() {
+    const settings = this.settings();
+    if (!settings.enabled) return { ok: false, error: "The Local AI CLI engine is turned off in Settings \u2192 AI & Local Engines" };
+    const choice = chooseCli(settings, this.ai(), this.find);
+    return choice.cli ? { ok: true, version: `local \xB7 ${CLI_LABELS[choice.cli]}` } : { ok: false, error: choice.problem ?? "No AI CLI can run" };
+  }
+  /** Start what can start now, without waiting for the next scheduler tick. */
+  nudge() {
+    setImmediate(() => {
+      this.tick().catch((err) => console.warn(`[local-engine] ${err?.message || err}`));
+    });
+  }
+  /** One pass over the queue; concurrent calls are folded into one more pass. */
+  async tick() {
+    if (this.ticking) {
+      this.again = true;
+      return this.ticking;
+    }
+    this.ticking = (async () => {
+      do {
+        this.again = false;
+        await this.pass();
+      } while (this.again);
+    })().finally(() => {
+      this.ticking = null;
+    });
+    return this.ticking;
+  }
+  /** Resolves once no agent is running and no pass is going (tests, shutdown). */
+  async idle() {
+    while (this.active.size > 0 || this.ticking) {
+      await Promise.all([...this.active.values()].map((a2) => a2.settled));
+      if (this.ticking) await this.ticking;
+    }
+  }
+  async cancel(runId) {
+    const run = this.runs.get(runId);
+    if (!run || FINISHED_RUN_STATUSES.includes(run.status)) return;
+    this.runs.update(runId, { cancel_requested_at: this.iso() });
+    const active = this.active.get(runId);
+    if (active) {
+      await stopGroup(active.agent.pid, active.agent.exited, this.stopGrace());
+      await active.settled;
+      return;
+    }
+    if (run.status === "running" && run.pid && isSameProcess(run.pid, run.pid_started_at)) {
+      await stopGroup(run.pid, null, this.stopGrace());
+    }
+    if (this.runs.transition(runId, ["queued", "held", "rate_limited", "running"], { status: "cancelled", pid: null, finished_at: this.iso() })) {
+      this.log(run.bridge_task_id, "system", "\u25A0 Cancelled");
+    }
+  }
+  /** The agent asked a person: the run is held at once; the agent gets holdGraceMs to commit and stop. */
+  hold(runId, _reason) {
+    const held = this.runs.transition(runId, ["running", "queued", "rate_limited"], { status: "held", hold_requested_at: this.iso() });
+    if (!held) {
+      const run = this.runs.get(runId);
+      if (run?.status === "held") return;
+      throw new Error(`Run ${runId} is ${run?.status ?? "missing"}; it cannot be paused`);
+    }
+    const active = this.active.get(runId);
+    if (!active) return;
+    this.log(active.taskId, "system", "\u23F8 Waiting for a person to answer; the agent commits its work and stops");
+    active.timers.push(setTimeout(() => void stopGroup(active.agent.pid, active.agent.exited, this.stopGrace()), this.opts.holdGraceMs ?? 12e4));
+  }
+  /** An answer or a finished dependency: the context goes into the next run, which continues the work. */
+  release(runId, context) {
+    this.runs.appendNote(runId, context);
+    if (this.runs.transition(runId, ["held"], { status: "queued", continuation: 1, hold_requested_at: null })) this.nudge();
+  }
+  /** A note to the agent: kept and given at its next run (a headless CLI cannot read input mid-run). */
+  note(runId, body) {
+    const run = this.runs.get(runId);
+    if (!run) throw new Error(`Run ${runId} not found`);
+    this.runs.appendNote(runId, body);
+    if (run.status === "running") this.log(run.bridge_task_id, "system", "\u2709 Note saved; the agent gets it at its next run");
+  }
+  /** Server stopping: stop every agent; their runs continue (as continuations) after the restart. */
+  async shutdown() {
+    this.stopping = true;
+    await Promise.all(
+      [...this.active.values()].map(async (active) => {
+        if (this.runs.transition(active.runId, ["running"], { status: "queued", continuation: 1 })) {
+          this.log(active.taskId, "system", "\u23F9 Server stopping; this run continues when the server starts again");
+        }
+        await stopGroup(active.agent.pid, active.agent.exited, this.stopGrace());
+        await active.settled.catch(() => {
+        });
+      })
+    );
+  }
+  /**
+   * After a crash, runs still marked running lost their server. Their agent is stopped only when it
+   * is provably ours (pid + start time); the run is queued again, and fails at the third crash.
+   */
+  async recoverOnStartup() {
+    for (const run of this.runs.withStatus(["running", "held"])) {
+      if (this.active.has(run.id)) continue;
+      if (run.pid && isSameProcess(run.pid, run.pid_started_at)) await stopGroup(run.pid, null, this.stopGrace());
+      if (run.status === "held") {
+        if (run.pid) this.runs.update(run.id, { pid: null });
+        continue;
+      }
+      const interruptions = run.interruptions + 1;
+      if (interruptions >= MAX_INTERRUPTIONS) {
+        const error = `Interrupted ${interruptions} times (the server stopped while the agent was running); Retry starts it again`;
+        if (this.runs.transition(run.id, ["running"], { status: "failed", pid: null, interruptions, finished_at: this.iso(), error })) {
+          this.log(run.bridge_task_id, "system", `\u2717 ${error}`);
+        }
+      } else if (this.runs.transition(run.id, ["running"], { status: "queued", pid: null, interruptions, continuation: 1 })) {
+        this.log(run.bridge_task_id, "system", "\u21BB The server restarted while the agent was running; it continues from the branch");
+      }
+    }
+  }
+  /** Free a task's worktree: the merge gate deletes merged branches, which git refuses while checked out. */
+  releaseWorktree(taskId) {
+    const row = this.opts.db.prepare("SELECT project, MAX(worktree) AS worktree FROM local_runs WHERE bridge_task_id = ? AND worktree IS NOT NULL GROUP BY project").get(taskId);
+    return row ? this.removeTaskWorktree(taskId, row.project, row.worktree) : true;
+  }
+  status() {
+    const settings = this.settings();
+    const ai = this.ai();
+    const choice = chooseCli(settings, ai, this.find);
+    const paused = this.runs.pausedClis(this.now());
+    return {
+      enabled: settings.enabled,
+      cli: choice.cli,
+      problem: settings.enabled ? choice.problem : "The Local AI CLI engine is turned off",
+      clis: AGENT_CLI_IDS.map((id) => ({
+        id,
+        label: CLI_LABELS[id],
+        installed: cliBinary(id, ai, this.find) !== null,
+        enabled: cliEnabled(id, ai),
+        pausedUntil: paused.get(id) ?? null
+      })),
+      counts: {
+        running: this.runs.count("running"),
+        queued: this.runs.count("queued"),
+        held: this.runs.count("held"),
+        rate_limited: this.runs.count("rate_limited")
+      },
+      maxParallel: settings.maxParallel,
+      worktreeRoot: settings.worktreeRoot || path19.join(this.opts.workspaceDir, "agent-worktrees")
+    };
+  }
+  async pass() {
+    if (this.stopping) return;
+    this.resumeRateLimited();
+    this.cleanupWorktrees();
+    const settings = this.settings();
+    if (!settings.enabled) return;
+    const ai = this.ai();
+    const choice = chooseCli(settings, ai, this.find);
+    if (!choice.cli || !choice.bin) return;
+    if (this.runs.pausedClis(this.now()).has(choice.cli)) return;
+    let running = this.runs.count("running");
+    for (const run of this.runs.queued()) {
+      if (running >= settings.maxParallel) break;
+      if (this.taskBusy(run)) continue;
+      if (this.start(run, choice.cli, choice.bin, ai, settings)) running++;
+    }
+  }
+  taskBusy(run) {
+    if (this.active.has(run.id)) return true;
+    for (const active of this.active.values()) if (active.taskId === run.bridge_task_id) return true;
+    return false;
+  }
+  /** Start one queued run; false when it could not start (then it is failed or cancelled). */
+  start(run, cli, bin, ai, settings) {
+    const task = this.task(run.bridge_task_id);
+    if (!task || task.status === "done" || task.status === "cancelled") {
+      this.runs.transition(run.id, ["queued"], { status: "cancelled", error: "The task is no longer active", finished_at: this.iso() });
+      return false;
+    }
+    const fail = (message) => {
+      if (this.runs.transition(run.id, ["queued"], { status: "failed", error: message, finished_at: this.iso() })) this.log(task.id, "system", `\u2717 ${message}`);
+      return false;
+    };
+    const project = this.opts.projectService.getProject(run.project);
+    if (!project) return fail(`Repository ${run.project} is not registered`);
+    if (!task.branch) return fail(`Local AI CLI needs a git repository: ${project.repo_path} is not the top of a git work tree`);
+    const dir = this.worktrees.pathFor(project.name, task.id);
+    let gitCommonDir;
+    try {
+      this.worktrees.ensure(project.repo_path, task.branch, dir);
+      gitCommonDir = this.worktrees.gitCommonDir(project.repo_path);
+    } catch (err) {
+      return fail(err?.message || String(err));
+    }
+    const model = runModel(cli, run.model, ai);
+    const effort = runEffort(cli, run.effort, ai);
+    const prompt = buildRunPrompt({ bodyMd: run.body_md, worktree: dir, branch: task.branch, notesMd: run.notes_md, continuation: run.continuation === 1 });
+    const runDir = path19.join(this.opts.workspaceDir, "agent-runs", run.id);
+    fs15.mkdirSync(runDir, { recursive: true });
+    fs15.writeFileSync(path19.join(runDir, `prompt-${Date.now()}.md`), prompt);
+    const command = buildCommand(cli, bin, { prompt, model, effort, worktree: dir, gitCommonDir });
+    const env = {
+      ...process.env,
+      XTICKET_URL: this.opts.bridgeUrl,
+      XTICKET_PROJECT: project.name,
+      XTICKET_TASK: run.id,
+      ...this.opts.agentToken ? { XTICKET_TOKEN: this.opts.agentToken } : {},
+      PATH: `${this.launcherDir()}${path19.delimiter}${process.env.PATH ?? ""}`
+    };
+    const startSha = resolveCommit(project.repo_path, `refs/heads/${task.branch}`);
+    let agent;
+    try {
+      agent = spawnAgent(command, dir, env);
+    } catch (err) {
+      return fail(`Could not start ${CLI_LABELS[cli]} (${bin}): ${err?.message || err}`);
+    }
+    const claimed = this.runs.transition(run.id, ["queued"], {
+      status: "running",
+      cli,
+      model,
+      effort,
+      worktree: dir,
+      start_sha: startSha,
+      end_sha: null,
+      pid: agent.pid,
+      pid_started_at: agent.startedAt,
+      started_at: this.iso(),
+      finished_at: null,
+      notes_md: "",
+      continuation: 0,
+      hold_requested_at: null,
+      cancel_requested_at: null,
+      exit_code: null,
+      error: null,
+      resume_at: null
+    });
+    if (!claimed) {
+      void stopGroup(agent.pid, agent.exited, this.stopGrace());
+      return false;
+    }
+    this.opts.db.prepare("UPDATE bridge_tasks SET model = ?, effort = ? WHERE id = ?").run(model, effort, task.id);
+    this.log(task.id, "system", `\u25B6 ${CLI_LABELS[cli]} started in ${dir} on ${task.branch}${model ? ` \xB7 ${model}` : ""}${effort ? ` \xB7 ${effort}` : ""}`);
+    this.supervise(run.id, task, project.repo_path, cli, bin, agent, settings.runTimeoutMinutes, runDir);
+    return true;
+  }
+  supervise(runId, task, repo, cli, bin, agent, minutes, runDir) {
+    const parser = createParser(cli);
+    const raw = fs15.createWriteStream(path19.join(runDir, "output.log"), { flags: "a" });
+    const out = { lines: 0, tail: [], rateLimit: null, cliError: null };
+    const emit = (stream, text) => {
+      const line = text.length > MAX_LINE_CHARS ? `${text.slice(0, MAX_LINE_CHARS - 1)}\u2026` : text;
+      out.tail.push(line);
+      if (out.tail.length > TAIL_LINES) out.tail.shift();
+      if (out.lines >= MAX_LOG_LINES) return;
+      this.log(task.id, stream, line);
+      out.lines++;
+      if (out.lines === MAX_LOG_LINES) {
+        this.log(task.id, "system", `Log limit of ${MAX_LOG_LINES} lines reached; the full output is in ${path19.join(runDir, "output.log")}`);
+      }
+    };
+    const handle = (parsed) => {
+      for (const line of parsed.logs) emit("stdout", line);
+      if (parsed.rateLimit) out.rateLimit = parsed.rateLimit;
+      if (parsed.error) out.cliError = parsed.error;
+    };
+    if (agent.child.stdout) {
+      readline.createInterface({ input: agent.child.stdout }).on("line", (line) => {
+        raw.write(`${line}
+`);
+        handle(parser.push(line));
+      });
+    }
+    if (agent.child.stderr) {
+      readline.createInterface({ input: agent.child.stderr }).on("line", (line) => {
+        raw.write(`[stderr] ${line}
+`);
+        if (!line.trim()) return;
+        emit("stderr", line);
+        if (looksLikeRateLimit(line)) out.rateLimit ??= { resetAt: resetFromText(line) };
+      });
+    }
+    const active = { runId, taskId: task.id, agent, timers: [], timedOut: false, settled: Promise.resolve() };
+    active.timers.push(
+      setTimeout(() => {
+        active.timedOut = true;
+        void stopGroup(agent.pid, agent.exited, this.stopGrace());
+      }, minutes * this.minuteMs())
+    );
+    active.settled = agent.exited.then(async (exit) => {
+      active.timers.forEach(clearTimeout);
+      killGroupLeftovers(agent.pid);
+      handle(parser.flush());
+      raw.end();
+      try {
+        await this.finish(runId, task.id, repo, cli, bin, exit, out, active.timedOut);
+      } catch (err) {
+        console.warn(`[local-engine] run ${runId}: ${err?.message || err}`);
+      } finally {
+        this.active.delete(runId);
+      }
+      await this.tick();
+    });
+    this.active.set(runId, active);
+  }
+  /** Turn the agent's exit into the run's status. */
+  async finish(runId, taskId, repo, cli, bin, exit, out, timedOut) {
+    const run = this.runs.get(runId);
+    const task = this.task(taskId);
+    if (!run || !task) return;
+    const endSha = task.branch ? resolveCommit(repo, `refs/heads/${task.branch}`) : null;
+    const base = { pid: null, exit_code: exit.code, end_sha: endSha, finished_at: this.iso() };
+    const label = CLI_LABELS[cli];
+    if (run.cancel_requested_at) {
+      if (this.runs.transition(runId, ["running", "held"], { ...base, status: "cancelled" })) this.log(taskId, "system", "\u25A0 Stopped: the task was cancelled");
+      return;
+    }
+    if (run.status === "queued") {
+      this.runs.update(runId, { pid: null, exit_code: exit.code, end_sha: endSha });
+      return;
+    }
+    if (run.status === "held") {
+      this.runs.update(runId, { pid: null, exit_code: exit.code, end_sha: endSha });
+      this.log(taskId, "system", "\u23F8 Paused until a person answers; the next run continues from the branch");
+      return;
+    }
+    if (timedOut) {
+      const minutes = this.settings().runTimeoutMinutes;
+      this.end(runId, taskId, { ...base, status: "timed_out", error: `Stopped after the ${minutes} minute time limit (Settings \u2192 AI & Local Engines)` });
+      return;
+    }
+    if (out.rateLimit) {
+      const resumeAt = await this.resumeTime(cli, bin, out.rateLimit.resetAt);
+      const patch = { ...base, finished_at: null, status: "rate_limited", resume_at: resumeAt, continuation: 1, error: `${label} usage limit reached; continues at ${resumeAt}` };
+      if (this.runs.transition(runId, ["running"], patch)) {
+        this.log(taskId, "system", `\u23F8 ${label} usage limit reached; this run continues at ${resumeAt}`);
+      }
+      return;
+    }
+    if (exit.spawnError) {
+      this.end(runId, taskId, { ...base, status: "failed", error: `Could not start ${label} (${bin}): ${exit.spawnError}` });
+      return;
+    }
+    if (exit.code !== 0) {
+      const reason = out.cliError ?? (exit.signal ? `stopped by ${exit.signal}` : `exit code ${exit.code}`);
+      this.end(runId, taskId, { ...base, status: "failed", error: `${label} failed: ${reason}
+${out.tail.join("\n")}`.trim() });
+      return;
+    }
+    const worktree = run.worktree ?? "";
+    const dirty = worktree ? this.worktrees.uncommitted(worktree) : [];
+    if (dirty.length) {
+      this.log(taskId, "system", `\u26A0 Uncommitted changes left in ${worktree} (not part of the review): ${dirty.slice(0, 10).join(", ")}${dirty.length > 10 ? ", \u2026" : ""}`);
+    }
+    const ahead = task.base_sha && endSha ? commitsAhead(repo, task.base_sha, endSha) : 0;
+    if (ahead > 0) {
+      this.end(runId, taskId, { ...base, status: "review" }, `\u2713 Finished: ${ahead} commit${ahead === 1 ? "" : "s"} on ${task.branch} ready for review`);
+      return;
+    }
+    const error = dirty.length ? `Finished without committing; the uncommitted changes are in ${worktree}` : "Finished without committing anything";
+    this.end(runId, taskId, { ...base, status: "no_changes", error });
+  }
+  /** The reset the CLI named, else its live quota's, else 15 minutes; at least 1 minute, at most 24 h ahead. */
+  async resumeTime(cli, bin, reported) {
+    let until = reported ? Date.parse(reported) : NaN;
+    if (Number.isNaN(until)) {
+      const fromQuota = await (this.opts.quotaResetAt ?? quotaResetAt)(cli, bin).catch(() => null);
+      until = fromQuota ? Date.parse(fromQuota) : NaN;
+    }
+    if (Number.isNaN(until)) until = this.now() + DEFAULT_LIMIT_WAIT_MS;
+    until = Math.min(Math.max(until, this.now() + 6e4), this.now() + MAX_LIMIT_WAIT_MS);
+    return new Date(until).toISOString();
+  }
+  /** Worktrees of tasks that are COMPLETE or CANCELLED are removed (kept while they have uncommitted changes). */
+  cleanupWorktrees() {
+    const rows = this.opts.db.prepare(`
+        SELECT r.bridge_task_id AS taskId, r.project AS project, MAX(r.worktree) AS worktree
+        FROM local_runs r JOIN bridge_tasks t ON t.id = r.bridge_task_id
+        WHERE r.worktree IS NOT NULL AND t.status IN ('done', 'cancelled')
+        GROUP BY r.bridge_task_id, r.project
+      `).all();
+    for (const row of rows) this.removeTaskWorktree(row.taskId, row.project, row.worktree);
+  }
+  removeTaskWorktree(taskId, project, worktree) {
+    for (const active of this.active.values()) if (active.taskId === taskId) return false;
+    const repo = this.opts.projectService.getProject(project)?.repo_path;
+    if (!repo) return false;
+    let result;
+    try {
+      result = this.worktrees.removeIfClean(repo, worktree);
+    } catch (err) {
+      console.warn(`[local-engine] could not remove ${worktree}: ${err?.message || err}`);
+      return false;
+    }
+    if (result === "dirty") {
+      if (!this.dirtyLogged.has(worktree)) {
+        this.dirtyLogged.add(worktree);
+        this.log(taskId, "system", `Kept ${worktree}: it has uncommitted changes. Delete it yourself when you no longer need them.`);
+      }
+      return false;
+    }
+    this.opts.db.prepare("UPDATE local_runs SET worktree = NULL, updated_at = ? WHERE bridge_task_id = ?").run((/* @__PURE__ */ new Date()).toISOString(), taskId);
+    return true;
+  }
+  resumeRateLimited() {
+    const now = this.iso();
+    for (const run of this.runs.withStatus(["rate_limited"])) {
+      if (run.resume_at && run.resume_at > now) continue;
+      if (this.runs.transition(run.id, ["rate_limited"], { status: "queued", resume_at: null, continuation: 1, error: null })) {
+        this.log(run.bridge_task_id, "system", "\u21BB Usage limit reset; continuing");
+      }
+    }
+  }
+  end(runId, taskId, patch, message) {
+    if (this.runs.transition(runId, ["running"], patch)) {
+      this.log(taskId, "system", message ?? `\u2717 ${(patch.error ?? patch.status).split("\n")[0]}`);
+    }
+  }
+  task(id) {
+    return this.opts.db.prepare("SELECT * FROM bridge_tasks WHERE id = ?").get(id);
+  }
+  log(taskId, stream, message) {
+    this.opts.db.prepare("INSERT INTO task_logs (task_id, stream, message, created_at) VALUES (?, ?, ?, ?)").run(taskId, stream, message, (/* @__PURE__ */ new Date()).toISOString());
+  }
+  launcherDir() {
+    if (!this.binDir) {
+      this.binDir = writeXticketLauncher(path19.join(this.opts.workspaceDir, "agent-bin"), process.execPath, findXticketScript());
+    }
+    return this.binDir;
+  }
+  settings() {
+    return this.opts.settingsService.getLocalEngineSettings();
+  }
+  ai() {
+    return this.opts.settingsService.getAiCliSettings();
+  }
+  iso(offsetMs = 0) {
+    return new Date(this.now() + offsetMs).toISOString();
+  }
+  minuteMs() {
+    return this.opts.minuteMs ?? 6e4;
+  }
+  stopGrace() {
+    return this.opts.stopGraceMs ?? 1e4;
+  }
+};
+
 // packages/server/src/index.ts
 var PORT = Number(process.env.PORT || 4100);
 var HOST = process.env.HOST || "127.0.0.1";
-var WORKSPACE_DIR = process.env.WORKSPACE_DIR || path17.resolve("./workspace");
-if (!fs12.existsSync(WORKSPACE_DIR)) {
-  fs12.mkdirSync(WORKSPACE_DIR, { recursive: true });
+var WORKSPACE_DIR = process.env.WORKSPACE_DIR || path20.resolve("./workspace");
+if (!fs16.existsSync(WORKSPACE_DIR)) {
+  fs16.mkdirSync(WORKSPACE_DIR, { recursive: true });
 }
-var dbPath = path17.join(WORKSPACE_DIR, "bridge.db");
+var dbPath = path20.join(WORKSPACE_DIR, "bridge.db");
 var db = initDatabase(dbPath);
 var workspaceService = new WorkspaceService(db);
 var projectService = new ProjectService(db);
 var requirementService = new RequirementService(db, WORKSPACE_DIR);
 var sprintService = new SprintService(db);
+var settingsService = new SettingsService(db);
+var localEngine = new AgentRunner({
+  db,
+  projectService,
+  settingsService,
+  workspaceDir: WORKSPACE_DIR,
+  bridgeUrl: `http://${HOST === "0.0.0.0" || HOST === "::" ? "127.0.0.1" : HOST}:${PORT}`,
+  agentToken: process.env.AGENT_TOKEN || void 0
+});
 var engineThrottle = new EngineThrottle({
   onTrip: (project, until) => {
     const payload = { project, until: new Date(until).toISOString() };
@@ -52956,7 +54247,7 @@ var engineThrottle = new EngineThrottle({
 var getAdapter = engineThrottle.wrap((projectName) => {
   const proj = projectService.getProject(projectName);
   if (!proj) throw new Error(`Project ${projectName} not found`);
-  return createAdapter(proj);
+  return createAdapter(proj, { local: localEngine });
 });
 var branchService = new BranchService(db, projectService);
 var linkService = new LinkService(db, projectService, getAdapter);
@@ -52965,10 +54256,12 @@ var fanOutService = new FanOutService(db, projectService, requirementService, ge
 var broadcaster = new SseBroadcaster();
 var questionService = new QuestionService(db, linkService, getAdapter, (evt) => broadcaster.broadcast(evt));
 var notifier = new Notifier();
-var settingsService = new SettingsService(db);
 var notificationService = new NotificationService(db, settingsService, notifier);
 var reactor = new TaskReactor(db, requirementService, linkService, (evt) => broadcaster.broadcast(evt));
-var mergeGate = new MergeGateService(db, projectService, requirementService, reactor, { getAdapter });
+var mergeGate = new MergeGateService(db, projectService, requirementService, reactor, {
+  getAdapter,
+  releaseWorktree: (taskId) => localEngine.releaseWorktree(taskId)
+});
 reactor.setHooks({ onRequirementInReview: (id) => mergeGate.autoStart(id) });
 mergeGate.resetInterrupted();
 var vcsSyncService = new VcsSyncService(
@@ -52992,9 +54285,9 @@ var watcher = new EngineWatcher(
 var outboxScanner = new OutboxScanner(projectService, ticketService, questionService);
 var retrySweeper = new RetrySweeper(db, fanOutService, ticketService, linkService, { throttle: engineThrottle });
 var TICK_MS = Number(process.env.WATCH_INTERVAL_MS) || 5e3;
-var yamlPath = path17.join(WORKSPACE_DIR, "projects.yaml");
-if (fs12.existsSync(yamlPath)) {
-  const yamlContent = fs12.readFileSync(yamlPath, "utf-8");
+var yamlPath = path20.join(WORKSPACE_DIR, "projects.yaml");
+if (fs16.existsSync(yamlPath)) {
+  const yamlContent = fs16.readFileSync(yamlPath, "utf-8");
   projectService.seedFromYaml(yamlContent);
 }
 var app = createApp({
@@ -53016,22 +54309,33 @@ var app = createApp({
   questionService,
   settingsService,
   notificationService,
+  localEngine,
   demoMode: process.env.DEMO_MODE === "1",
   agentToken: process.env.AGENT_TOKEN || void 0,
   webhookSecret: process.env.GITHUB_WEBHOOK_SECRET || void 0
 });
 var server = app.listen(PORT, HOST, () => {
   console.log(`\u{1F680} SP Kickstack DevFlow Bridge running at http://${HOST}:${PORT}`);
+  void localEngine.recoverOnStartup().then(() => localEngine.nudge());
   startScheduler(
     [
       ["watcher", () => watcher.scanOnce()],
       ["retry", () => retrySweeper.sweepOnce()],
       ["outbox", () => outboxScanner.scanOnce()],
-      ["notify", () => notificationService.dispatchPending()]
+      ["notify", () => notificationService.dispatchPending()],
+      ["local-engine", () => localEngine.tick()]
     ],
     TICK_MS
   );
 });
+var exiting = false;
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.on(signal, () => {
+    if (exiting) return;
+    exiting = true;
+    void localEngine.shutdown().finally(() => process.exit(0));
+  });
+}
 export {
   app,
   server

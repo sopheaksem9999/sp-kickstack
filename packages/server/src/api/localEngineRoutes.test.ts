@@ -29,6 +29,16 @@ describe('Local AI CLI engine routes', () => {
     expect(refused.body.error).toContain('maxParallel');
   });
 
+  it('reads and saves the AI QA settings, refusing bad values with the field name', async () => {
+    const h = makeE2E();
+    const app = appFor(h);
+    expect((await testRequest(app, 'GET', '/api/settings/ai-qa')).body).toMatchObject({ runAutomatically: true, timeLimitMinutes: 30, maxFindings: 30 });
+    expect(await testRequest(app, 'PUT', '/api/settings/ai-qa', { body: { maxFindings: 12 } })).toMatchObject({ status: 200, body: { maxFindings: 12 } });
+    const refused = await testRequest(app, 'PUT', '/api/settings/ai-qa', { body: { timeLimitMinutes: 1 } });
+    expect(refused.status).toBe(400);
+    expect(refused.body.error).toContain('timeLimitMinutes');
+  });
+
   it('reports live status, or 503 when the server runs no local engine', async () => {
     const h = makeE2E();
     expect((await testRequest(appFor(h), 'GET', '/api/local-engine/status')).body).toMatchObject({ enabled: true, cli: 'claude-cli', counts: { running: 0 } });

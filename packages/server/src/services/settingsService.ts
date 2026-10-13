@@ -6,6 +6,9 @@ import {
   AiCliSettingsSchema,
   IdeSettings,
   IdeSettingsSchema,
+  AiQaSettings,
+  AiQaSettingsSchema,
+  UpdateAiQaSettingsInputSchema,
   LocalEngineSettings,
   LocalEngineSettingsSchema,
   UpdateLocalEngineSettingsInputSchema,
@@ -168,6 +171,31 @@ export class SettingsService {
       .run(JSON.stringify(updated));
     return updated;
   }
+  public getAiQaSettings(): AiQaSettings {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'ai_qa_settings'").get() as { value: string } | undefined;
+    if (row) {
+      try {
+        return AiQaSettingsSchema.parse(JSON.parse(row.value));
+      } catch {
+        // Fallback to defaults
+      }
+    }
+    return AiQaSettingsSchema.parse({});
+  }
+
+  /** Partial update; unknown fields and out-of-range values are refused (400 through the API). */
+  public updateAiQaSettings(updates: unknown): AiQaSettings {
+    const patch = UpdateAiQaSettingsInputSchema.parse(updates ?? {});
+    const updated = AiQaSettingsSchema.parse({ ...this.getAiQaSettings(), ...patch });
+    this.db
+      .prepare(`
+        INSERT INTO settings (key, value) VALUES ('ai_qa_settings', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `)
+      .run(JSON.stringify(updated));
+    return updated;
+  }
+
 
   public getNotificationSettings(): NotificationSettings {
     const row = this.db.prepare("SELECT value FROM settings WHERE key = 'notification_settings'").get() as { value: string } | undefined;

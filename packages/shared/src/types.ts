@@ -27,7 +27,7 @@ export type EngineType = 'stoneforge' | 'clinekanban' | 'manual' | 'local';
 
 export type DoneMeans = 'merged' | 'pr_opened';
 
-export type TaskRole = 'goal' | 'ticket' | 'waiting' | 'question';
+export type TaskRole = 'goal' | 'ticket' | 'waiting' | 'question' | 'qa';
 
 export type LinkState = 'waiting' | 'ready' | 'released' | 'error' | 'cancelled';
 
@@ -134,6 +134,8 @@ export interface Project {
   done_means: DoneMeans;
   high_risk_paths: string[];
   test_command?: string | null;
+  build_command?: string | null;
+  lint_command?: string | null;
   enabled: boolean;
   engine_status: 'ok' | 'down' | 'unknown';
   created_at: string;
@@ -217,6 +219,10 @@ export interface BridgeTask {
   /** Model / effort pinned for this task by Retry or Request changes (null = inherit). */
   model_override?: string | null;
   effort_override?: ReasoningEffort | null;
+  /** role 'qa': the agent's verdict from `xticket qa-result` (1 passed, 0 found problems, null none yet). */
+  qa_passed?: number | null;
+  /** role 'qa': the agent's summary, or "Finished without a result". */
+  qa_summary?: string | null;
   /** Engine dispatch attempts so far. The retry sweep adds one for each automatic try; only Retry and Request changes set it back to 1. */
   attempts?: number;
   created_at: string;
@@ -369,6 +375,21 @@ export interface LocalEngineSettings {
   runTimeoutMinutes: number;
   /** Absolute folder for task worktrees; '' = <workspace>/agent-worktrees. */
   worktreeRoot: string;
+}
+
+/** Settings → AI & Local Engines → AI QA. */
+export interface AiQaSettings {
+  /** Start AI QA when the merge gate moves a requirement to QA. */
+  runAutomatically: boolean;
+  /** 'default' = the Local AI CLI engine's CLI. */
+  agentCli: 'default' | AgentCliId;
+  /** null = the engine's model / effort. */
+  model: string | null;
+  effort: ReasoningEffort | null;
+  /** A QA run longer than this is stopped (5-240). */
+  timeLimitMinutes: number;
+  /** Findings saved per QA run at most (1-200). */
+  maxFindings: number;
 }
 
 export interface LocalEngineCliStatus {
@@ -583,6 +604,9 @@ export interface ReviewCommentAttachment {
   type: string;
 }
 
+export type ReviewCommentSource = 'person' | 'ai-qa';
+export type QaSeverity = 'blocker' | 'major' | 'minor';
+
 export interface ReviewComment {
   id: number;
   req_id: string;
@@ -592,12 +616,38 @@ export interface ReviewComment {
   line: number | null;
   body: string;
   state: ReviewCommentState;
+  /** Who wrote it: a person, or the AI QA agent (with a severity). */
+  source: ReviewCommentSource;
+  severity: QaSeverity | null;
   /** Review round it was sent in. */
   round: number | null;
   created_at: string;
   updated_at: string;
   sent_at: string | null;
   attachments: ReviewCommentAttachment[];
+}
+
+/** One repository's AI QA run, for the requirement header. */
+export interface QaRunView {
+  /** The QA task (its log opens in the task log drawer). */
+  task: BridgeTask;
+  project: string;
+  status: NormStatus;
+  passed: boolean | null;
+  summary: string | null;
+  error: string | null;
+  findings: number;
+}
+
+/** The requirement header's AI QA status: the latest QA round. */
+export interface RequirementQa {
+  reqId: string;
+  /** 0 = AI QA never ran for this requirement. */
+  round: number;
+  running: boolean;
+  runs: QaRunView[];
+  skipped: Array<{ project: string; reason: string }>;
+  findings: { total: number; blocker: number; major: number; minor: number };
 }
 
 /** "Improve with AI": the rewritten comment, and the file/line it names (null = keep the reviewer's). */

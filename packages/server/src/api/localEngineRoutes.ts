@@ -26,6 +26,20 @@ export function registerLocalEngineRoutes(app: Express, deps: LocalEngineRouteDe
     }
   });
 
+  app.get('/api/settings/ai-qa', (_req, res) => {
+    res.json(deps.settingsService.getAiQaSettings());
+  });
+
+  app.put('/api/settings/ai-qa', (req, res, next) => {
+    try {
+      const updated = deps.settingsService.updateAiQaSettings(req.body);
+      deps.broadcaster.broadcast({ type: 'settings_updated', payload: { ai_qa: updated } });
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  });
+
   app.get('/api/local-engine/status', (_req, res) => {
     if (!deps.localEngine) return res.status(503).json({ error: 'The Local AI CLI engine is not running in this server' });
     res.json(deps.localEngine.status());

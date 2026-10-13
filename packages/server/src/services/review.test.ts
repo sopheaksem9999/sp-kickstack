@@ -92,7 +92,7 @@ describe('Review comments', () => {
   it('adds, edits, resolves, reopens and deletes comments', async () => {
     const { req, goals } = await h.inReview();
     const c = h.review.addComment(req.id, { task_id: goals[0].id, body: 'Rename this', file_path: 'src/a.ts', line: 3 });
-    expect(c).toMatchObject({ req_id: req.id, task_id: goals[0].id, project: 'backend', file_path: 'src/a.ts', line: 3, body: 'Rename this', state: 'open', round: null });
+    expect(c).toMatchObject({ req_id: req.id, task_id: goals[0].id, project: 'backend', file_path: 'src/a.ts', line: 3, body: 'Rename this', state: 'open', round: null, source: 'person', severity: null });
 
     expect(h.review.updateComment(c.id, { body: 'Rename it to fetchUser' }).body).toBe('Rename it to fetchUser');
     expect(h.review.updateComment(c.id, { state: 'resolved' }).state).toBe('resolved');

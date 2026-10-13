@@ -49,7 +49,7 @@ describe('Database migrations', () => {
   it('brings a fresh database to the latest version with the new columns', () => {
     const db = initDatabase(':memory:');
     expect(db.pragma('user_version', { simple: true })).toBe(LATEST_VERSION);
-    expect(LATEST_VERSION).toBe(10);
+    expect(LATEST_VERSION).toBe(11);
     expect(columns(db, 'neuron_rules')).toEqual(
       expect.arrayContaining(['id', 'workspace_id', 'project', 'category', 'rule_text', 'confidence_score', 'trigger_count', 'is_active', 'source_run_id'])
     );
@@ -62,6 +62,14 @@ describe('Database migrations', () => {
     expect(columns(db, 'workspaces')).toEqual(expect.arrayContaining(['agent_model', 'agent_effort']));
     expect(columns(db, 'requirements')).toEqual(expect.arrayContaining(['agent_model', 'agent_effort']));
     expect(columns(db, 'bridge_tasks')).toEqual(expect.arrayContaining(['model', 'effort', 'model_override', 'effort_override']));
+    db.close();
+  });
+
+  it('adds the AI QA columns (migration 11)', () => {
+    const db = initDatabase(':memory:');
+    expect(columns(db, 'review_comments')).toEqual(expect.arrayContaining(['source', 'severity', 'qa_task_id']));
+    expect(columns(db, 'bridge_tasks')).toEqual(expect.arrayContaining(['qa_passed', 'qa_summary']));
+    expect(columns(db, 'projects')).toEqual(expect.arrayContaining(['build_command', 'lint_command']));
     db.close();
   });
 

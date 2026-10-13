@@ -242,6 +242,19 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 11,
+    name: 'AI QA: finding source and severity on review comments, QA results on tasks, build and lint commands',
+    up: (db) => {
+      addColumn(db, 'review_comments', 'source', "TEXT NOT NULL DEFAULT 'person'");
+      addColumn(db, 'review_comments', 'severity', 'TEXT');
+      addColumn(db, 'review_comments', 'qa_task_id', 'INTEGER');
+      addColumn(db, 'bridge_tasks', 'qa_passed', 'INTEGER');
+      addColumn(db, 'bridge_tasks', 'qa_summary', 'TEXT');
+      addColumn(db, 'projects', 'build_command', 'TEXT');
+      addColumn(db, 'projects', 'lint_command', 'TEXT');
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

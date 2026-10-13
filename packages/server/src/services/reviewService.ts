@@ -40,13 +40,14 @@ export type ReviewEmit = (event: { type: string; req_id?: string; task_id?: numb
 type CommentRow = {
   id: number; req_id: string; task_id: number; project: string; file_path: string | null; line: number | null;
   body_md: string; state: ReviewComment['state']; round: number | null; created_at: string; updated_at: string; sent_at: string | null;
+  source: ReviewComment['source'] | null; severity: ReviewComment['severity'];
 };
 
 function toComment(row: CommentRow, attachments: ReviewComment['attachments'] = []): ReviewComment {
   return {
     id: row.id, req_id: row.req_id, task_id: row.task_id, project: row.project, file_path: row.file_path, line: row.line,
     body: row.body_md, state: row.state, round: row.round, created_at: row.created_at, updated_at: row.updated_at, sent_at: row.sent_at,
-    attachments,
+    source: row.source ?? 'person', severity: row.severity ?? null, attachments,
   };
 }
 

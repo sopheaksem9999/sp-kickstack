@@ -157,6 +157,9 @@ export const ProjectSchema = z.object({
   contract_path: z.string().optional().nullable(),
   /** Shell command run in a fresh worktree of the merge result before the base branch advances. */
   test_command: z.string().max(2000).optional().nullable(),
+  /** AI QA: shell commands the QA agent runs in its checkout (optional). */
+  build_command: z.string().max(2000).optional().nullable(),
+  lint_command: z.string().max(2000).optional().nullable(),
   done_means: DoneMeansSchema.default('merged'),
   high_risk_paths: z.array(z.string()).default([]),
   enabled: z.boolean().default(true),
@@ -462,6 +465,35 @@ export const LocalEngineSettingsSchema = z.object({
 });
 
 export const UpdateLocalEngineSettingsInputSchema = LocalEngineSettingsSchema.partial().strict();
+
+/** Settings → AI & Local Engines → AI QA. */
+export const AiQaSettingsSchema = z.object({
+  runAutomatically: z.boolean().default(true),
+  agentCli: z.enum(['default', 'claude-cli', 'agy-cli', 'codex-cli']).default('default'),
+  model: AgentModelSchema.nullable().default(null),
+  effort: ReasoningEffortSchema.nullable().default(null),
+  timeLimitMinutes: z.number().int().min(5).max(240).default(30),
+  maxFindings: z.number().int().min(1).max(200).default(30),
+});
+
+export const UpdateAiQaSettingsInputSchema = AiQaSettingsSchema.partial().strict();
+
+export const QaSeveritySchema = z.enum(['blocker', 'major', 'minor']);
+
+/** `xticket comment` from an AI QA run; project / engineTaskId (the run) are read separately. */
+export const QaFindingInputSchema = z.object({
+  severity: QaSeveritySchema,
+  title: z.string().trim().min(3).max(200).regex(/^[^\r\n]*$/, 'must be one line'),
+  body: z.string().max(8000).default(''),
+  file_path: z.string().trim().min(1).max(300).optional(),
+  line: z.number().int().positive().optional(),
+});
+
+/** `xticket qa-result`: the QA run's verdict. */
+export const QaResultInputSchema = z.object({
+  passed: z.boolean(),
+  summary: z.string().trim().min(1).max(4000),
+});
 
 export const DraftRequirementResultSchema = z.object({
   title: z.string(),

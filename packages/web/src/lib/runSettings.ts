@@ -99,6 +99,17 @@ export function createTargetBranch(value: string, settingsLoaded: boolean): stri
   return value.trim() || (settingsLoaded ? null : undefined);
 }
 
+/**
+ * The base branch an empty target means for the chosen repositories: each one's own Base Branch,
+ * else Settings → Default Implementation Base Branch; one name when they agree.
+ */
+export function baseBranchLabel(projects: Array<{ name: string; base_branch?: string | null }>, chosen: string[], defaultBase: string): string {
+  const bases = chosen.map((name) => ({ name, base: projects.find((p) => p.name === name)?.base_branch || defaultBase }));
+  const names = [...new Set(bases.map((b) => b.base))];
+  if (names.length <= 1) return names[0] ?? defaultBase;
+  return bases.map((b) => `${b.name}: ${b.base}`).join(', ');
+}
+
 /** The picker row for "no target branch": each repository's base branch. */
 export const BASE_BRANCH_OPTION: BranchOption = { name: '', detail: "each repository's base branch", create: false };
 

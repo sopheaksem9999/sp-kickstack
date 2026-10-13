@@ -10,11 +10,13 @@ interface BranchPickerProps {
   onChange: (value: string) => void;
   entries: BranchEntry[];
   chosenProjects: string[];
+  /** What the base branch is for the chosen repositories, e.g. "develop" (baseBranchLabel). */
+  baseLabel?: string;
   disabled?: boolean;
 }
 
 /** Target branch: an existing branch of the chosen repositories, a new name, or each repository's base branch. */
-export function BranchPicker({ value, onChange, entries, chosenProjects, disabled }: BranchPickerProps) {
+export function BranchPicker({ value, onChange, entries, chosenProjects, baseLabel, disabled }: BranchPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
@@ -54,7 +56,8 @@ export function BranchPicker({ value, onChange, entries, chosenProjects, disable
           className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-[#2e303d] text-xs text-slate-700 dark:text-slate-200 disabled:opacity-60"
         >
           <GitBranch className="w-3.5 h-3.5 text-[#7b68ee]" />
-          <span className="font-mono">{value || 'Base branch of each repository'}</span>
+          <span className="font-mono">{value || baseLabel || 'Base branch of each repository'}</span>
+          {!value && baseLabel && <span className="text-slate-400">(base branch)</span>}
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-80 p-2 space-y-2">
@@ -86,7 +89,7 @@ export function BranchPicker({ value, onChange, entries, chosenProjects, disable
             >
               <span className="flex items-center gap-1.5 font-mono text-slate-800 dark:text-slate-200">
                 {row.create ? <Plus className="w-3 h-3" /> : value === row.name ? <Check className="w-3 h-3 text-[#7b68ee]" /> : <span className="w-3" />}
-                {row.create ? `Create ${row.name}` : row.name || 'Base branch'}
+                {row.create ? `Create ${row.name}` : row.name || (baseLabel ? `Base branch: ${baseLabel}` : 'Base branch')}
               </span>
               <span className="block pl-[18px] text-[10px] text-slate-500">{row.detail}</span>
             </button>

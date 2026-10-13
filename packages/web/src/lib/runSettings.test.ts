@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { BridgeTask, Requirement } from '@sp-kickstack/shared';
 import {
-  branchOptions, branchPatternExamples, createTargetBranch, draftFromRequirement, fanOutResult, modelSuggestionsFor, optionalBranchProblem, pickerRows,
+  baseBranchLabel, branchOptions, branchPatternExamples, createTargetBranch, draftFromRequirement, fanOutResult, modelSuggestionsFor, optionalBranchProblem, pickerRows,
   runSettingsPatch, runSettingsProblem, runSettingsSummary, shouldResetDraft, statusChangeStartsFanOut,
 } from './runSettings.js';
 
@@ -117,5 +117,17 @@ describe('run settings dialog, picker and status changes', () => {
     expect(createTargetBranch(' release/1.3 ', true)).toBe('release/1.3');
     expect(createTargetBranch('', true)).toBeNull();
     expect(createTargetBranch('', false)).toBeUndefined();
+  });
+
+  it("names the base branch an empty target means: each repository's own, else the Settings default", () => {
+    const projects = [
+      { name: 'backend', base_branch: 'develop' },
+      { name: 'frontend', base_branch: '' },
+      { name: 'web', base_branch: 'main' },
+    ];
+    expect(baseBranchLabel(projects, ['backend', 'frontend'], 'develop')).toBe('develop');
+    expect(baseBranchLabel(projects, ['frontend'], 'trunk')).toBe('trunk');
+    expect(baseBranchLabel(projects, ['backend', 'web'], 'develop')).toBe('backend: develop, web: main');
+    expect(baseBranchLabel(projects, [], 'develop')).toBe('develop');
   });
 });

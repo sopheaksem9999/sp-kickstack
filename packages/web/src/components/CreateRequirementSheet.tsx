@@ -67,7 +67,7 @@ import {
 import { fetchSettings, sendAiChatMessage } from '../lib/api.js';
 import { fetchBranches } from '../lib/runSettingsApi.js';
 import { BranchPicker } from './BranchPicker.js';
-import { createTargetBranch } from '../lib/runSettings.js';
+import { baseBranchLabel, createTargetBranch } from '../lib/runSettings.js';
 import { Sheet, SheetContent } from './ui/sheet.js';
 
 export function CreateRequirementSheet() {
@@ -792,6 +792,7 @@ What feature, solution, or refactoring would you like to design today? You can s
                 onChange={setTargetBranch}
                 entries={branches}
                 chosenProjects={selectedProjects}
+                baseLabel={baseBranchLabel(projects, selectedProjects, settingsData?.branch_merge.default_base_branch || 'develop')}
                 disabled={selectedProjects.length === 0}
               />
               <p className="text-[11px] text-slate-500 dark:text-slate-400">

@@ -6,10 +6,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn } from './ui/sheet.js';
 import { AgentProfileFields } from './AgentProfilePicker.js';
 import { BranchPicker } from './BranchPicker.js';
-import { fetchProjects, startRequirementFanOut, updateRequirementProjects } from '../lib/api.js';
+import { fetchProjects, fetchSettings, startRequirementFanOut, updateRequirementProjects } from '../lib/api.js';
 import { fetchBranches, saveRunSettings } from '../lib/runSettingsApi.js';
 import {
-  CLI_CHOICES, draftFromRequirement, fanOutResult, modelSuggestionsFor, runSettingsPatch, runSettingsProblem, shouldResetDraft, type RunSettingsDraft,
+  CLI_CHOICES, baseBranchLabel, draftFromRequirement, fanOutResult, modelSuggestionsFor, runSettingsPatch, runSettingsProblem, shouldResetDraft, type RunSettingsDraft,
 } from '../lib/runSettings.js';
 
 export interface RunSettingsDialogProps {
@@ -68,6 +68,8 @@ export function RunSettingsDialog({ req, mode, open, onOpenChange }: RunSettings
     queryFn: () => fetchBranches(draft.affected_projects),
     enabled: open && draft.affected_projects.length > 0,
   });
+  const { data: settingsData } = useQuery({ queryKey: ['settings'], queryFn: fetchSettings, enabled: open });
+  const baseLabel = baseBranchLabel(projects, draft.affected_projects, settingsData?.branch_merge.default_base_branch || 'develop');
   const enabledProjects = projects.filter((p) => p.enabled);
   const started = req.status !== 'draft' && req.status !== 'ready';
   const problem = runSettingsProblem(draft, mode);
@@ -154,7 +156,14 @@ export function RunSettingsDialog({ req, mode, open, onOpenChange }: RunSettings
 
           <section className="space-y-1.5">
             <h3 className={heading}>Target branch</h3>
-            <BranchPicker value={draft.target_branch} onChange={(v) => set({ target_branch: v })} entries={branches} chosenProjects={draft.affected_projects} disabled={started} />
+            <BranchPicker
+              value={draft.target_branch}
+              onChange={(v) => set({ target_branch: v })}
+              entries={branches}
+              chosenProjects={draft.affected_projects}
+              baseLabel={baseLabel}
+              disabled={started}
+            />
             <p className="text-slate-500">
               {started
                 ? 'Tasks were already branched from it, so it cannot change after fan-out.'

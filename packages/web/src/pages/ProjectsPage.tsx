@@ -8,6 +8,7 @@ import {
   deleteProject,
   openProjectFolder,
   createProject,
+  fetchIdeStatus,
 } from '../lib/api.js';
 import { Project, EngineType } from '@sp-kickstack/shared';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
@@ -37,7 +38,11 @@ import { Portal } from '../components/ui/portal.js';
 import { WorkspaceSelect } from '../components/WorkspaceSelect.js';
 import { ProjectGitReviewView } from '../components/ProjectGitReviewView.js';
 import { ProjectTerminalView } from '../components/ProjectTerminalView.js';
+import { ProjectEmbeddedIdeView } from '../components/ProjectEmbeddedIdeView.js';
 import { OpenInIdeButton } from '../components/OpenInIdeButton.js';
+
+export const VALID_PROJECT_TABS = ['review', 'terminal', 'editor'] as const;
+export type ProjectSplitTab = (typeof VALID_PROJECT_TABS)[number];
 
 export function ProjectsPage() {
   const queryClient = useQueryClient();
@@ -85,12 +90,19 @@ export function ProjectsPage() {
   // Copy feedback state
   const [copiedPath, setCopiedPath] = useState(false);
 
-  // Tab & Project URL synchronization (e.g. ?project=backend&tab=terminal)
+  const { data: ideStatus } = useQuery({
+    queryKey: ['ide-status'],
+    queryFn: fetchIdeStatus,
+    refetchInterval: 5000,
+  });
+
+  // Tab & Project URL synchronization (e.g. ?project=backend&tab=editor)
   const urlProject = searchParams.get('project');
-  const urlTab = searchParams.get('tab') as 'review' | 'terminal' | null;
+  const rawTab = searchParams.get('tab') as ProjectSplitTab | null;
+  const urlTab = rawTab && VALID_PROJECT_TABS.includes(rawTab) ? rawTab : null;
 
   const viewMode: 'grid' | 'split' = urlProject || urlTab ? 'split' : 'grid';
-  const splitRightTab: 'review' | 'terminal' = urlTab === 'terminal' ? 'terminal' : 'review';
+  const splitRightTab: ProjectSplitTab = urlTab || 'review';
   const activeSplitProjectName = urlProject || (projects[0]?.name ?? '');
   const [splitSearch, setSplitSearch] = useState('');
 
@@ -397,7 +409,7 @@ export function ProjectsPage() {
 
                   {/* Right Container View Tabs & Actions */}
                   <div className="flex items-center gap-2 shrink-0">
-                    {/* Tab Selector: Git Review vs Terminal with Active URL sync */}
+                    {/* Tab Selector: Git Review vs Terminal vs Code Editor with Active URL sync */}
                     <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-bold text-slate-400">
                       <button
                         type="button"
@@ -424,6 +436,22 @@ export function ProjectsPage() {
                       >
                         <Terminal className="w-3.5 h-3.5" />
                         <span>Terminal</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSearchParams({ project: activeSplitProject.name, tab: 'editor' })}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-all ${
+                          splitRightTab === 'editor'
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'hover:text-white'
+                        }`}
+                        title="In-App VS Code Editor"
+                      >
+                        <Laptop className="w-3.5 h-3.5" />
+                        <span>Code Editor</span>
+                        {ideStatus?.running && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        )}
                       </button>
                     </div>
 
@@ -463,16 +491,25 @@ export function ProjectsPage() {
                       baseBranch={activeSplitProject.base_branch || 'develop'}
                       targetBranch="HEAD"
                       onToggleTerminal={() => setSearchParams({ project: activeSplitProject.name, tab: 'terminal' })}
+                      onOpenEditor={() => setSearchParams({ project: activeSplitProject.name, tab: 'editor' })}
                       isTerminalOpen={false}
                       className="h-full flex-1"
                     />
-                  ) : (
+                  ) : splitRightTab === 'terminal' ? (
                     <ProjectTerminalView
                       projectName={activeSplitProject.name}
                       project={activeSplitProject}
                       repoPath={activeSplitProject.repo_path}
                       showHeader={true}
                       className="h-full flex-1 min-h-0 border-none rounded-none"
+                    />
+                  ) : (
+                    <ProjectEmbeddedIdeView
+                      projectName={activeSplitProject.name}
+                      repoPath={activeSplitProject.repo_path}
+                      baseBranch={activeSplitProject.base_branch || 'develop'}
+                      targetBranch="main"
+                      className="h-full flex-1 min-h-0"
                     />
                   )}
                 </div>
@@ -666,9 +703,9 @@ export function ProjectsPage() {
                       </div>
                     </div>
 
-                    {/* Card Footer Actions: Only Git Review, Terminal, and Test */}
+                    {/* Card Footer Actions: Git Review, Terminal, Code Editor, and Test */}
                     <div className="pt-2.5 border-t border-slate-100 dark:border-[#2d2d2d] flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <button
                           onClick={() => {
                             setSearchParams({ project: proj.name, tab: 'review' });
@@ -689,6 +726,20 @@ export function ProjectsPage() {
                         >
                           <Terminal className="w-3.5 h-3.5" />
                           <span>Terminal</span>
+                        </button>
+                        <span className="text-slate-300 dark:text-slate-600">|</span>
+                        <button
+                          onClick={() => {
+                            setSearchParams({ project: proj.name, tab: 'editor' });
+                          }}
+                          className="flex items-center gap-1 text-xs font-semibold text-purple-600 dark:text-purple-400 hover:underline"
+                          title="Open In-App Code Editor"
+                        >
+                          <Laptop className="w-3.5 h-3.5" />
+                          <span>Code Editor</span>
+                          {ideStatus?.running && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          )}
                         </button>
                       </div>
 
@@ -873,6 +924,22 @@ export function ProjectsPage() {
                 >
                   <Terminal className="w-3.5 h-3.5" />
                   <span>Terminal</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const proj = selectedProject;
+                    setSelectedProject(null);
+                    setSearchParams({ project: proj.name, tab: 'editor' });
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 shadow-sm transition"
+                  title="Open in-app embedded VS Code editor"
+                >
+                  <Laptop className="w-3.5 h-3.5" />
+                  <span>Code Editor</span>
+                  {ideStatus?.running && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  )}
                 </button>
                 <OpenInIdeButton
                   projectName={selectedProject.name}

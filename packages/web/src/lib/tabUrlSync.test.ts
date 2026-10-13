@@ -4,6 +4,7 @@ import { VALID_VIEW_TABS, RequirementViewTab } from '../pages/RequirementDetailP
 import { VALID_TABS as VALID_SETTINGS_TABS, SettingsTab } from '../pages/SettingsPage';
 import { VALID_ATTACHMENTS_TABS, AttachmentsTab } from '../pages/AttachmentsPage';
 import { VALID_QUEUE_TABS, QueueTab } from '../pages/QueuePage';
+import { VALID_PROJECT_TABS, ProjectSplitTab } from '../pages/ProjectsPage';
 
 describe('Web UI Tab URL Synchronization Governance', () => {
   describe('RequirementsPage Scrum tabs', () => {
@@ -94,6 +95,27 @@ describe('Web UI Tab URL Synchronization Governance', () => {
       expect(resolveTab('running')).toBe('running');
       expect(resolveTab('failed')).toBe('failed');
       expect(resolveTab('done')).toBe('done');
+    });
+  });
+
+  describe('ProjectsPage container tabs', () => {
+    it('accepts review, terminal, and editor tabs', () => {
+      expect(VALID_PROJECT_TABS).toEqual(['review', 'terminal', 'editor']);
+      for (const tab of ['review', 'terminal', 'editor'] as ProjectSplitTab[]) {
+        expect(VALID_PROJECT_TABS.includes(tab)).toBe(true);
+      }
+    });
+
+    it('falls back to "review" for missing or invalid tab parameters', () => {
+      const resolveTab = (param: string | null): ProjectSplitTab =>
+        param && VALID_PROJECT_TABS.includes(param as ProjectSplitTab) ? (param as ProjectSplitTab) : 'review';
+
+      expect(resolveTab(null)).toBe('review');
+      expect(resolveTab('')).toBe('review');
+      expect(resolveTab('invalid')).toBe('review');
+      expect(resolveTab('review')).toBe('review');
+      expect(resolveTab('terminal')).toBe('terminal');
+      expect(resolveTab('editor')).toBe('editor');
     });
   });
 

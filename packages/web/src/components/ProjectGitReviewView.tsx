@@ -29,6 +29,7 @@ import {
   ChevronDown,
   Terminal,
   AlertTriangle,
+  Code2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -42,6 +43,7 @@ export interface ProjectGitReviewViewProps {
   isMerging?: boolean;
   onToggleTerminal?: () => void;
   isTerminalOpen?: boolean;
+  onOpenEditor?: () => void;
   className?: string;
 }
 
@@ -58,6 +60,7 @@ export const ProjectGitReviewView: React.FC<ProjectGitReviewViewProps> = ({
   isMerging = false,
   onToggleTerminal,
   isTerminalOpen = false,
+  onOpenEditor,
   className = '',
 }) => {
   const [activeTab, setActiveTab] = useState<ReviewViewTab>('changes');
@@ -302,6 +305,19 @@ export const ProjectGitReviewView: React.FC<ProjectGitReviewViewProps> = ({
             >
               <Terminal className="w-3.5 h-3.5 text-emerald-400" />
               <span>{isTerminalOpen ? 'Hide Terminal' : 'Open Terminal'}</span>
+            </button>
+          )}
+
+          {/* Switch to Code Editor */}
+          {onOpenEditor && (
+            <button
+              type="button"
+              onClick={onOpenEditor}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition border bg-slate-900 text-slate-300 hover:text-white border-slate-700 hover:bg-slate-800"
+              title="Open In-App Code Editor"
+            >
+              <Code2 className="w-3.5 h-3.5 text-blue-400" />
+              <span>Code Editor</span>
             </button>
           )}
 

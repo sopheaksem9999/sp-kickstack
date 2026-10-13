@@ -66,7 +66,7 @@ All screens with tabs in SP-Kickstack must implement this pattern:
 | **Requirements List** | `/requirements` | `?tab=` | `sprint`, `backlog`, `all` | `sprint` |
 | **Requirement Detail** | `/requirements/:id` | `?tab=` | `board`, `dag` | `board` |
 | **AI Architect Chat** | `/chat` | `?tab=` (or `?session=`) | `<sessionId>` (chat session id) | First / active session |
-| **Repositories** | `/projects` | `?tab=` | `review`, `terminal` | `review` |
+| **Repositories** | `/projects` | `?tab=` | `review`, `terminal`, `editor` | `review` |
 | **Git Review** | `/projects/:name/review` | `?tab=` | `changes`, `tree`, `commits` | `changes` |
 | **Attachments Hub** | `/attachments` | `?tab=` | `ticket`, `shared` | `ticket` |
 | **Agent Queue** | `/queue` | `?tab=` | `all`, `queued`, `running`, `failed`, `done` | `all` |

@@ -37358,9 +37358,595 @@ var HttpError = class extends Error {
 var badRequest = (message) => new HttpError(400, message);
 var conflict = (message) => new HttpError(409, message);
 
-// packages/server/src/services/requirementService.ts
+// packages/server/src/services/settingsService.ts
+var SettingsService = class {
+  constructor(db2) {
+    this.db = db2;
+  }
+  getBranchMergeSettings() {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'branch_merge_settings'").get();
+    if (row && row.value) {
+      try {
+        const parsed = JSON.parse(row.value);
+        return BranchMergeSettingsSchema.parse(parsed);
+      } catch (err) {
+      }
+    }
+    return BranchMergeSettingsSchema.parse({});
+  }
+  updateBranchMergeSettings(updates) {
+    const current = this.getBranchMergeSettings();
+    const updated = BranchMergeSettingsSchema.parse({
+      ...current,
+      ...updates
+    });
+    this.db.prepare(`
+      INSERT INTO settings (key, value)
+      VALUES ('branch_merge_settings', ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run(JSON.stringify(updated));
+    return updated;
+  }
+  getAiCliSettings() {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'ai_cli_settings'").get();
+    if (row && row.value) {
+      try {
+        const parsed = JSON.parse(row.value);
+        return AiCliSettingsSchema.parse(parsed);
+      } catch (err) {
+      }
+    }
+    return AiCliSettingsSchema.parse({});
+  }
+  updateAiCliSettings(updates) {
+    const current = this.getAiCliSettings();
+    const updated = AiCliSettingsSchema.parse({
+      ...current,
+      ...updates,
+      claude: { ...current.claude, ...updates.claude },
+      agy: { ...current.agy, ...updates.agy },
+      codex: updates.codex ? { ...current.codex || {}, ...updates.codex } : current.codex,
+      ollama: { ...current.ollama, ...updates.ollama },
+      heuristic: updates.heuristic ? { ...current.heuristic || {}, ...updates.heuristic } : current.heuristic
+    });
+    this.db.prepare(`
+      INSERT INTO settings (key, value)
+      VALUES ('ai_cli_settings', ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run(JSON.stringify(updated));
+    return updated;
+  }
+  getIdeSettings() {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'ide_settings'").get();
+    if (row && row.value) {
+      try {
+        const parsed = JSON.parse(row.value);
+        return IdeSettingsSchema.parse(parsed);
+      } catch {
+      }
+    }
+    return IdeSettingsSchema.parse({});
+  }
+  updateIdeSettings(updates) {
+    const current = this.getIdeSettings();
+    const updated = IdeSettingsSchema.parse({
+      ...current,
+      ...updates
+    });
+    this.db.prepare(`
+      INSERT INTO settings (key, value)
+      VALUES ('ide_settings', ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run(JSON.stringify(updated));
+    return updated;
+  }
+  getLocalEngineSettings() {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'local_engine_settings'").get();
+    if (row) {
+      try {
+        return LocalEngineSettingsSchema.parse(JSON.parse(row.value));
+      } catch {
+      }
+    }
+    return LocalEngineSettingsSchema.parse({});
+  }
+  /** Partial update; unknown fields and out-of-range values are refused (400 through the API). */
+  updateLocalEngineSettings(updates) {
+    const patch = UpdateLocalEngineSettingsInputSchema.parse(updates ?? {});
+    const updated = LocalEngineSettingsSchema.parse({ ...this.getLocalEngineSettings(), ...patch });
+    this.db.prepare(`
+        INSERT INTO settings (key, value) VALUES ('local_engine_settings', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run(JSON.stringify(updated));
+    return updated;
+  }
+  getNotificationSettings() {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'notification_settings'").get();
+    let stored = {};
+    if (row) {
+      try {
+        const parsed = JSON.parse(row.value);
+        stored = parsed && typeof parsed === "object" ? parsed : {};
+      } catch {
+        stored = {};
+      }
+    }
+    return {
+      channels: Array.isArray(stored.channels) ? stored.channels : [],
+      events: { ...DEFAULT_NOTIFY_EVENTS, ...stored.events ?? {} },
+      app_url: typeof stored.app_url === "string" ? stored.app_url : ""
+    };
+  }
+  updateNotificationSettings(updates) {
+    const parsed = UpdateNotificationSettingsInputSchema.parse(updates ?? {});
+    const current = this.getNotificationSettings();
+    const next = {
+      channels: parsed.channels ?? current.channels,
+      events: { ...current.events, ...parsed.events ?? {} },
+      app_url: parsed.app_url ?? current.app_url
+    };
+    this.db.prepare(`
+        INSERT INTO settings (key, value) VALUES ('notification_settings', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run(JSON.stringify(next));
+    return this.getNotificationSettings();
+  }
+};
+
+// packages/server/src/lib/gitRepo.ts
+import { execFile, execFileSync, spawn } from "node:child_process";
 import fs2 from "node:fs";
+var BRIDGE_GIT_ENV = {
+  GIT_AUTHOR_NAME: "SP-Kickstack Bridge",
+  GIT_AUTHOR_EMAIL: "bridge@sp-kickstack.local",
+  GIT_COMMITTER_NAME: "SP-Kickstack Bridge",
+  GIT_COMMITTER_EMAIL: "bridge@sp-kickstack.local"
+};
+var DEFAULT_GIT_TIMEOUT_MS = 12e4;
+function gitEnv(extra = {}) {
+  return {
+    ...process.env,
+    GIT_TERMINAL_PROMPT: "0",
+    ...process.env.GIT_SSH_COMMAND || process.env.GIT_SSH ? {} : { GIT_SSH_COMMAND: "ssh -o BatchMode=yes" },
+    ...extra
+  };
+}
+function runGit(repo, args, env = {}) {
+  try {
+    return execFileSync("git", args, {
+      cwd: repo,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      env: gitEnv(env),
+      maxBuffer: 32 * 1024 * 1024
+    });
+  } catch (err) {
+    const detail = (err?.stderr?.toString?.() || err?.message || String(err)).trim();
+    throw new Error(`git ${args[0]} failed: ${detail}`);
+  }
+}
+function runGitAsync(repo, args, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_GIT_TIMEOUT_MS;
+  return new Promise((resolve, reject) => {
+    execFile(
+      "git",
+      args,
+      { cwd: repo, encoding: "utf8", env: gitEnv(opts.env), timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        if (!err) return resolve(stdout);
+        const detail = err.killed ? `timed out after ${timeoutMs} ms` : (stderr || err.message || String(err)).trim();
+        reject(new Error(`git ${args[0]} failed: ${detail}`));
+      }
+    );
+  });
+}
+function tryGit(repo, args) {
+  try {
+    return runGit(repo, args);
+  } catch {
+    return null;
+  }
+}
+function isGitWorkTree(dir) {
+  if (!dir || !fs2.existsSync(dir)) return false;
+  const top = tryGit(dir, ["rev-parse", "--show-toplevel"])?.trim();
+  return Boolean(top) && fs2.realpathSync(top) === fs2.realpathSync(dir);
+}
+function resolveCommit(repo, ref) {
+  return tryGit(repo, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`])?.trim() || null;
+}
+function hasRemote(repo, remote = "origin") {
+  return (tryGit(repo, ["remote"]) || "").split("\n").some((r) => r.trim() === remote);
+}
+async function fetchBranch(repo, branch, remote = "origin", timeoutMs) {
+  await runGitAsync(repo, ["fetch", "--quiet", remote, `+refs/heads/${branch}:refs/remotes/${remote}/${branch}`], {
+    timeoutMs
+  });
+}
+function createBranch(repo, name, startSha) {
+  if (resolveCommit(repo, `refs/heads/${name}`)) return;
+  runGit(repo, ["branch", "--", name, startSha]);
+}
+function branchUnder(repo, name) {
+  const ref = tryGit(repo, ["for-each-ref", "--count=1", "--format=%(refname)", `refs/heads/${name}/`, `refs/remotes/origin/${name}/`])?.trim();
+  return ref ? ref.replace(/^refs\/(heads|remotes\/origin)\//, "") : null;
+}
+function branchAbove(repo, name) {
+  const parts = name.split("/");
+  for (let i2 = 1; i2 < parts.length; i2++) {
+    const prefix = parts.slice(0, i2).join("/");
+    if (resolveCommit(repo, `refs/heads/${prefix}`) || resolveCommit(repo, `refs/remotes/origin/${prefix}`)) return prefix;
+  }
+  return null;
+}
+async function addDetachedWorktree(repo, dir, sha, timeoutMs) {
+  await runGitAsync(repo, ["worktree", "add", "--quiet", "--detach", dir, sha], { timeoutMs });
+}
+function removeWorktree(repo, dir) {
+  tryGit(repo, ["worktree", "remove", "--force", dir]);
+  fs2.rmSync(dir, { recursive: true, force: true });
+  tryGit(repo, ["worktree", "prune"]);
+}
+function commitsAhead(repo, from, to) {
+  return Number(runGit(repo, ["rev-list", "--count", `${from}..${to}`]).trim()) || 0;
+}
+async function mergeNoFf(worktree, branch, message, timeoutMs) {
+  try {
+    await runGitAsync(worktree, ["merge", "--no-ff", "--no-edit", "-m", message, branch], {
+      env: BRIDGE_GIT_ENV,
+      timeoutMs
+    });
+    return { ok: true, sha: runGit(worktree, ["rev-parse", "HEAD"]).trim() };
+  } catch (err) {
+    const conflicts = (tryGit(worktree, ["diff", "--name-only", "--diff-filter=U"]) || "").split("\n").map((f) => f.trim()).filter(Boolean);
+    tryGit(worktree, ["merge", "--abort"]);
+    return { ok: false, conflicts, error: err?.message || String(err) };
+  }
+}
+async function pushCommit(repo, sha, branch, remote = "origin", timeoutMs) {
+  await runGitAsync(repo, ["push", "--quiet", remote, `${sha}:refs/heads/${branch}`], { timeoutMs });
+}
+function isAncestor(repo, ancestor, descendant) {
+  return tryGit(repo, ["merge-base", "--is-ancestor", ancestor, descendant]) !== null;
+}
+function checkoutPathOf(repo, branch) {
+  const listing = tryGit(repo, ["worktree", "list", "--porcelain"]) || "";
+  let current = null;
+  for (const line of listing.split("\n")) {
+    if (line.startsWith("worktree ")) current = line.slice("worktree ".length);
+    if (line === `branch refs/heads/${branch}`) return current;
+  }
+  return null;
+}
+function isClean(dir) {
+  return (tryGit(dir, ["status", "--porcelain"]) ?? "unknown").trim() === "";
+}
+function fastForwardBranch(repo, branch, sha) {
+  const current = resolveCommit(repo, `refs/heads/${branch}`);
+  if (current === sha) return { advanced: true };
+  if (current && !isAncestor(repo, current, sha)) {
+    return { advanced: false, warning: `local ${branch} has commits that are not in the merge; it was left unchanged` };
+  }
+  const checkout = checkoutPathOf(repo, branch);
+  if (!checkout) {
+    runGit(repo, ["update-ref", `refs/heads/${branch}`, sha, ...current ? [current] : []]);
+    return { advanced: true };
+  }
+  if (!isClean(checkout)) {
+    return {
+      advanced: false,
+      warning: `${checkout} has uncommitted changes on ${branch}; run "git merge --ff-only ${sha.slice(0, 7)}" there when ready`
+    };
+  }
+  runGit(checkout, ["merge", "--ff-only", "--quiet", sha]);
+  return { advanced: true };
+}
+function deleteMergedBranch(repo, branch, mergedInto) {
+  const tip = resolveCommit(repo, `refs/heads/${branch}`);
+  if (!tip || !isAncestor(repo, tip, mergedInto) || checkoutPathOf(repo, branch)) return false;
+  return tryGit(repo, ["update-ref", "-d", `refs/heads/${branch}`, tip]) !== null;
+}
+function runShell(cwd, command, timeoutMs) {
+  return new Promise((resolve) => {
+    const child = spawn("/bin/sh", ["-c", command], { cwd, env: process.env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+    const MAX_OUTPUT = 16 * 1024 * 1024;
+    let output = "";
+    let timedOut = false;
+    const collect = (chunk) => {
+      if (output.length < MAX_OUTPUT) output += chunk.toString();
+    };
+    child.stdout.on("data", collect);
+    child.stderr.on("data", collect);
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try {
+        process.kill(-child.pid, "SIGKILL");
+      } catch {
+        child.kill("SIGKILL");
+      }
+    }, timeoutMs);
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      resolve({ code: 1, output: `${output}${err.message}` });
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (timedOut) return resolve({ code: 124, output: `${output}
+[timed out after ${timeoutMs} ms]` });
+      resolve({ code: code === 0 ? 0 : code || 1, output });
+    });
+  });
+}
+function listBranchNames(repo) {
+  const refs = (prefix) => (tryGit(repo, ["for-each-ref", "--format=%(refname)", prefix]) || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  const local = refs("refs/heads").map((r) => r.slice("refs/heads/".length));
+  const remote = refs("refs/remotes/origin").map((r) => r.slice("refs/remotes/origin/".length)).filter((n2) => n2 !== "HEAD");
+  return [.../* @__PURE__ */ new Set([...local, ...remote])];
+}
+
+// packages/server/src/lib/promptSafety.ts
+var TAG = /<\s*(\/?)\s*untrusted_input/gi;
+var BRIDGE_MARK = /<!--\s*bridge:/gi;
+function neutralizeTags(text) {
+  return text.replace(TAG, "&lt;$1untrusted_input").replace(BRIDGE_MARK, "&lt;!-- bridge:");
+}
+function wrapUntrusted(name, text) {
+  return `<untrusted_input name="${name}">
+${neutralizeTags(text)}
+</untrusted_input>`;
+}
+function oneLine(title, maxLength = 250) {
+  const flat = neutralizeTags(title).replace(/\s+/g, " ").trim();
+  return flat.length > maxLength ? `${flat.slice(0, maxLength - 1)}\u2026` : flat;
+}
+function neutralize(text) {
+  return neutralizeTags(text);
+}
+
+// packages/server/src/localEngine/worktrees.ts
+import fs3 from "node:fs";
+import os from "node:os";
 import path2 from "node:path";
+var real = (p) => {
+  try {
+    return fs3.realpathSync(p);
+  } catch {
+    return path2.resolve(p);
+  }
+};
+function insideGitWorkTree(dir) {
+  let probe = path2.resolve(dir);
+  while (!fs3.existsSync(probe) && path2.dirname(probe) !== probe) probe = path2.dirname(probe);
+  try {
+    return runGit(probe, ["rev-parse", "--is-inside-work-tree"]).trim() === "true";
+  } catch {
+    return false;
+  }
+}
+function defaultWorktreeRoot(workspaceDir, homeDir = os.homedir()) {
+  return insideGitWorkTree(workspaceDir) ? path2.join(homeDir, ".sp-kickstack", "agent-worktrees") : path2.join(workspaceDir, "agent-worktrees");
+}
+function folderName(project) {
+  return project.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+|-+$/g, "") || "project";
+}
+var AgentWorktrees = class {
+  constructor(root) {
+    this.root = root;
+  }
+  pathFor(project, taskId) {
+    return path2.join(this.root(), folderName(project), `task-${taskId}`);
+  }
+  /** Create the worktree for `branch` at `dir`, or reuse it. Throws an Error a person can act on. */
+  ensure(repo, branch, dir) {
+    if (!isGitWorkTree(repo)) throw new Error(`Local AI CLI needs a git repository: ${repo} is not the top of a git work tree`);
+    runGit(repo, ["worktree", "prune"]);
+    const checkout = checkoutPathOf(repo, branch);
+    if (checkout && real(checkout) === real(dir)) return;
+    if (checkout) throw new Error(`Branch ${branch} is checked out in ${checkout}; switch that checkout to another branch, then Retry`);
+    if (fs3.existsSync(dir)) {
+      if (fs3.readdirSync(dir).length > 0) throw new Error(`Folder ${dir} already exists and is not the worktree of ${branch}; move it away, then Retry`);
+      fs3.rmdirSync(dir);
+    }
+    fs3.mkdirSync(path2.dirname(dir), { recursive: true });
+    runGit(repo, ["worktree", "add", "--quiet", dir, branch]);
+  }
+  /** Remove a worktree that has no uncommitted changes. */
+  removeIfClean(repo, dir) {
+    if (!fs3.existsSync(dir)) {
+      try {
+        runGit(repo, ["worktree", "prune"]);
+      } catch {
+      }
+      return "missing";
+    }
+    if (!isClean(dir)) return "dirty";
+    runGit(repo, ["worktree", "remove", dir]);
+    return "removed";
+  }
+  /** Paths with uncommitted changes, as `git status --porcelain` lists them. */
+  uncommitted(dir) {
+    try {
+      return runGit(dir, ["status", "--porcelain"]).split("\n").map((l) => l.slice(3).trim()).filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+  /** The repository's shared .git folder (absolute). */
+  gitCommonDir(repo) {
+    return path2.resolve(repo, runGit(repo, ["rev-parse", "--git-common-dir"]).trim());
+  }
+};
+
+// packages/server/src/services/branchService.ts
+var pendingPushes = /* @__PURE__ */ new Set();
+var PUSH_TIMEOUT_MS = 12e4;
+function branchInstructions(branch, base, policy) {
+  const when = policy === "auto_merge" ? "automatically, once all work for the requirement is in review and the tests pass" : "after a person reviews it and moves the requirement to QA";
+  return `## Your branch
+- Work and commit only on \`${branch}\` (created from \`${base}\` by the bridge).
+- Do not commit to \`${base}\` and do not merge anything into it; the bridge merges your branch into \`${base}\` ${when}.
+- If you are told about a merge conflict, rebase your branch onto \`${base}\` and resolve it there.`;
+}
+function targetBranchProblem(db2, target, repos) {
+  const owner = db2.prepare("SELECT id FROM bridge_tasks WHERE branch = ? LIMIT 1").get(target);
+  if (owner) return `${target} is the branch of task #${owner.id}; choose another target branch`;
+  for (const { name, repo_path } of repos) {
+    if (!isGitWorkTree(repo_path)) continue;
+    const clash = branchUnder(repo_path, target) ?? branchAbove(repo_path, target);
+    if (clash) return `Git cannot create ${target} in ${name}: the branch ${clash} exists there; choose another target branch`;
+  }
+  return null;
+}
+var BranchService = class {
+  constructor(db2, projectService2, settingsService2) {
+    this.db = db2;
+    this.projectService = projectService2;
+    this.settings = settingsService2 ?? new SettingsService(db2);
+  }
+  settings;
+  /** The repository's own base branch: its setting, else Settings → default base branch. */
+  projectBaseBranch(project) {
+    return project.base_branch || this.settings.getBranchMergeSettings().default_base_branch || "develop";
+  }
+  /** Where a requirement's tasks start and merge: its target branch, else the repository's base branch. */
+  baseBranchFor(project, reqId) {
+    const row = reqId ? this.db.prepare("SELECT target_branch FROM requirements WHERE id = ?").get(reqId) : void 0;
+    return row?.target_branch || this.projectBaseBranch(project);
+  }
+  /**
+   * A free branch name for a task: the Settings pattern (default {req}), plus -ticket-{task} for
+   * tickets, plus -2, -3… when the name is taken locally, on origin, by another task, by an open
+   * requirement's target branch or by a branch under it. A branch the name would live under cannot be
+   * avoided by a suffix, so that is refused.
+   */
+  nameTaskBranch(project, reqId, taskId, role) {
+    const pattern = this.settings.getBranchMergeSettings().task_branch_pattern || DEFAULT_TASK_BRANCH_PATTERN;
+    const stem = renderTaskBranchPattern(pattern, { req: reqId, task: taskId, project: folderName(project.name) }) + (role === "ticket" ? `-ticket-${taskId}` : "");
+    const above = isGitWorkTree(project.repo_path) ? branchAbove(project.repo_path, stem) : null;
+    if (above) {
+      throw conflict(
+        `Git cannot create the task branch ${stem} in ${project.name}: the branch ${above} exists there. Change Settings \u2192 Git & Branch Rules \u2192 Task branch name.`
+      );
+    }
+    for (let n2 = 1; ; n2++) {
+      const name = n2 === 1 ? stem : `${stem}-${n2}`;
+      if (!this.branchTaken(project, name, taskId)) return name;
+    }
+  }
+  branchTaken(project, name, taskId) {
+    const recorded = this.db.prepare("SELECT 1 FROM bridge_tasks WHERE project = ? AND branch = ? AND id <> ? LIMIT 1").get(project.name, name, taskId);
+    if (recorded) return true;
+    const target = this.db.prepare("SELECT 1 FROM requirements WHERE target_branch = ? AND status NOT IN ('done', 'cancelled') LIMIT 1").get(name);
+    if (target) return true;
+    const repo = project.repo_path;
+    if (!isGitWorkTree(repo)) return false;
+    return Boolean(resolveCommit(repo, `refs/heads/${name}`) || resolveCommit(repo, `refs/remotes/origin/${name}`) || branchUnder(repo, name));
+  }
+  /** Branches of the chosen repositories (one workspace) and which repositories have each; task branches excluded. */
+  listBranches(projectNames) {
+    const projects = projectNames.map((name) => {
+      const project = this.projectService.getProject(name);
+      if (!project) throw badRequest(`Unknown repository: ${name}`);
+      return project;
+    });
+    if (new Set(projects.map((p) => p.workspace_id || "default")).size > 1) throw badRequest("Choose repositories of one workspace");
+    const taskBranches = new Set(
+      this.db.prepare("SELECT DISTINCT branch FROM bridge_tasks WHERE branch IS NOT NULL").all().map((r) => r.branch)
+    );
+    const found = /* @__PURE__ */ new Map();
+    for (const project of projects) {
+      if (!this.usesBranches(project)) continue;
+      for (const name of listBranchNames(project.repo_path)) {
+        if (taskBranches.has(name)) continue;
+        if (!found.has(name)) found.set(name, /* @__PURE__ */ new Set());
+        found.get(name).add(project.name);
+      }
+    }
+    return [...found.entries()].map(([name, where]) => ({ name, projects: [...where].sort() })).sort((a2, b) => b.projects.length - a2.projects.length || a2.name.localeCompare(b.name)).slice(0, 200);
+  }
+  /** Only projects whose repo_path is the root of a git work tree get task branches. */
+  usesBranches(project) {
+    return isGitWorkTree(project.repo_path);
+  }
+  /** Requirement override, else the workspace default. */
+  policyFor(reqId) {
+    const row = this.db.prepare("SELECT merge_policy FROM requirements WHERE id = ?").get(reqId);
+    return normalizeMergePolicy(row?.merge_policy || this.settings.getBranchMergeSettings().merge_policy);
+  }
+  /**
+   * Make sure the task's branch exists: created from the requirement's target branch (created first,
+   * from the repository's base, when this repository lacks it) or from the base branch. Idempotent.
+   * Returns null for tasks without a branch (non-git).
+   */
+  ensureTaskBranch(taskId) {
+    const task = this.db.prepare("SELECT * FROM bridge_tasks WHERE id = ?").get(taskId);
+    if (!task?.branch) return null;
+    const project = this.projectService.getProject(task.project);
+    if (!project) throw new Error(`Project ${task.project} not found`);
+    const repo = project.repo_path;
+    const existing = resolveCommit(repo, `refs/heads/${task.branch}`);
+    if (existing) {
+      const baseSha = task.base_sha || existing;
+      if (!task.base_sha) this.recordBase(taskId, baseSha);
+      return { branch: task.branch, baseSha };
+    }
+    const created = [];
+    const base = this.baseBranchFor(project, task.req_id);
+    let start = resolveCommit(repo, `refs/heads/${base}`) ?? resolveCommit(repo, `refs/remotes/origin/${base}`);
+    const projectBase = this.projectBaseBranch(project);
+    if (!start && base !== projectBase) {
+      const from = resolveCommit(repo, `refs/heads/${projectBase}`) ?? resolveCommit(repo, `refs/remotes/origin/${projectBase}`);
+      if (!from) throw new Error(`Base branch "${projectBase}" was not found in ${repo}`);
+      createBranch(repo, base, from);
+      created.push(base);
+      this.recordEvent("target_branch_created", task.req_id, task.id, { reqId: task.req_id, project: project.name, branch: base, from: projectBase });
+      start = from;
+    }
+    if (!start) {
+      throw new Error(`Base branch "${base}" was not found in ${repo}`);
+    }
+    createBranch(repo, task.branch, start);
+    created.push(task.branch);
+    this.recordBase(taskId, start);
+    this.afterCreate(repo, created, taskId);
+    return { branch: task.branch, baseSha: start };
+  }
+  afterCreate(repo, branches, taskId) {
+    for (const branch of branches) this.queuePush(repo, branch, taskId);
+  }
+  /** Push a task's branch after it got new commits (a Local AI CLI run). */
+  pushTaskBranch(taskId) {
+    const task = this.db.prepare("SELECT * FROM bridge_tasks WHERE id = ?").get(taskId);
+    const project = task?.branch ? this.projectService.getProject(task.project) : void 0;
+    if (task?.branch && project) this.queuePush(project.repo_path, task.branch, taskId);
+  }
+  /** Push `branch` to origin when Settings → push branches is on and origin exists. Never forced, never blocking. */
+  queuePush(repo, branch, taskId) {
+    if (!this.settings.getBranchMergeSettings().push_branches || !hasRemote(repo)) return;
+    const sha = resolveCommit(repo, `refs/heads/${branch}`);
+    if (!sha) return;
+    const push = pushCommit(repo, sha, branch, "origin", PUSH_TIMEOUT_MS).then(() => this.log(taskId, `\u2191 Pushed ${branch} to origin`)).catch((err) => this.log(taskId, `Could not push ${branch} to origin: ${oneLine(err?.message || String(err), 300)}`)).finally(() => {
+      pendingPushes.delete(push);
+    });
+    pendingPushes.add(push);
+  }
+  log(taskId, message) {
+    try {
+      this.db.prepare("INSERT INTO task_logs (task_id, stream, message, created_at) VALUES (?, 'system', ?, ?)").run(taskId, message, (/* @__PURE__ */ new Date()).toISOString());
+    } catch {
+    }
+  }
+  recordEvent(type, reqId, taskId, payload) {
+    this.db.prepare("INSERT INTO events (req_id, task_id, type, payload, read, at) VALUES (?, ?, ?, ?, 0, ?)").run(reqId, taskId, type, JSON.stringify(payload), (/* @__PURE__ */ new Date()).toISOString());
+  }
+  recordBase(taskId, sha) {
+    this.db.prepare("UPDATE bridge_tasks SET base_sha = ? WHERE id = ? AND base_sha IS NULL").run(sha, taskId);
+  }
+};
+
+// packages/server/src/services/requirementService.ts
+import fs4 from "node:fs";
+import path3 from "node:path";
 var OPERATOR_OWNED_STATUSES = ["draft", "ready", "qa", "done", "cancelled"];
 var TERMINAL_TASK_STATUSES = ["done", "cancelled", "failed"];
 var RequirementService = class {
@@ -37418,11 +38004,11 @@ ${input.attachments.map(
     const status = input.status || "draft";
     const revision = 1;
     const attachments = input.attachments || [];
-    const reqDir = path2.join(this.workspaceDir, "requirements");
+    const reqDir = path3.join(this.workspaceDir, "requirements");
     const insertTx = this.db.transaction(() => {
       const seq = this.getNextSeq();
       const id2 = this.formatId(seq);
-      const filePath2 = path2.join(reqDir, `${id2}.md`);
+      const filePath2 = path3.join(reqDir, `${id2}.md`);
       const bodyMd2 = this.renderMarkdown(id2, scoped, status, revision);
       this.db.prepare(`
         INSERT INTO requirements (id, workspace_id, session_id, seq, title, status, priority, body_md, file_path, revision, attachments, merge_policy, sprint_id, created_at, updated_at)
@@ -37453,12 +38039,12 @@ ${input.attachments.map(
       return { id: id2, filePath: filePath2, bodyMd: bodyMd2 };
     });
     const { id, filePath, bodyMd } = insertTx.immediate();
-    if (!fs2.existsSync(reqDir)) {
-      fs2.mkdirSync(reqDir, { recursive: true });
+    if (!fs4.existsSync(reqDir)) {
+      fs4.mkdirSync(reqDir, { recursive: true });
     }
     const tmpPath = `${filePath}.${process.pid}.tmp`;
-    fs2.writeFileSync(tmpPath, bodyMd, "utf-8");
-    fs2.renameSync(tmpPath, filePath);
+    fs4.writeFileSync(tmpPath, bodyMd, "utf-8");
+    fs4.renameSync(tmpPath, filePath);
     return this.getRequirement(id);
   }
   parseAttachments(raw) {
@@ -37531,10 +38117,10 @@ ${input.attachments.map(
       }
       if (input.body_md !== void 0) {
         this.db.prepare("UPDATE requirements SET body_md = ?, updated_at = datetime('now') WHERE id = ?").run(input.body_md, id);
-        const reqDir = path2.join(this.workspaceDir, ".bridge", "requirements");
-        const filePath = path2.join(reqDir, `${id}.md`);
+        const reqDir = path3.join(this.workspaceDir, ".bridge", "requirements");
+        const filePath = path3.join(reqDir, `${id}.md`);
         try {
-          fs2.writeFileSync(filePath, input.body_md, "utf-8");
+          fs4.writeFileSync(filePath, input.body_md, "utf-8");
         } catch {
         }
       }
@@ -37637,8 +38223,10 @@ ${input.attachments.map(
         );
       }
       if (target) {
-        const owner = this.db.prepare("SELECT id FROM bridge_tasks WHERE branch = ? LIMIT 1").get(target);
-        if (owner) throw badRequest(`${target} is the branch of task #${owner.id}; choose another target branch`);
+        const names = req.affected_projects;
+        const repos = names.length ? this.db.prepare(`SELECT name, repo_path FROM projects WHERE name IN (${names.map(() => "?").join(", ")})`).all(...names) : [];
+        const problem = targetBranchProblem(this.db, target, repos);
+        if (problem) throw badRequest(problem);
       }
     }
     const keep = (next, value) => next === void 0 ? value ?? null : next;
@@ -37902,25 +38490,6 @@ var SprintService = class {
   }
 };
 
-// packages/server/src/lib/promptSafety.ts
-var TAG = /<\s*(\/?)\s*untrusted_input/gi;
-var BRIDGE_MARK = /<!--\s*bridge:/gi;
-function neutralizeTags(text) {
-  return text.replace(TAG, "&lt;$1untrusted_input").replace(BRIDGE_MARK, "&lt;!-- bridge:");
-}
-function wrapUntrusted(name, text) {
-  return `<untrusted_input name="${name}">
-${neutralizeTags(text)}
-</untrusted_input>`;
-}
-function oneLine(title, maxLength = 250) {
-  const flat = neutralizeTags(title).replace(/\s+/g, " ").trim();
-  return flat.length > maxLength ? `${flat.slice(0, maxLength - 1)}\u2026` : flat;
-}
-function neutralize(text) {
-  return neutralizeTags(text);
-}
-
 // packages/server/src/services/orphans.ts
 async function cancelOrphan(db2, adapter, taskId, engineTaskId) {
   const row = db2.prepare("SELECT status FROM bridge_tasks WHERE id = ?").get(taskId);
@@ -37941,545 +38510,6 @@ var MAX_DISPATCH_ATTEMPTS = 5;
 function shouldNotifyFailure(attempt) {
   return attempt <= 1 || attempt >= MAX_DISPATCH_ATTEMPTS;
 }
-
-// packages/server/src/services/settingsService.ts
-var SettingsService = class {
-  constructor(db2) {
-    this.db = db2;
-  }
-  getBranchMergeSettings() {
-    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'branch_merge_settings'").get();
-    if (row && row.value) {
-      try {
-        const parsed = JSON.parse(row.value);
-        return BranchMergeSettingsSchema.parse(parsed);
-      } catch (err) {
-      }
-    }
-    return BranchMergeSettingsSchema.parse({});
-  }
-  updateBranchMergeSettings(updates) {
-    const current = this.getBranchMergeSettings();
-    const updated = BranchMergeSettingsSchema.parse({
-      ...current,
-      ...updates
-    });
-    this.db.prepare(`
-      INSERT INTO settings (key, value)
-      VALUES ('branch_merge_settings', ?)
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value
-    `).run(JSON.stringify(updated));
-    return updated;
-  }
-  getAiCliSettings() {
-    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'ai_cli_settings'").get();
-    if (row && row.value) {
-      try {
-        const parsed = JSON.parse(row.value);
-        return AiCliSettingsSchema.parse(parsed);
-      } catch (err) {
-      }
-    }
-    return AiCliSettingsSchema.parse({});
-  }
-  updateAiCliSettings(updates) {
-    const current = this.getAiCliSettings();
-    const updated = AiCliSettingsSchema.parse({
-      ...current,
-      ...updates,
-      claude: { ...current.claude, ...updates.claude },
-      agy: { ...current.agy, ...updates.agy },
-      codex: updates.codex ? { ...current.codex || {}, ...updates.codex } : current.codex,
-      ollama: { ...current.ollama, ...updates.ollama },
-      heuristic: updates.heuristic ? { ...current.heuristic || {}, ...updates.heuristic } : current.heuristic
-    });
-    this.db.prepare(`
-      INSERT INTO settings (key, value)
-      VALUES ('ai_cli_settings', ?)
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value
-    `).run(JSON.stringify(updated));
-    return updated;
-  }
-  getIdeSettings() {
-    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'ide_settings'").get();
-    if (row && row.value) {
-      try {
-        const parsed = JSON.parse(row.value);
-        return IdeSettingsSchema.parse(parsed);
-      } catch {
-      }
-    }
-    return IdeSettingsSchema.parse({});
-  }
-  updateIdeSettings(updates) {
-    const current = this.getIdeSettings();
-    const updated = IdeSettingsSchema.parse({
-      ...current,
-      ...updates
-    });
-    this.db.prepare(`
-      INSERT INTO settings (key, value)
-      VALUES ('ide_settings', ?)
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value
-    `).run(JSON.stringify(updated));
-    return updated;
-  }
-  getLocalEngineSettings() {
-    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'local_engine_settings'").get();
-    if (row) {
-      try {
-        return LocalEngineSettingsSchema.parse(JSON.parse(row.value));
-      } catch {
-      }
-    }
-    return LocalEngineSettingsSchema.parse({});
-  }
-  /** Partial update; unknown fields and out-of-range values are refused (400 through the API). */
-  updateLocalEngineSettings(updates) {
-    const patch = UpdateLocalEngineSettingsInputSchema.parse(updates ?? {});
-    const updated = LocalEngineSettingsSchema.parse({ ...this.getLocalEngineSettings(), ...patch });
-    this.db.prepare(`
-        INSERT INTO settings (key, value) VALUES ('local_engine_settings', ?)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value
-      `).run(JSON.stringify(updated));
-    return updated;
-  }
-  getNotificationSettings() {
-    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'notification_settings'").get();
-    let stored = {};
-    if (row) {
-      try {
-        const parsed = JSON.parse(row.value);
-        stored = parsed && typeof parsed === "object" ? parsed : {};
-      } catch {
-        stored = {};
-      }
-    }
-    return {
-      channels: Array.isArray(stored.channels) ? stored.channels : [],
-      events: { ...DEFAULT_NOTIFY_EVENTS, ...stored.events ?? {} },
-      app_url: typeof stored.app_url === "string" ? stored.app_url : ""
-    };
-  }
-  updateNotificationSettings(updates) {
-    const parsed = UpdateNotificationSettingsInputSchema.parse(updates ?? {});
-    const current = this.getNotificationSettings();
-    const next = {
-      channels: parsed.channels ?? current.channels,
-      events: { ...current.events, ...parsed.events ?? {} },
-      app_url: parsed.app_url ?? current.app_url
-    };
-    this.db.prepare(`
-        INSERT INTO settings (key, value) VALUES ('notification_settings', ?)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value
-      `).run(JSON.stringify(next));
-    return this.getNotificationSettings();
-  }
-};
-
-// packages/server/src/lib/gitRepo.ts
-import { execFile, execFileSync, spawn } from "node:child_process";
-import fs3 from "node:fs";
-var BRIDGE_GIT_ENV = {
-  GIT_AUTHOR_NAME: "SP-Kickstack Bridge",
-  GIT_AUTHOR_EMAIL: "bridge@sp-kickstack.local",
-  GIT_COMMITTER_NAME: "SP-Kickstack Bridge",
-  GIT_COMMITTER_EMAIL: "bridge@sp-kickstack.local"
-};
-var DEFAULT_GIT_TIMEOUT_MS = 12e4;
-function gitEnv(extra = {}) {
-  return {
-    ...process.env,
-    GIT_TERMINAL_PROMPT: "0",
-    ...process.env.GIT_SSH_COMMAND || process.env.GIT_SSH ? {} : { GIT_SSH_COMMAND: "ssh -o BatchMode=yes" },
-    ...extra
-  };
-}
-function runGit(repo, args, env = {}) {
-  try {
-    return execFileSync("git", args, {
-      cwd: repo,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-      env: gitEnv(env),
-      maxBuffer: 32 * 1024 * 1024
-    });
-  } catch (err) {
-    const detail = (err?.stderr?.toString?.() || err?.message || String(err)).trim();
-    throw new Error(`git ${args[0]} failed: ${detail}`);
-  }
-}
-function runGitAsync(repo, args, opts = {}) {
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_GIT_TIMEOUT_MS;
-  return new Promise((resolve, reject) => {
-    execFile(
-      "git",
-      args,
-      { cwd: repo, encoding: "utf8", env: gitEnv(opts.env), timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 },
-      (err, stdout, stderr) => {
-        if (!err) return resolve(stdout);
-        const detail = err.killed ? `timed out after ${timeoutMs} ms` : (stderr || err.message || String(err)).trim();
-        reject(new Error(`git ${args[0]} failed: ${detail}`));
-      }
-    );
-  });
-}
-function tryGit(repo, args) {
-  try {
-    return runGit(repo, args);
-  } catch {
-    return null;
-  }
-}
-function isGitWorkTree(dir) {
-  if (!dir || !fs3.existsSync(dir)) return false;
-  const top = tryGit(dir, ["rev-parse", "--show-toplevel"])?.trim();
-  return Boolean(top) && fs3.realpathSync(top) === fs3.realpathSync(dir);
-}
-function resolveCommit(repo, ref) {
-  return tryGit(repo, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`])?.trim() || null;
-}
-function hasRemote(repo, remote = "origin") {
-  return (tryGit(repo, ["remote"]) || "").split("\n").some((r) => r.trim() === remote);
-}
-async function fetchBranch(repo, branch, remote = "origin", timeoutMs) {
-  await runGitAsync(repo, ["fetch", "--quiet", remote, `+refs/heads/${branch}:refs/remotes/${remote}/${branch}`], {
-    timeoutMs
-  });
-}
-function createBranch(repo, name, startSha) {
-  if (resolveCommit(repo, `refs/heads/${name}`)) return;
-  runGit(repo, ["branch", "--", name, startSha]);
-}
-function hasBranchesUnder(repo, name) {
-  const refs = tryGit(repo, ["for-each-ref", "--count=1", "--format=%(refname)", `refs/heads/${name}/`, `refs/remotes/origin/${name}/`]);
-  return (refs ?? "").trim() !== "";
-}
-async function addDetachedWorktree(repo, dir, sha, timeoutMs) {
-  await runGitAsync(repo, ["worktree", "add", "--quiet", "--detach", dir, sha], { timeoutMs });
-}
-function removeWorktree(repo, dir) {
-  tryGit(repo, ["worktree", "remove", "--force", dir]);
-  fs3.rmSync(dir, { recursive: true, force: true });
-  tryGit(repo, ["worktree", "prune"]);
-}
-function commitsAhead(repo, from, to) {
-  return Number(runGit(repo, ["rev-list", "--count", `${from}..${to}`]).trim()) || 0;
-}
-async function mergeNoFf(worktree, branch, message, timeoutMs) {
-  try {
-    await runGitAsync(worktree, ["merge", "--no-ff", "--no-edit", "-m", message, branch], {
-      env: BRIDGE_GIT_ENV,
-      timeoutMs
-    });
-    return { ok: true, sha: runGit(worktree, ["rev-parse", "HEAD"]).trim() };
-  } catch (err) {
-    const conflicts = (tryGit(worktree, ["diff", "--name-only", "--diff-filter=U"]) || "").split("\n").map((f) => f.trim()).filter(Boolean);
-    tryGit(worktree, ["merge", "--abort"]);
-    return { ok: false, conflicts, error: err?.message || String(err) };
-  }
-}
-async function pushCommit(repo, sha, branch, remote = "origin", timeoutMs) {
-  await runGitAsync(repo, ["push", "--quiet", remote, `${sha}:refs/heads/${branch}`], { timeoutMs });
-}
-function isAncestor(repo, ancestor, descendant) {
-  return tryGit(repo, ["merge-base", "--is-ancestor", ancestor, descendant]) !== null;
-}
-function checkoutPathOf(repo, branch) {
-  const listing = tryGit(repo, ["worktree", "list", "--porcelain"]) || "";
-  let current = null;
-  for (const line of listing.split("\n")) {
-    if (line.startsWith("worktree ")) current = line.slice("worktree ".length);
-    if (line === `branch refs/heads/${branch}`) return current;
-  }
-  return null;
-}
-function isClean(dir) {
-  return (tryGit(dir, ["status", "--porcelain"]) ?? "unknown").trim() === "";
-}
-function fastForwardBranch(repo, branch, sha) {
-  const current = resolveCommit(repo, `refs/heads/${branch}`);
-  if (current === sha) return { advanced: true };
-  if (current && !isAncestor(repo, current, sha)) {
-    return { advanced: false, warning: `local ${branch} has commits that are not in the merge; it was left unchanged` };
-  }
-  const checkout = checkoutPathOf(repo, branch);
-  if (!checkout) {
-    runGit(repo, ["update-ref", `refs/heads/${branch}`, sha, ...current ? [current] : []]);
-    return { advanced: true };
-  }
-  if (!isClean(checkout)) {
-    return {
-      advanced: false,
-      warning: `${checkout} has uncommitted changes on ${branch}; run "git merge --ff-only ${sha.slice(0, 7)}" there when ready`
-    };
-  }
-  runGit(checkout, ["merge", "--ff-only", "--quiet", sha]);
-  return { advanced: true };
-}
-function deleteMergedBranch(repo, branch, mergedInto) {
-  const tip = resolveCommit(repo, `refs/heads/${branch}`);
-  if (!tip || !isAncestor(repo, tip, mergedInto) || checkoutPathOf(repo, branch)) return false;
-  return tryGit(repo, ["update-ref", "-d", `refs/heads/${branch}`, tip]) !== null;
-}
-function runShell(cwd, command, timeoutMs) {
-  return new Promise((resolve) => {
-    const child = spawn("/bin/sh", ["-c", command], { cwd, env: process.env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
-    const MAX_OUTPUT = 16 * 1024 * 1024;
-    let output = "";
-    let timedOut = false;
-    const collect = (chunk) => {
-      if (output.length < MAX_OUTPUT) output += chunk.toString();
-    };
-    child.stdout.on("data", collect);
-    child.stderr.on("data", collect);
-    const timer = setTimeout(() => {
-      timedOut = true;
-      try {
-        process.kill(-child.pid, "SIGKILL");
-      } catch {
-        child.kill("SIGKILL");
-      }
-    }, timeoutMs);
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      resolve({ code: 1, output: `${output}${err.message}` });
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (timedOut) return resolve({ code: 124, output: `${output}
-[timed out after ${timeoutMs} ms]` });
-      resolve({ code: code === 0 ? 0 : code || 1, output });
-    });
-  });
-}
-function listBranchNames(repo) {
-  const refs = (prefix) => (tryGit(repo, ["for-each-ref", "--format=%(refname)", prefix]) || "").split("\n").map((l) => l.trim()).filter(Boolean);
-  const local = refs("refs/heads").map((r) => r.slice("refs/heads/".length));
-  const remote = refs("refs/remotes/origin").map((r) => r.slice("refs/remotes/origin/".length)).filter((n2) => n2 !== "HEAD");
-  return [.../* @__PURE__ */ new Set([...local, ...remote])];
-}
-
-// packages/server/src/localEngine/worktrees.ts
-import fs4 from "node:fs";
-import os from "node:os";
-import path3 from "node:path";
-var real = (p) => {
-  try {
-    return fs4.realpathSync(p);
-  } catch {
-    return path3.resolve(p);
-  }
-};
-function insideGitWorkTree(dir) {
-  let probe = path3.resolve(dir);
-  while (!fs4.existsSync(probe) && path3.dirname(probe) !== probe) probe = path3.dirname(probe);
-  try {
-    return runGit(probe, ["rev-parse", "--is-inside-work-tree"]).trim() === "true";
-  } catch {
-    return false;
-  }
-}
-function defaultWorktreeRoot(workspaceDir, homeDir = os.homedir()) {
-  return insideGitWorkTree(workspaceDir) ? path3.join(homeDir, ".sp-kickstack", "agent-worktrees") : path3.join(workspaceDir, "agent-worktrees");
-}
-function folderName(project) {
-  return project.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+|-+$/g, "") || "project";
-}
-var AgentWorktrees = class {
-  constructor(root) {
-    this.root = root;
-  }
-  pathFor(project, taskId) {
-    return path3.join(this.root(), folderName(project), `task-${taskId}`);
-  }
-  /** Create the worktree for `branch` at `dir`, or reuse it. Throws an Error a person can act on. */
-  ensure(repo, branch, dir) {
-    if (!isGitWorkTree(repo)) throw new Error(`Local AI CLI needs a git repository: ${repo} is not the top of a git work tree`);
-    runGit(repo, ["worktree", "prune"]);
-    const checkout = checkoutPathOf(repo, branch);
-    if (checkout && real(checkout) === real(dir)) return;
-    if (checkout) throw new Error(`Branch ${branch} is checked out in ${checkout}; switch that checkout to another branch, then Retry`);
-    if (fs4.existsSync(dir)) {
-      if (fs4.readdirSync(dir).length > 0) throw new Error(`Folder ${dir} already exists and is not the worktree of ${branch}; move it away, then Retry`);
-      fs4.rmdirSync(dir);
-    }
-    fs4.mkdirSync(path3.dirname(dir), { recursive: true });
-    runGit(repo, ["worktree", "add", "--quiet", dir, branch]);
-  }
-  /** Remove a worktree that has no uncommitted changes. */
-  removeIfClean(repo, dir) {
-    if (!fs4.existsSync(dir)) {
-      try {
-        runGit(repo, ["worktree", "prune"]);
-      } catch {
-      }
-      return "missing";
-    }
-    if (!isClean(dir)) return "dirty";
-    runGit(repo, ["worktree", "remove", dir]);
-    return "removed";
-  }
-  /** Paths with uncommitted changes, as `git status --porcelain` lists them. */
-  uncommitted(dir) {
-    try {
-      return runGit(dir, ["status", "--porcelain"]).split("\n").map((l) => l.slice(3).trim()).filter(Boolean);
-    } catch {
-      return [];
-    }
-  }
-  /** The repository's shared .git folder (absolute). */
-  gitCommonDir(repo) {
-    return path3.resolve(repo, runGit(repo, ["rev-parse", "--git-common-dir"]).trim());
-  }
-};
-
-// packages/server/src/services/branchService.ts
-var pendingPushes = /* @__PURE__ */ new Set();
-var PUSH_TIMEOUT_MS = 12e4;
-function branchInstructions(branch, base, policy) {
-  const when = policy === "auto_merge" ? "automatically, once all work for the requirement is in review and the tests pass" : "after a person reviews it and moves the requirement to QA";
-  return `## Your branch
-- Work and commit only on \`${branch}\` (created from \`${base}\` by the bridge).
-- Do not commit to \`${base}\` and do not merge anything into it; the bridge merges your branch into \`${base}\` ${when}.
-- If you are told about a merge conflict, rebase your branch onto \`${base}\` and resolve it there.`;
-}
-var BranchService = class {
-  constructor(db2, projectService2, settingsService2) {
-    this.db = db2;
-    this.projectService = projectService2;
-    this.settings = settingsService2 ?? new SettingsService(db2);
-  }
-  settings;
-  /** The repository's own base branch: its setting, else Settings → default base branch. */
-  projectBaseBranch(project) {
-    return project.base_branch || this.settings.getBranchMergeSettings().default_base_branch || "develop";
-  }
-  /** Where a requirement's tasks start and merge: its target branch, else the repository's base branch. */
-  baseBranchFor(project, reqId) {
-    const row = reqId ? this.db.prepare("SELECT target_branch FROM requirements WHERE id = ?").get(reqId) : void 0;
-    return row?.target_branch || this.projectBaseBranch(project);
-  }
-  /**
-   * A free branch name for a task: the Settings pattern (default {req}), plus -ticket-{task} for
-   * tickets, plus -2, -3… when the name is taken locally, on origin, by another task or by a branch under it.
-   */
-  nameTaskBranch(project, reqId, taskId, role) {
-    const pattern = this.settings.getBranchMergeSettings().task_branch_pattern || DEFAULT_TASK_BRANCH_PATTERN;
-    const stem = renderTaskBranchPattern(pattern, { req: reqId, task: taskId, project: folderName(project.name) }) + (role === "ticket" ? `-ticket-${taskId}` : "");
-    for (let n2 = 1; ; n2++) {
-      const name = n2 === 1 ? stem : `${stem}-${n2}`;
-      if (!this.branchTaken(project, name, taskId)) return name;
-    }
-  }
-  branchTaken(project, name, taskId) {
-    const recorded = this.db.prepare("SELECT 1 FROM bridge_tasks WHERE project = ? AND branch = ? AND id <> ? LIMIT 1").get(project.name, name, taskId);
-    if (recorded) return true;
-    const repo = project.repo_path;
-    if (!isGitWorkTree(repo)) return false;
-    return Boolean(resolveCommit(repo, `refs/heads/${name}`) || resolveCommit(repo, `refs/remotes/origin/${name}`) || hasBranchesUnder(repo, name));
-  }
-  /** Branches of the chosen repositories (one workspace) and which repositories have each; task branches excluded. */
-  listBranches(projectNames) {
-    const projects = projectNames.map((name) => {
-      const project = this.projectService.getProject(name);
-      if (!project) throw badRequest(`Unknown repository: ${name}`);
-      return project;
-    });
-    if (new Set(projects.map((p) => p.workspace_id || "default")).size > 1) throw badRequest("Choose repositories of one workspace");
-    const taskBranches = new Set(
-      this.db.prepare("SELECT DISTINCT branch FROM bridge_tasks WHERE branch IS NOT NULL").all().map((r) => r.branch)
-    );
-    const found = /* @__PURE__ */ new Map();
-    for (const project of projects) {
-      if (!this.usesBranches(project)) continue;
-      for (const name of listBranchNames(project.repo_path)) {
-        if (taskBranches.has(name)) continue;
-        if (!found.has(name)) found.set(name, /* @__PURE__ */ new Set());
-        found.get(name).add(project.name);
-      }
-    }
-    return [...found.entries()].map(([name, where]) => ({ name, projects: [...where].sort() })).sort((a2, b) => b.projects.length - a2.projects.length || a2.name.localeCompare(b.name)).slice(0, 200);
-  }
-  /** Only projects whose repo_path is the root of a git work tree get task branches. */
-  usesBranches(project) {
-    return isGitWorkTree(project.repo_path);
-  }
-  /** Requirement override, else the workspace default. */
-  policyFor(reqId) {
-    const row = this.db.prepare("SELECT merge_policy FROM requirements WHERE id = ?").get(reqId);
-    return normalizeMergePolicy(row?.merge_policy || this.settings.getBranchMergeSettings().merge_policy);
-  }
-  /**
-   * Make sure the task's branch exists: created from the requirement's target branch (created first,
-   * from the repository's base, when this repository lacks it) or from the base branch. Idempotent.
-   * Returns null for tasks without a branch (non-git).
-   */
-  ensureTaskBranch(taskId) {
-    const task = this.db.prepare("SELECT * FROM bridge_tasks WHERE id = ?").get(taskId);
-    if (!task?.branch) return null;
-    const project = this.projectService.getProject(task.project);
-    if (!project) throw new Error(`Project ${task.project} not found`);
-    const repo = project.repo_path;
-    const existing = resolveCommit(repo, `refs/heads/${task.branch}`);
-    if (existing) {
-      const baseSha = task.base_sha || existing;
-      if (!task.base_sha) this.recordBase(taskId, baseSha);
-      return { branch: task.branch, baseSha };
-    }
-    const created = [];
-    const base = this.baseBranchFor(project, task.req_id);
-    let start = resolveCommit(repo, `refs/heads/${base}`) ?? resolveCommit(repo, `refs/remotes/origin/${base}`);
-    const projectBase = this.projectBaseBranch(project);
-    if (!start && base !== projectBase) {
-      const from = resolveCommit(repo, `refs/heads/${projectBase}`) ?? resolveCommit(repo, `refs/remotes/origin/${projectBase}`);
-      if (!from) throw new Error(`Base branch "${projectBase}" was not found in ${repo}`);
-      createBranch(repo, base, from);
-      created.push(base);
-      this.recordEvent("target_branch_created", task.req_id, task.id, { reqId: task.req_id, project: project.name, branch: base, from: projectBase });
-      start = from;
-    }
-    if (!start) {
-      throw new Error(`Base branch "${base}" was not found in ${repo}`);
-    }
-    createBranch(repo, task.branch, start);
-    created.push(task.branch);
-    this.recordBase(taskId, start);
-    this.afterCreate(repo, created, taskId);
-    return { branch: task.branch, baseSha: start };
-  }
-  afterCreate(repo, branches, taskId) {
-    for (const branch of branches) this.queuePush(repo, branch, taskId);
-  }
-  /** Push a task's branch after it got new commits (a Local AI CLI run). */
-  pushTaskBranch(taskId) {
-    const task = this.db.prepare("SELECT * FROM bridge_tasks WHERE id = ?").get(taskId);
-    const project = task?.branch ? this.projectService.getProject(task.project) : void 0;
-    if (task?.branch && project) this.queuePush(project.repo_path, task.branch, taskId);
-  }
-  /** Push `branch` to origin when Settings → push branches is on and origin exists. Never forced, never blocking. */
-  queuePush(repo, branch, taskId) {
-    if (!this.settings.getBranchMergeSettings().push_branches || !hasRemote(repo)) return;
-    const sha = resolveCommit(repo, `refs/heads/${branch}`);
-    if (!sha) return;
-    const push = pushCommit(repo, sha, branch, "origin", PUSH_TIMEOUT_MS).then(() => this.log(taskId, `\u2191 Pushed ${branch} to origin`)).catch((err) => this.log(taskId, `Could not push ${branch} to origin: ${oneLine(err?.message || String(err), 300)}`)).finally(() => {
-      pendingPushes.delete(push);
-    });
-    pendingPushes.add(push);
-  }
-  log(taskId, message) {
-    try {
-      this.db.prepare("INSERT INTO task_logs (task_id, stream, message, created_at) VALUES (?, 'system', ?, ?)").run(taskId, message, (/* @__PURE__ */ new Date()).toISOString());
-    } catch {
-    }
-  }
-  recordEvent(type, reqId, taskId, payload) {
-    this.db.prepare("INSERT INTO events (req_id, task_id, type, payload, read, at) VALUES (?, ?, ?, ?, 0, ?)").run(reqId, taskId, type, JSON.stringify(payload), (/* @__PURE__ */ new Date()).toISOString());
-  }
-  recordBase(taskId, sha) {
-    this.db.prepare("UPDATE bridge_tasks SET base_sha = ? WHERE id = ? AND base_sha IS NULL").run(sha, taskId);
-  }
-};
 
 // packages/server/src/adapters/rateLimit.ts
 var DEFAULT_RATE_LIMIT_WAIT_MS = 6e4;
@@ -38663,8 +38693,9 @@ function resolveAgentProfile(db2, taskId) {
       WHERE t.id = ?
     `).get(taskId);
   if (!row) return { model: null, effort: null, cli: null };
+  const workspaceModel = row.req_cli ? null : row.ws_model;
   return {
-    model: row.model_override ?? row.req_model ?? row.ws_model ?? null,
+    model: row.model_override ?? row.req_model ?? workspaceModel ?? null,
     effort: row.effort_override ?? row.req_effort ?? row.ws_effort ?? null,
     cli: row.req_cli ?? null
   };
@@ -38757,6 +38788,8 @@ ${wrapUntrusted("requirement", requirementMd)}
     if (projects.length === 0) {
       throw conflict(`Requirement ${reqId} has no enabled projects to fan out to`);
     }
+    const targetProblem = req.target_branch ? targetBranchProblem(this.db, req.target_branch, projects) : null;
+    if (targetProblem) throw badRequest(targetProblem);
     const toDispatch = [];
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const reserve = this.db.prepare(`
@@ -38919,11 +38952,13 @@ ${wrapUntrusted("requirement", requirementMd)}
 
 // packages/server/src/services/linkService.ts
 var LinkService = class {
-  constructor(db2, projectService2, getAdapter2) {
+  constructor(db2, projectService2, getAdapter2, branches) {
     this.db = db2;
     this.projectService = projectService2;
     this.getAdapter = getAdapter2;
+    this.branches = branches ?? new BranchService(db2, projectService2);
   }
+  branches;
   wouldCreateCycle(taskId, dependsOnId) {
     if (taskId === dependsOnId) return true;
     const row = this.db.prepare(`
@@ -38982,7 +39017,7 @@ ${contractBlock}
       dependencyTask,
       dependencyTask.project,
       targetProject?.contract_path || void 0,
-      targetProject?.base_branch,
+      targetProject ? this.branches.baseBranchFor(targetProject, dependencyTask.req_id) : void 0,
       targetProject?.repo_path
     );
     const releasedLinks = [];

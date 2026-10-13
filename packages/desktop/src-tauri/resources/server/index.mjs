@@ -36792,6 +36792,8 @@ var CreateRequirementInputSchema = external_exports.object({
   priority: PrioritySchema.default("normal"),
   status: RequirementStatusSchema.optional().default("draft"),
   merge_policy: BranchMergePolicySchema.optional(),
+  /** Where the tasks start and merge; empty = each repository's base branch. */
+  target_branch: TargetBranchSchema.nullable().optional(),
   sprint_id: external_exports.string().nullable().optional(),
   attachments: external_exports.array(AttachmentItemSchema).optional().default([]),
   api_hints: external_exports.string().optional(),
@@ -38000,6 +38002,8 @@ ${input.attachments.map(
   }
   createRequirement(input) {
     const scoped = { ...input, affected_projects: this.ownWorkspaceProjects(input.workspace_id || "default", input.affected_projects) };
+    const targetBranch = input.target_branch?.trim() || null;
+    if (targetBranch) this.assertTargetBranch(targetBranch, scoped.affected_projects);
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const status = input.status || "draft";
     const revision = 1;
@@ -38011,8 +38015,8 @@ ${input.attachments.map(
       const filePath2 = path3.join(reqDir, `${id2}.md`);
       const bodyMd2 = this.renderMarkdown(id2, scoped, status, revision);
       this.db.prepare(`
-        INSERT INTO requirements (id, workspace_id, session_id, seq, title, status, priority, body_md, file_path, revision, attachments, merge_policy, sprint_id, created_at, updated_at)
-        VALUES (@id, @workspace_id, @session_id, @seq, @title, @status, @priority, @body_md, @file_path, @revision, @attachments, @merge_policy, @sprint_id, @created_at, @updated_at)
+        INSERT INTO requirements (id, workspace_id, session_id, seq, title, status, priority, body_md, file_path, revision, attachments, merge_policy, target_branch, sprint_id, created_at, updated_at)
+        VALUES (@id, @workspace_id, @session_id, @seq, @title, @status, @priority, @body_md, @file_path, @revision, @attachments, @merge_policy, @target_branch, @sprint_id, @created_at, @updated_at)
       `).run({
         id: id2,
         workspace_id: input.workspace_id || "default",
@@ -38026,6 +38030,7 @@ ${input.attachments.map(
         revision,
         attachments: JSON.stringify(attachments),
         merge_policy: input.merge_policy || null,
+        target_branch: targetBranch,
         sprint_id: input.sprint_id || null,
         created_at: now,
         updated_at: now
@@ -38222,12 +38227,7 @@ ${input.attachments.map(
           `${id} was already fanned out to ${current ?? "each repository's base branch"}; the target branch cannot change (create a new requirement for another branch)`
         );
       }
-      if (target) {
-        const names = req.affected_projects;
-        const repos = names.length ? this.db.prepare(`SELECT name, repo_path FROM projects WHERE name IN (${names.map(() => "?").join(", ")})`).all(...names) : [];
-        const problem = targetBranchProblem(this.db, target, repos);
-        if (problem) throw badRequest(problem);
-      }
+      if (target) this.assertTargetBranch(target, req.affected_projects);
     }
     const keep = (next, value) => next === void 0 ? value ?? null : next;
     this.db.prepare(`
@@ -38243,6 +38243,12 @@ ${input.attachments.map(
       id
     );
     return this.getRequirement(id);
+  }
+  /** 400 when `target` cannot be the target branch of a requirement in these repositories. */
+  assertTargetBranch(target, projectNames) {
+    const repos = projectNames.length ? this.db.prepare(`SELECT name, repo_path FROM projects WHERE name IN (${projectNames.map(() => "?").join(", ")})`).all(...projectNames) : [];
+    const problem = targetBranchProblem(this.db, target, repos);
+    if (problem) throw badRequest(problem);
   }
   updateStatus(id, status) {
     this.db.prepare(`

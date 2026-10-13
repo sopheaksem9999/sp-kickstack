@@ -26,6 +26,12 @@ export function findingsText(f: RequirementQa['findings']): string {
   return `${f.total} finding${f.total === 1 ? '' : 's'}${blockers}`;
 }
 
+/** "3 minor findings", or "2 findings (1 major)" when some are major (no blockers here). */
+function passedFindingsText(f: RequirementQa['findings']): string {
+  const plural = f.total === 1 ? '' : 's';
+  return f.major ? `${f.total} finding${plural} (${f.major} major)` : `${f.total} minor finding${plural}`;
+}
+
 /** The requirement header's AI QA line (latest round), or null before the first QA run. */
 export function qaStatusLine(qa: RequirementQa | null | undefined): { text: string; tone: QaTone } | null {
   if (!qa || qa.round === 0) return null;
@@ -38,6 +44,8 @@ export function qaStatusLine(qa: RequirementQa | null | undefined): { text: stri
     const reason = broken.status === 'cancelled' ? 'stopped' : (broken.error ?? 'unknown error').split('\n')[0];
     return line(`AI QA failed: ${broken.project}: ${reason}${findings ? ` · ${findings}` : ''}`, 'failed');
   }
+  // Every agent said "passed" and nothing is a blocker: the findings are notes, not a failed check.
+  if (findings && qa.findings.blocker === 0 && qa.runs.every((r) => r.passed === true)) return line(`AI QA passed · ${passedFindingsText(qa.findings)}`, 'passed');
   if (findings) return line(`AI QA: ${findings}`, 'findings');
   const notPassed = qa.runs.find((r) => r.passed === false);
   if (notPassed) return line(`AI QA: ${notPassed.project} did not pass${notPassed.summary ? `: ${notPassed.summary}` : ''}`, 'findings');

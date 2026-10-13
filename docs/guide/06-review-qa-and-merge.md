@@ -273,7 +273,8 @@ How the agent runs:
 The requirement header shows the result:
 
 - `AI QA running… (backend ✓, frontend …)` while it runs.
-- `AI QA: 3 findings (1 blocker)` or `AI QA passed` when it is done.
+- `AI QA: 3 findings (1 blocker)`, `AI QA passed`, or `AI QA passed · 3 minor findings` (every run passed and no
+  finding is a blocker) when it is done.
 - `AI QA failed: <reason>` for a run that could not finish.
 - `skipped <project>: not a git repository` for a repository it cannot check.
 

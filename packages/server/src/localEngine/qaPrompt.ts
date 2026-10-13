@@ -81,6 +81,7 @@ export function buildQaPrompt(input: QaPromptInput): string {
     `- One finding per problem; at most ${input.maxFindings} findings, the most important first.`,
     '- Severity: **blocker** (a criterion is not met, tests or the build fail, data loss, security), **major** (a real bug or a likely failure), **minor** (quality, naming, small gaps).',
     '- Do not ask a person questions: report what is unclear as a finding.',
+    "- Report only real problems in this repository: never post a test finding (for example to check that xticket works), and do not report that something belongs to another repository (each repository has its own QA run). Use the qa-result summary for notes.",
     '',
     '## Reporting',
     'Report each finding as soon as you find it:',

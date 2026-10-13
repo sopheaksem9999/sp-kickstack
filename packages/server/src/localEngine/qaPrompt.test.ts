@@ -45,6 +45,8 @@ describe('buildQaPrompt', () => {
     expect(prompt).toContain('xticket qa-result --passed --summary');
     expect(prompt).toContain('xticket qa-result --failed --summary');
     expect(prompt).toContain('Read CLAUDE.md and AGENTS.md');
+    expect(prompt).toContain('Report only real problems in this repository: never post a test finding (for example to check that xticket works)');
+    expect(prompt).toContain('do not report that something belongs to another repository');
   });
 
   it('says what to do without criteria, changed files, a range or commands', () => {

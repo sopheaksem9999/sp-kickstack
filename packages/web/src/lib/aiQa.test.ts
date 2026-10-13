@@ -31,6 +31,23 @@ describe('AI QA header', () => {
     expect(qaStatusLine(qa([run('backend', 'done', { passed: true }), run('frontend', 'done', { passed: true })]))).toEqual({ text: 'AI QA passed', tone: 'passed' });
   });
 
+  it('says passed with the count when every run passed and nothing is a blocker', () => {
+    const minor = { findings: { total: 3, blocker: 0, major: 0, minor: 3 } };
+    expect(qaStatusLine(qa([run('backend', 'done', { passed: true }), run('frontend', 'done', { passed: true })], minor))).toEqual({
+      text: 'AI QA passed · 3 minor findings', tone: 'passed',
+    });
+    expect(qaStatusLine(qa([run('backend', 'done', { passed: true })], { findings: { total: 1, blocker: 0, major: 0, minor: 1 } }))).toEqual({
+      text: 'AI QA passed · 1 minor finding', tone: 'passed',
+    });
+    expect(qaStatusLine(qa([run('backend', 'done', { passed: true })], { findings: { total: 2, blocker: 0, major: 1, minor: 1 } }))).toEqual({
+      text: 'AI QA passed · 2 findings (1 major)', tone: 'passed',
+    });
+    // A blocker outweighs the agent's "passed".
+    expect(qaStatusLine(qa([run('backend', 'done', { passed: true })], { findings: { total: 1, blocker: 1, major: 0, minor: 0 } }))).toEqual({
+      text: 'AI QA: 1 finding (1 blocker)', tone: 'findings',
+    });
+  });
+
   it('never says passed for a run that ended without a result', () => {
     expect(qaStatusLine(qa([run('backend', 'done', { passed: true }), run('frontend', 'done', { summary: 'Finished without a result' })]))).toEqual({
       text: 'AI QA: frontend finished without a result', tone: 'findings',

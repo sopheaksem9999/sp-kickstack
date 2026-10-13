@@ -33,6 +33,10 @@ import {
   HealthResponse,
   EngineProviderStatus,
   EngineRateLimitInfo,
+  BrowserPageContent,
+  NeuronRule,
+  CreateNeuronRuleInput,
+  SystemDecisionSettings,
 } from '@sp-kickstack/shared';
 
 export type { EngineProviderStatus, EngineRateLimitInfo };
@@ -240,7 +244,11 @@ export async function fetchNotifications(): Promise<BridgeEvent[]> {
   return res.json();
 }
 
-export async function fetchSettings(): Promise<{ branch_merge: BranchMergeSettings; ai_cli: AiCliSettings }> {
+export async function fetchSettings(): Promise<{
+  branch_merge: BranchMergeSettings;
+  ai_cli: AiCliSettings;
+  decision_engine?: SystemDecisionSettings;
+}> {
   const res = await fetch(`${BASE}/settings`);
   if (!res.ok) throw new Error('Failed to fetch settings');
   return res.json();
@@ -263,6 +271,16 @@ export async function updateAiCliSettings(settings: Partial<AiCliSettings>): Pro
     body: JSON.stringify(settings),
   });
   if (!res.ok) throw new Error('Failed to update AI CLI settings');
+  return res.json();
+}
+
+export async function updateSystemDecisionSettings(settings: Partial<SystemDecisionSettings>): Promise<SystemDecisionSettings> {
+  const res = await fetch(`${BASE}/settings/decision`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  if (!res.ok) throw new Error('Failed to update system decision settings');
   return res.json();
 }
 
@@ -795,3 +813,63 @@ export async function fetchHealth(): Promise<HealthResponse> {
   if (!res.ok) throw new Error('Unhealthy');
   return res.json();
 }
+
+export async function fetchBrowserPage(url: string): Promise<BrowserPageContent> {
+  const res = await request<{ ok: boolean; data: BrowserPageContent }>(
+    `${BASE}/browser/fetch-page?url=${encodeURIComponent(url)}`
+  );
+  return res.data;
+}
+
+export async function triageWithClef(errorText: string): Promise<{ severity: string; domain: string; rationale: string }> {
+  const res = await request<{ ok: boolean; triage: { severity: string; domain: string; rationale: string } }>(
+    `${BASE}/clef/triage`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error_text: errorText }),
+    }
+  );
+  return res.triage;
+}
+
+export async function fetchNeuronRules(workspaceId = 'default', project?: string): Promise<NeuronRule[]> {
+  const query = new URLSearchParams({ workspace_id: workspaceId });
+  if (project) query.set('project', project);
+  const res = await request<{ ok: boolean; rules: NeuronRule[] }>(`${BASE}/neuron/rules?${query.toString()}`);
+  return res.rules;
+}
+
+export async function createNeuronRule(input: CreateNeuronRuleInput): Promise<NeuronRule> {
+  const res = await request<{ ok: boolean; rule: NeuronRule }>(`${BASE}/neuron/rules`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  return res.rule;
+}
+
+export async function updateNeuronRule(
+  id: string,
+  updates: { is_active?: boolean; confidence_score?: number }
+): Promise<NeuronRule> {
+  const res = await request<{ ok: boolean; rule: NeuronRule }>(`${BASE}/neuron/rules/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  return res.rule;
+}
+
+export async function deleteNeuronRule(id: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`${BASE}/neuron/rules/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function syncNeuronMarkdown(): Promise<{ ok: boolean; count: number }> {
+  return request<{ ok: boolean; count: number }>(`${BASE}/neuron/sync-markdown`, {
+    method: 'POST',
+  });
+}
+

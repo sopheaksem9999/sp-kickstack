@@ -60,6 +60,7 @@ import {
 import { LiveTaskLogsDrawer } from '../components/LiveTaskLogsDrawer.js';
 import { ProjectGitReviewModal } from '../components/ProjectGitReviewModal.js';
 import { MarkdownMessage } from '../components/MarkdownMessage.js';
+import { RadixSelect } from '../components/ui/select.js';
 import {
   Dialog,
   DialogContent,
@@ -293,48 +294,41 @@ export function RequirementDetailPage() {
               </span>
 
               {/* Sprint Badge & Interactive Switcher */}
-              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-[#1f202b] px-2 py-0.5 rounded-lg border border-slate-200 dark:border-[#2d2f3d]">
-                <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
-                  {req.sprint_id ? '🏃 Sprint:' : '📋'}
-                </span>
-                <select
+              <div className="w-44">
+                <RadixSelect
+                  size="xs"
                   value={req.sprint_id || ''}
-                  onChange={(e) => sprintMutation.mutate(e.target.value ? e.target.value : null)}
-                  className="bg-transparent text-[11px] font-bold text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer max-w-[150px] truncate"
-                  title="Assign to Sprint or Backlog"
-                >
-                  <option value="" className="bg-white dark:bg-[#1a1b22] text-slate-800 dark:text-slate-200">
-                    Product Backlog
-                  </option>
-                  {sprints.map((s) => (
-                    <option key={s.id} value={s.id} className="bg-white dark:bg-[#1a1b22] text-slate-800 dark:text-slate-200">
-                      {s.status === 'active' ? '🏃 Active: ' : s.status === 'completed' ? '🏁 ' : '⏳ Planned: '}
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => sprintMutation.mutate(val ? val : null)}
+                  options={[
+                    { value: '', label: 'Product Backlog' },
+                    ...sprints.map((s) => ({
+                      value: s.id,
+                      label: s.name,
+                      badge: (
+                        <span className="text-[9px] px-1 py-0.2 rounded font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                          {s.status}
+                        </span>
+                      ),
+                    })),
+                  ]}
+                />
               </div>
 
               {/* Status Badge & Interactive State Switcher */}
-              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-[#1f202b] px-2 py-0.5 rounded-lg border border-slate-200 dark:border-[#2d2f3d]">
-                <StatusBadge status={req.status} size="xs" />
-                <select
+              <div className="w-36">
+                <RadixSelect
+                  size="xs"
                   value={req.status === 'in_review' ? 'qa' : req.status}
-                  onChange={(e) => {
-                    const next = e.target.value as RequirementStatus;
-                    // Starting work is a fan-out: confirm the run settings first.
+                  onChange={(nextVal) => {
+                    const next = nextVal as RequirementStatus;
                     if (statusChangeStartsFanOut(req.status, next)) setFanOutOpen(true);
                     else statusMutation.mutate(next);
                   }}
-                  className="bg-transparent text-[11px] font-bold text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
-                  title="Change State"
-                >
-                  {stateOptions.map((st) => (
-                    <option key={st.value} value={st.value} className="bg-white dark:bg-[#1a1b22] text-slate-800 dark:text-slate-200">
-                      State: {st.label}
-                    </option>
-                  ))}
-                </select>
+                  options={stateOptions.map((st) => ({
+                    value: st.value,
+                    label: st.label,
+                  }))}
+                />
               </div>
 
               <RunSettingsCard req={req} />

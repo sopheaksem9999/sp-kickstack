@@ -16,6 +16,8 @@ export type AiProviderType =
   | 'claude-cli'
   | 'agy-cli'
   | 'codex-cli'
+  | 'jev-cli'
+  | 'clef'
   | 'ollama'
   | 'anthropic'
   | 'openai';

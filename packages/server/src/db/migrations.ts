@@ -219,6 +219,29 @@ export const MIGRATIONS: Migration[] = [
       addColumn(db, 'local_runs', 'preferred_cli', 'TEXT');
     },
   },
+  {
+    version: 10,
+    name: 'neuron rules for learned heuristics and agent reflection',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS neuron_rules (
+          id               TEXT PRIMARY KEY,
+          workspace_id     TEXT NOT NULL DEFAULT 'default',
+          project          TEXT NOT NULL,
+          category         TEXT NOT NULL DEFAULT 'convention',
+          rule_text        TEXT NOT NULL,
+          confidence_score REAL NOT NULL DEFAULT 0.9,
+          trigger_count    INTEGER NOT NULL DEFAULT 1,
+          is_active        INTEGER NOT NULL DEFAULT 1,
+          source_run_id    TEXT,
+          created_at       TEXT NOT NULL,
+          updated_at       TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_neuron_rules_project ON neuron_rules(project);
+        CREATE INDEX IF NOT EXISTS idx_neuron_rules_workspace ON neuron_rules(workspace_id);
+      `);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

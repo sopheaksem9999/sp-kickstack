@@ -42,6 +42,14 @@ describe('resolveTabInfo', () => {
       title: 'Telemetry & Sprints',
       icon: 'chart',
     });
+    expect(resolveTabInfo('/w/sp-kickstack/browser')).toEqual({
+      title: 'In-App Browser',
+      icon: 'globe',
+    });
+    expect(resolveTabInfo('/w/sp-kickstack/browser?url=https%3A%2F%2Fvite.dev')).toEqual({
+      title: 'Web: vite.dev',
+      icon: 'globe',
+    });
   });
 
   it('resolves project tabs and sub-views', () => {

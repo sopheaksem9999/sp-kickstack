@@ -6,15 +6,24 @@ import { AGENT_CLI_IDS } from '@sp-kickstack/shared';
 import type { AgentCliId, AiCliSettings, LocalEngineSettings, SingleCliConfig } from '@sp-kickstack/shared';
 import { findCliBinary } from '../services/aiDraftService.js';
 
-export const CLI_LABELS: Record<AgentCliId, string> = { 'claude-cli': 'Claude Code', 'agy-cli': 'AGY', 'codex-cli': 'Codex' };
-const BINARY: Record<AgentCliId, string> = { 'claude-cli': 'claude', 'agy-cli': 'agy', 'codex-cli': 'codex' };
+export const CLI_LABELS: Record<AgentCliId, string> = {
+  'claude-cli': 'Claude Code',
+  'agy-cli': 'AGY',
+  'codex-cli': 'Codex',
+};
+const BINARY: Record<AgentCliId, string> = {
+  'claude-cli': 'claude',
+  'agy-cli': 'agy',
+  'codex-cli': 'codex',
+};
 
 export type FindBinary = (name: string) => string | null;
 
 function configOf(cli: AgentCliId, ai: AiCliSettings): SingleCliConfig | undefined {
   if (cli === 'claude-cli') return ai.claude;
   if (cli === 'agy-cli') return ai.agy;
-  return ai.codex;
+  if (cli === 'codex-cli') return ai.codex;
+  return undefined;
 }
 
 function isExecutableFile(file: string): boolean {

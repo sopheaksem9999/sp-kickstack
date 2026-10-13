@@ -55,6 +55,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetClose } from './ui/sheet.js';
+import { RadixSelect } from './ui/select.js';
 import {
   Dialog,
   DialogContent,
@@ -379,121 +380,84 @@ export function RequirementDetailSheet({
             <div className="px-6 py-2.5 bg-slate-50/50 dark:bg-[#242424] border-b border-slate-100 dark:border-[#2d2d2d] flex flex-wrap items-center justify-between gap-3 text-xs">
               <div className="flex flex-wrap items-center gap-2">
                 {/* Status Switcher */}
-                <div className="flex items-center gap-1.5 bg-white dark:bg-[#2a2a2a] px-2 py-1 rounded-lg border border-slate-200 dark:border-[#333333] shadow-2xs">
-                  <StatusBadge status={req.status} size="xs" />
-                  <select
+                <div className="w-36">
+                  <RadixSelect
+                    size="xs"
                     value={req.status === 'in_review' ? 'qa' : req.status}
-                    onChange={(e) => {
-                      const next = e.target.value as RequirementStatus;
-                      // Starting work is a fan-out: confirm the run settings first.
+                    onChange={(nextVal) => {
+                      const next = nextVal as RequirementStatus;
                       if (statusChangeStartsFanOut(req.status, next)) setFanOutOpen(true);
                       else statusMutation.mutate(next);
                     }}
-                    className="bg-transparent text-[11px] font-bold text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
-                    title="Change State"
-                  >
-                    {stateOptions.map((st) => (
-                      <option
-                        key={st.value}
-                        value={st.value}
-                        className="bg-white dark:bg-[#242424] text-slate-800 dark:text-slate-200"
-                      >
-                        State: {st.label}
-                      </option>
-                    ))}
-                  </select>
+                    options={stateOptions.map((st) => ({
+                      value: st.value,
+                      label: st.label,
+                    }))}
+                  />
                 </div>
 
                 {/* Priority Display / Switcher */}
                 {prio && (
-                  <div
-                    className="flex items-center gap-1.5 bg-white dark:bg-[#2a2a2a] px-2 py-1 rounded-lg border border-slate-200 dark:border-[#333333] shadow-2xs"
-                    title={isEditable ? 'Click to change priority' : `Priority: ${prio.label} (Locked)`}
-                  >
-                    <Flag className={`w-3.5 h-3.5 ${prio.color}`} />
+                  <div className="w-28">
                     {isEditable ? (
-                      <select
+                      <RadixSelect
+                        size="xs"
                         value={req.priority}
-                        onChange={(e) =>
-                          updateMutation.mutate({ priority: e.target.value as Priority })
-                        }
-                        className="bg-transparent text-[11px] font-bold text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer capitalize"
-                        title="Change Priority"
-                      >
-                        <option value="urgent" className="bg-white dark:bg-[#242424]">Urgent</option>
-                        <option value="high" className="bg-white dark:bg-[#242424]">High</option>
-                        <option value="normal" className="bg-white dark:bg-[#242424]">Normal</option>
-                        <option value="low" className="bg-white dark:bg-[#242424]">Low</option>
-                      </select>
+                        onChange={(val) => updateMutation.mutate({ priority: val as Priority })}
+                        options={[
+                          { value: 'urgent', label: 'Urgent', icon: <Flag className="w-3 h-3 text-red-500" /> },
+                          { value: 'high', label: 'High', icon: <Flag className="w-3 h-3 text-amber-500" /> },
+                          { value: 'normal', label: 'Normal', icon: <Flag className="w-3 h-3 text-blue-500" /> },
+                          { value: 'low', label: 'Low', icon: <Flag className="w-3 h-3 text-slate-400" /> },
+                        ]}
+                      />
                     ) : (
-                      <span className="capitalize text-slate-700 dark:text-slate-300 font-semibold text-[11px]">
-                        {prio.label}
-                      </span>
+                      <div className="flex items-center gap-1.5 bg-white dark:bg-[#2a2a2a] px-2 py-1 rounded-lg border border-slate-200 dark:border-[#333333] shadow-2xs">
+                        <Flag className={`w-3.5 h-3.5 ${prio.color}`} />
+                        <span className="capitalize text-slate-700 dark:text-slate-300 font-semibold text-[11px]">
+                          {prio.label}
+                        </span>
+                      </div>
                     )}
                   </div>
                 )}
 
                 {/* Sprint Switcher */}
-                <div className="flex items-center gap-1.5 bg-white dark:bg-[#2a2a2a] px-2 py-1 rounded-lg border border-slate-200 dark:border-[#333333] shadow-2xs">
-                  <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
-                    {req.sprint_id ? '🏃 Sprint:' : '📋'}
-                  </span>
-                  <select
+                <div className="w-40">
+                  <RadixSelect
+                    size="xs"
                     value={req.sprint_id || ''}
-                    onChange={(e) =>
-                      sprintMutation.mutate(e.target.value ? e.target.value : null)
-                    }
-                    className="bg-transparent text-[11px] font-bold text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer max-w-[140px] truncate"
-                    title="Assign to Sprint or Backlog"
-                  >
-                    <option
-                      value=""
-                      className="bg-white dark:bg-[#242424] text-slate-800 dark:text-slate-200"
-                    >
-                      Product Backlog
-                    </option>
-                    {sprints.map((s) => (
-                      <option
-                        key={s.id}
-                        value={s.id}
-                        className="bg-white dark:bg-[#242424] text-slate-800 dark:text-slate-200"
-                      >
-                        {s.status === 'active'
-                          ? '🏃 Active: '
-                          : s.status === 'completed'
-                          ? '🏁 '
-                          : '⏳ '}
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => sprintMutation.mutate(val ? val : null)}
+                    options={[
+                      { value: '', label: 'Product Backlog' },
+                      ...sprints.map((s) => ({
+                        value: s.id,
+                        label: s.name,
+                        badge: (
+                          <span className="text-[9px] px-1 py-0.2 rounded font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                            {s.status}
+                          </span>
+                        ),
+                      })),
+                    ]}
+                  />
                 </div>
 
                 {/* Merge Policy Selector */}
-                <div className="flex items-center gap-1.5 bg-white dark:bg-[#2a2a2a] px-2 py-1 rounded-lg border border-slate-200 dark:border-[#333333] shadow-2xs">
-                  <span className="text-[10px] text-slate-400 font-bold uppercase">Merge:</span>
-                  <select
+                <div className="w-36">
+                  <RadixSelect
+                    size="xs"
                     value={req.merge_policy || 'default'}
-                    onChange={(e) => {
-                      const val =
-                        e.target.value === 'default'
-                          ? null
-                          : (e.target.value as BranchMergePolicy);
-                      policyMutation.mutate(val);
+                    onChange={(val) => {
+                      const policy = val === 'default' ? null : (val as BranchMergePolicy);
+                      policyMutation.mutate(policy);
                     }}
-                    className="bg-transparent text-[11px] font-bold text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
-                    title="Ticket Merge Policy"
-                  >
-                    <option value="default" className="bg-white dark:bg-[#242424] text-slate-800 dark:text-slate-200">
-                      Default Policy
-                    </option>
-                    <option value="manual_review_merge" className="bg-white dark:bg-[#242424] text-slate-800 dark:text-slate-200">
-                      Review first
-                    </option>
-                    <option value="auto_merge" className="bg-white dark:bg-[#242424] text-slate-800 dark:text-slate-200">
-                      Auto-merge (no review)
-                    </option>
-                  </select>
+                    options={[
+                      { value: 'default', label: 'Default Policy' },
+                      { value: 'manual_review_merge', label: 'Review first' },
+                      { value: 'auto_merge', label: 'Auto-merge' },
+                    ]}
+                  />
                 </div>
 
                 {/* Implementation Branch Tag */}

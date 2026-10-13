@@ -49,7 +49,10 @@ describe('Database migrations', () => {
   it('brings a fresh database to the latest version with the new columns', () => {
     const db = initDatabase(':memory:');
     expect(db.pragma('user_version', { simple: true })).toBe(LATEST_VERSION);
-    expect(LATEST_VERSION).toBe(9);
+    expect(LATEST_VERSION).toBe(10);
+    expect(columns(db, 'neuron_rules')).toEqual(
+      expect.arrayContaining(['id', 'workspace_id', 'project', 'category', 'rule_text', 'confidence_score', 'trigger_count', 'is_active', 'source_run_id'])
+    );
     expect(columns(db, 'review_comments')).toEqual(expect.arrayContaining(['task_id', 'file_path', 'line', 'body_md', 'state', 'round']));
     expect(columns(db, 'bridge_tasks')).toEqual(
       expect.arrayContaining(['attempts', 'idempotency_key', 'branch', 'base_sha', 'merge_sha', 'merged_at', 'paused_until', 'options', 'answer_md', 'answered_at'])

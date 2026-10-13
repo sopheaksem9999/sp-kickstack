@@ -32,6 +32,7 @@ import {
   Code2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { RadixSelect } from './ui/select.js';
 
 export interface ProjectGitReviewViewProps {
   projectName: string;
@@ -232,24 +233,23 @@ export const ProjectGitReviewView: React.FC<ProjectGitReviewViewProps> = ({
               <span>{summary?.currentBranch || baseBranch}</span>
             </span>
             <span className="text-slate-500 font-bold">➔</span>
-            <select
-              value={selectedTarget}
-              onChange={(e) => setSelectedTarget(e.target.value)}
-              className="bg-slate-800/90 text-slate-200 text-xs rounded px-2 py-0.5 border border-slate-700/80 focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer font-mono font-semibold"
-              title="Select comparison target"
-            >
-              <optgroup label="Local Working Tree (IDE View)">
-                <option value="HEAD">HEAD (Working Tree / git status)</option>
-              </optgroup>
-              <optgroup label="Branch Merge / Pull Request">
-                <option value="main">main (PR Merge Diff)</option>
-                {summary?.availableBranches
-                  ?.filter((b) => b !== 'main' && b !== (summary?.currentBranch || baseBranch))
-                  .map((b) => (
-                    <option key={b} value={b}>{b} (Branch Diff)</option>
-                  ))}
-              </optgroup>
-            </select>
+            <div className="w-60">
+              <RadixSelect
+                size="xs"
+                value={selectedTarget}
+                onChange={setSelectedTarget}
+                options={[
+                  { value: 'HEAD', label: 'HEAD (Working Tree / git status)' },
+                  { value: 'main', label: 'main (PR Merge Diff)' },
+                  ...(summary?.availableBranches
+                    ?.filter((b) => b !== 'main' && b !== (summary?.currentBranch || baseBranch))
+                    .map((b) => ({
+                      value: b,
+                      label: `${b} (Branch Diff)`,
+                    })) || []),
+                ]}
+              />
+            </div>
           </div>
 
           {/* Mode Pill */}

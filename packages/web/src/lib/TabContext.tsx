@@ -74,6 +74,14 @@ export function resolveTabInfo(
     if (pathname === '/chat') {
       return { title: 'AI Architect Chat', icon: 'chat' };
     }
+    if (pathname === '/browser') {
+      const u = searchParams.get('url');
+      const cleanUrl = u ? u.replace(/^https?:\/\//, '') : '';
+      return {
+        title: cleanUrl ? `Web: ${cleanUrl.slice(0, 25)}` : 'In-App Browser',
+        icon: 'globe',
+      };
+    }
     if (pathname === '/attachments') {
       return { title: 'Attachments', icon: 'paperclip' };
     }

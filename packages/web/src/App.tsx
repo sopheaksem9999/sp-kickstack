@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppLayout } from './components/AppLayout.js';
@@ -10,6 +11,7 @@ import { AttachmentsPage } from './pages/AttachmentsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { MetricsPage } from './pages/MetricsPage.js';
 import { AiChatPage } from './pages/AiChatPage.js';
+import { BrowserPage } from './pages/BrowserPage.js';
 import { useBridgeEvents } from './lib/useEvents.js';
 import { WorkspaceProvider, useWorkspace } from './lib/WorkspaceContext.js';
 import { ThemeProvider } from './lib/ThemeContext.js';
@@ -39,38 +41,65 @@ function WorkspaceRootRedirect() {
 
 function AppRoutes() {
   useBridgeEvents();
+  const location = useLocation();
+  const isBrowserRoute = location.pathname.includes('/browser');
+  const [hasVisitedBrowser, setHasVisitedBrowser] = useState(isBrowserRoute);
+
+  useEffect(() => {
+    if (isBrowserRoute && !hasVisitedBrowser) {
+      setHasVisitedBrowser(true);
+    }
+  }, [isBrowserRoute, hasVisitedBrowser]);
 
   return (
     <AppLayout>
-      <Routes>
-        {/* Workspace-scoped routes */}
-        <Route path="/w/:workspaceId" element={<WorkspaceRootRedirect />} />
-        <Route path="/w/:workspaceId/requirements" element={<RequirementsPage />} />
-        <Route path="/w/:workspaceId/requirements/new" element={<NewRequirementPage />} />
-        <Route path="/w/:workspaceId/requirements/:id" element={<RequirementDetailPage />} />
-        <Route path="/w/:workspaceId/queue" element={<QueuePage />} />
-        <Route path="/w/:workspaceId/chat" element={<AiChatPage />} />
-        <Route path="/w/:workspaceId/attachments" element={<AttachmentsPage />} />
-        <Route path="/w/:workspaceId/projects" element={<ProjectsPage />} />
-        <Route path="/w/:workspaceId/metrics" element={<MetricsPage />} />
-        <Route path="/w/:workspaceId/settings" element={<SettingsPage />} />
+      {/* Persistent In-App Browser: Kept in DOM once visited to preserve iframe state, navigation, and AI chat across tab switching */}
+      {hasVisitedBrowser && (
+        <div
+          className={
+            isBrowserRoute
+              ? 'w-full h-full flex flex-col flex-1 min-h-0'
+              : 'fixed -left-[99999px] -top-[99999px] w-[1px] h-[1px] overflow-hidden opacity-0 pointer-events-none'
+          }
+        >
+          <BrowserPage />
+        </div>
+      )}
 
-        {/* Legacy / Direct paths: automatically redirect into active workspace route */}
-        <Route path="/" element={<LegacyRedirect to="/requirements" />} />
-        <Route path="/requirements" element={<LegacyRedirect to="/requirements" />} />
-        <Route path="/requirements/new" element={<LegacyRedirect to="/requirements/new" />} />
-        <Route path="/requirements/:id" element={<LegacyRedirect />} />
-        <Route path="/queue" element={<LegacyRedirect to="/queue" />} />
-        <Route path="/chat" element={<LegacyRedirect to="/chat" />} />
-        <Route path="/attachments" element={<LegacyRedirect to="/attachments" />} />
-        <Route path="/projects" element={<LegacyRedirect to="/projects" />} />
-        <Route path="/metrics" element={<LegacyRedirect to="/metrics" />} />
-        <Route path="/settings" element={<LegacyRedirect to="/settings" />} />
+      {/* Main views (rendered when not on the in-app browser route) */}
+      <div className={isBrowserRoute ? 'hidden' : 'contents'}>
+        <Routes>
+          {/* Workspace-scoped routes */}
+          <Route path="/w/:workspaceId" element={<WorkspaceRootRedirect />} />
+          <Route path="/w/:workspaceId/requirements" element={<RequirementsPage />} />
+          <Route path="/w/:workspaceId/requirements/new" element={<NewRequirementPage />} />
+          <Route path="/w/:workspaceId/requirements/:id" element={<RequirementDetailPage />} />
+          <Route path="/w/:workspaceId/queue" element={<QueuePage />} />
+          <Route path="/w/:workspaceId/chat" element={<AiChatPage />} />
+          <Route path="/w/:workspaceId/browser" element={<div />} />
+          <Route path="/w/:workspaceId/attachments" element={<AttachmentsPage />} />
+          <Route path="/w/:workspaceId/projects" element={<ProjectsPage />} />
+          <Route path="/w/:workspaceId/metrics" element={<MetricsPage />} />
+          <Route path="/w/:workspaceId/settings" element={<SettingsPage />} />
 
-        {/* Fallbacks */}
-        <Route path="/w/:workspaceId/*" element={<WorkspaceRootRedirect />} />
-        <Route path="*" element={<LegacyRedirect to="/requirements" />} />
-      </Routes>
+          {/* Legacy / Direct paths: automatically redirect into active workspace route */}
+          <Route path="/" element={<LegacyRedirect to="/requirements" />} />
+          <Route path="/requirements" element={<LegacyRedirect to="/requirements" />} />
+          <Route path="/requirements/new" element={<LegacyRedirect to="/requirements/new" />} />
+          <Route path="/requirements/:id" element={<LegacyRedirect />} />
+          <Route path="/queue" element={<LegacyRedirect to="/queue" />} />
+          <Route path="/chat" element={<LegacyRedirect to="/chat" />} />
+          <Route path="/browser" element={<LegacyRedirect to="/browser" />} />
+          <Route path="/attachments" element={<LegacyRedirect to="/attachments" />} />
+          <Route path="/projects" element={<LegacyRedirect to="/projects" />} />
+          <Route path="/metrics" element={<LegacyRedirect to="/metrics" />} />
+          <Route path="/settings" element={<LegacyRedirect to="/settings" />} />
+
+          {/* Fallbacks */}
+          <Route path="/w/:workspaceId/*" element={<WorkspaceRootRedirect />} />
+          <Route path="*" element={<LegacyRedirect to="/requirements" />} />
+        </Routes>
+      </div>
     </AppLayout>
   );
 }

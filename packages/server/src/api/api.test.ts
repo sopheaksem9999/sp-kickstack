@@ -492,7 +492,7 @@ describe('Bridge REST API Integration Tests', () => {
       VALUES ('released', ?, ?, ?, ?)
     `).run(Number(t1.lastInsertRowid), Number(t2.lastInsertRowid), past, now);
 
-    const telemetryRes = await testRequest(app, 'GET', '/api/telemetry');
+    const telemetryRes = await testRequest(app, 'GET', '/api/telemetry?workspace=default');
     expect(telemetryRes.status).toBe(200);
     expect(telemetryRes.body.total_tasks).toBe(2);
     expect(telemetryRes.body.status_distribution.done).toBe(1);
@@ -501,6 +501,17 @@ describe('Bridge REST API Integration Tests', () => {
     expect(telemetryRes.body.released_links).toBe(1);
     expect(telemetryRes.body.avg_blockage_latency_ms).toBeGreaterThan(0);
     expect(telemetryRes.body.engine_activity.length).toBeGreaterThan(0);
+    const backendEngine = telemetryRes.body.engine_activity.find((e: any) => e.project === 'backend');
+    expect(backendEngine).toBeDefined();
+    expect(backendEngine.total).toBe(2);
+    expect(backendEngine.done).toBe(1);
+    expect(backendEngine.in_review).toBe(1);
+
+    // Another workspace should only show its own repositories
+    const otherWsRes = await testRequest(app, 'GET', '/api/telemetry?workspace=non-existent-ws');
+    expect(otherWsRes.status).toBe(200);
+    expect(otherWsRes.body.total_tasks).toBe(0);
+    expect(otherWsRes.body.engine_activity).toEqual([]);
   });
 
   it('GitHub Webhook Sync: transitions task to in_review on open and done on merge', async () => {

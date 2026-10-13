@@ -8,6 +8,12 @@ import {
   normalizeMergePolicy,
   AiChatMessageSchema,
   AiChatRequestSchema,
+  NeuronRuleSchema,
+  BrowserPageSchema,
+  JevSettingsSchema,
+  ClefSettingsSchema,
+  DecisionEngineIdSchema,
+  SystemDecisionSettingsSchema,
 } from './schemas.js';
 
 describe('Shared Schemas Validation', () => {
@@ -122,6 +128,59 @@ describe('Shared Schemas Validation', () => {
     };
     const parsedReq = AiChatRequestSchema.safeParse(req);
     expect(parsedReq.success).toBe(true);
+  });
+
+  it('validates neuron rule, browser page, and engine settings schemas', () => {
+    const validRule = {
+      id: 'rule-1',
+      workspace_id: 'default',
+      project: 'backend',
+      category: 'convention',
+      rule_text: 'Always run migrations before testing',
+      confidence_score: 0.95,
+      trigger_count: 3,
+      is_active: true,
+      source_run_id: 'local-123',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    expect(NeuronRuleSchema.safeParse(validRule).success).toBe(true);
+
+    const validPage = {
+      url: 'https://example.com/docs',
+      title: 'Docs Page',
+      textContent: 'Welcome to docs',
+      headings: ['Intro', 'Setup'],
+    };
+    expect(BrowserPageSchema.safeParse(validPage).success).toBe(true);
+
+    const validJev = {
+      jev_bin_path: 'jev',
+      jev_model: 'default',
+      jev_args_template: '-p --model {model}',
+    };
+    expect(JevSettingsSchema.safeParse(validJev).success).toBe(true);
+
+    const validClef = {
+      clef_enabled: true,
+      clef_account_id: 'acc-123',
+      clef_api_token: 'tok-abc',
+      clef_model: '@cf/cloudflare/clef-flash',
+      clef_auto_triage: true,
+    };
+    expect(ClefSettingsSchema.safeParse(validClef).success).toBe(true);
+
+    expect(DecisionEngineIdSchema.safeParse('none').success).toBe(true);
+    expect(DecisionEngineIdSchema.safeParse('clef').success).toBe(true);
+    expect(DecisionEngineIdSchema.safeParse('jev').success).toBe(true);
+    expect(DecisionEngineIdSchema.safeParse('invalid').success).toBe(false);
+
+    const validNoneSystem = {
+      active_engine: 'none' as const,
+      clef: validClef,
+      jev: validJev,
+    };
+    expect(SystemDecisionSettingsSchema.safeParse(validNoneSystem).success).toBe(true);
   });
 });
 

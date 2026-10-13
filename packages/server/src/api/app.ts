@@ -37,7 +37,11 @@ import {
   SendAiChatMessageInputSchema,
   IdeSettingsSchema,
   StartIdeInputSchema,
+  CreateNeuronRuleInputSchema,
 } from '@sp-kickstack/shared';
+import { BrowserService } from '../services/browserService.js';
+import { ClefService } from '../services/clefService.js';
+import { NeuronService } from '../services/neuronService.js';
 import { VcsSyncService } from '../services/vcsSyncService.js';
 import { MetricsService } from '../services/metricsService.js';
 import { AiDraftService } from '../services/aiDraftService.js';
@@ -78,6 +82,9 @@ export interface AppDependencies {
   ticketService: TicketService;
   broadcaster: SseBroadcaster;
   notifier: Notifier;
+  browserService?: BrowserService;
+  clefService?: ClefService;
+  neuronService?: NeuronService;
   reactor?: TaskReactor;
   mergeGate?: MergeGateService;
   /** Engine adapters (needed by questions and reviews); routes that call engines answer 503 without it. */
@@ -140,6 +147,9 @@ export function createApp(deps: AppDependencies): Express {
     deps.reviewService ||
     new ReviewService(deps.db, deps.requirementService, deps.fanOutService, deps.ticketService, getAdapter, (evt) => deps.broadcaster.broadcast(evt));
   const notificationService = deps.notificationService || new NotificationService(deps.db, settingsService, deps.notifier);
+  const browserService = deps.browserService || new BrowserService();
+  const clefService = deps.clefService || new ClefService();
+  const neuronService = deps.neuronService || new NeuronService(deps.db);
 
   /** Start the merge gate in the background and answer 202 with the requirement (merge_state running). */
   const startMerge = (res: Response, id: string) => {
@@ -169,7 +179,14 @@ export function createApp(deps: AppDependencies): Express {
 
   const aiChatService =
     deps.aiChatService ||
-    new AiChatService(deps.db, deps.projectService, settingsService, deps.requirementService);
+    new AiChatService(
+      deps.db,
+      deps.projectService,
+      settingsService,
+      deps.requirementService,
+      deps.clefService,
+      deps.neuronService
+    );
 
   const webOrigins = deps.webOrigins || resolveWebOrigins();
   const allowedHosts = deps.allowedHosts || resolveAllowedHosts();
@@ -599,6 +616,7 @@ export function createApp(deps: AppDependencies): Express {
     res.json({
       branch_merge: settingsService.getBranchMergeSettings(),
       ai_cli: settingsService.getAiCliSettings(),
+      decision_engine: settingsService.getSystemDecisionSettings(),
     });
   });
 
@@ -616,6 +634,16 @@ export function createApp(deps: AppDependencies): Express {
     try {
       const updated = settingsService.updateAiCliSettings(req.body);
       deps.broadcaster.broadcast({ type: 'settings_updated', payload: { ai_cli: updated } });
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.put('/api/settings/decision', (req, res, next) => {
+    try {
+      const updated = settingsService.updateSystemDecisionSettings(req.body);
+      deps.broadcaster.broadcast({ type: 'settings_updated', payload: { decision_engine: updated } });
       res.json(updated);
     } catch (err) {
       next(err);
@@ -1264,6 +1292,113 @@ export function createApp(deps: AppDependencies): Express {
 
   app.get('/api/terminals/active', (_req, res) => {
     res.json(terminalService.getActiveProjects());
+  });
+
+  // Browser Endpoints
+  app.get('/api/browser/fetch-page', async (req, res, next) => {
+    try {
+      const url = req.query.url as string;
+      if (!url) {
+        return res.status(400).json({ error: 'url query parameter is required' });
+      }
+      if (!browserService.isValidUrl(url)) {
+        return res.status(400).json({ error: 'Only http: and https: protocols are supported' });
+      }
+      const page = await browserService.fetchPage(url);
+      res.json({ ok: true, data: page });
+    } catch (err: any) {
+      if (err.status) {
+        return res.status(err.status).json({ error: err.message });
+      }
+      next(err);
+    }
+  });
+
+  // Decision & Triage Endpoints (System 1 models)
+  app.post(['/api/clef/triage', '/api/decision/triage'], async (req, res, next) => {
+    try {
+      const errorText = req.body?.error_text;
+      if (typeof errorText !== 'string' || !errorText.trim()) {
+        return res.status(400).json({ error: 'error_text is required' });
+      }
+      const decisionSettings = settingsService.getSystemDecisionSettings();
+      if (decisionSettings.active_engine === 'none') {
+        return res.json({
+          ok: true,
+          triage: null,
+          engine: 'none',
+          disabled: true,
+          message: 'System Decision Engine is disabled',
+        });
+      }
+      const triage = await clefService.triageError(errorText, decisionSettings.clef);
+      res.json({ ok: true, triage, engine: decisionSettings.active_engine });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Neuron Engine Endpoints
+  app.get('/api/neuron/rules', (req, res, next) => {
+    try {
+      const workspaceId = (req.query.workspace_id as string) || 'default';
+      const project = req.query.project as string | undefined;
+      const rules = neuronService.listRules(workspaceId, project);
+      res.json({ ok: true, rules });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post('/api/neuron/rules', (req, res, next) => {
+    try {
+      const parsed = CreateNeuronRuleInputSchema.parse(req.body);
+      const rule = neuronService.createRule(parsed);
+      res.status(201).json({ ok: true, rule });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.patch('/api/neuron/rules/:id', (req, res, next) => {
+    try {
+      const updates: { is_active?: boolean; confidence_score?: number } = {};
+      if (typeof req.body?.is_active === 'boolean') {
+        updates.is_active = req.body.is_active;
+      }
+      if (typeof req.body?.confidence_score === 'number') {
+        updates.confidence_score = req.body.confidence_score;
+      }
+      const rule = neuronService.updateRule(req.params.id, updates);
+      if (!rule) {
+        return res.status(404).json({ error: 'Rule not found' });
+      }
+      res.json({ ok: true, rule });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.delete('/api/neuron/rules/:id', (req, res, next) => {
+    try {
+      const ok = neuronService.deleteRule(req.params.id);
+      if (!ok) {
+        return res.status(404).json({ error: 'Rule not found' });
+      }
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post('/api/neuron/sync-markdown', (req, res, next) => {
+    try {
+      const rootDir = req.body?.root_dir || process.cwd();
+      const count = neuronService.syncMarkdown(rootDir);
+      res.json({ ok: true, count });
+    } catch (err) {
+      next(err);
+    }
   });
 
   // Error handling middleware

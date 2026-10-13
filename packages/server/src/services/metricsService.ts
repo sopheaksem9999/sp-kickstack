@@ -23,6 +23,7 @@ export interface AgentTelemetryData {
     total: number;
     done: number;
     in_review: number;
+    running: number;
     held: number;
   }[];
 }
@@ -75,31 +76,72 @@ export class MetricsService {
   }
 
   public getTelemetry(workspaceId?: string): AgentTelemetryData {
-    const tasks = this.db
-      .prepare('SELECT project, status FROM bridge_tasks')
-      .all() as { project: string; status: string }[];
+    const ws = workspaceId && workspaceId !== 'all' ? workspaceId : undefined;
+
+    // Fetch repository projects registered in this workspace (or all if ws is not set)
+    const projects = ws
+      ? (this.db
+          .prepare('SELECT name FROM projects WHERE workspace_id = ? ORDER BY name ASC')
+          .all(ws) as { name: string }[])
+      : (this.db
+          .prepare('SELECT name FROM projects ORDER BY name ASC')
+          .all() as { name: string }[]);
+
+    // Filter bridge tasks strictly by registered projects in this workspace
+    const tasks = ws
+      ? (this.db
+          .prepare(`
+            SELECT b.project, b.status 
+            FROM bridge_tasks b 
+            JOIN projects p ON b.project = p.name 
+            WHERE p.workspace_id = ?
+          `)
+          .all(ws) as { project: string; status: string }[])
+      : (this.db
+          .prepare('SELECT project, status FROM bridge_tasks')
+          .all() as { project: string; status: string }[]);
 
     const totalTasks = tasks.length;
     const statusDist: Record<string, number> = {};
-    const engineMap = new Map<string, { total: number; done: number; in_review: number; held: number }>();
+    const engineMap = new Map<string, { total: number; done: number; in_review: number; running: number; held: number }>();
+
+    // Pre-populate with all known repository projects in this workspace
+    for (const p of projects) {
+      engineMap.set(p.name, { total: 0, done: 0, in_review: 0, running: 0, held: 0 });
+    }
 
     for (const t of tasks) {
       statusDist[t.status] = (statusDist[t.status] || 0) + 1;
 
       if (!engineMap.has(t.project)) {
-        engineMap.set(t.project, { total: 0, done: 0, in_review: 0, held: 0 });
+        if (!ws) {
+          engineMap.set(t.project, { total: 0, done: 0, in_review: 0, running: 0, held: 0 });
+        } else {
+          continue;
+        }
       }
       const p = engineMap.get(t.project)!;
       p.total++;
       if (t.status === 'done') p.done++;
-      if (t.status === 'in_review') p.in_review++;
-      if (t.status === 'held') p.held++;
+      else if (t.status === 'in_review') p.in_review++;
+      else if (t.status === 'running') p.running++;
+      else if (t.status === 'held') p.held++;
     }
 
-    // Links latency
-    const links = this.db
-      .prepare('SELECT state, created_at, released_at FROM links')
-      .all() as { state: string; created_at: string; released_at?: string }[];
+    // Links latency scoped to workspace
+    const links = ws
+      ? (this.db
+          .prepare(`
+            SELECT l.state, l.created_at, l.released_at 
+            FROM links l
+            JOIN bridge_tasks b ON l.task_id = b.id
+            JOIN projects p ON b.project = p.name 
+            WHERE p.workspace_id = ?
+          `)
+          .all(ws) as { state: string; created_at: string; released_at?: string }[])
+      : (this.db
+          .prepare('SELECT state, created_at, released_at FROM links')
+          .all() as { state: string; created_at: string; released_at?: string }[]);
 
     const totalLinks = links.length;
     const releasedLinks = links.filter((l) => l.state === 'released').length;

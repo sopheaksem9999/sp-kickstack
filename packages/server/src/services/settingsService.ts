@@ -12,6 +12,9 @@ import {
   DEFAULT_NOTIFY_EVENTS,
   NotificationSettings,
   UpdateNotificationSettingsInputSchema,
+  SystemDecisionSettings,
+  SystemDecisionSettingsSchema,
+  UpdateSystemDecisionSettingsInputSchema,
 } from '@sp-kickstack/shared';
 
 export class SettingsService {
@@ -74,6 +77,38 @@ export class SettingsService {
     this.db.prepare(`
       INSERT INTO settings (key, value)
       VALUES ('ai_cli_settings', ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run(JSON.stringify(updated));
+
+    return updated;
+  }
+
+  public getSystemDecisionSettings(): SystemDecisionSettings {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'system_decision_settings'").get() as any;
+    if (row && row.value) {
+      try {
+        const parsed = JSON.parse(row.value);
+        return SystemDecisionSettingsSchema.parse(parsed);
+      } catch (err) {
+        // Fallback to default
+      }
+    }
+    return SystemDecisionSettingsSchema.parse({});
+  }
+
+  public updateSystemDecisionSettings(updates: unknown): SystemDecisionSettings {
+    const patch = UpdateSystemDecisionSettingsInputSchema.parse(updates ?? {});
+    const current = this.getSystemDecisionSettings();
+    const updated = SystemDecisionSettingsSchema.parse({
+      ...current,
+      ...patch,
+      clef: { ...current.clef, ...(patch.clef || {}) },
+      jev: { ...current.jev, ...(patch.jev || {}) },
+    });
+
+    this.db.prepare(`
+      INSERT INTO settings (key, value)
+      VALUES ('system_decision_settings', ?)
       ON CONFLICT(key) DO UPDATE SET value = excluded.value
     `).run(JSON.stringify(updated));
 

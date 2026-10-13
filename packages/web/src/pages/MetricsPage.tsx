@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   BarChart3,
@@ -6,11 +6,14 @@ import {
   Clock,
   Link2,
   RefreshCw,
-  GitPullRequest,
+  FolderGit2,
   Zap,
 } from 'lucide-react';
+import { Project } from '@sp-kickstack/shared';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
-import { fetchSprints, fetchSprintBurndown, fetchTelemetry } from '../lib/api.js';
+import { fetchSprints, fetchSprintBurndown, fetchTelemetry, fetchProjects } from '../lib/api.js';
+import { NeuronAuditSection } from '../components/NeuronAuditSection.js';
+import { RadixSelect } from '../components/ui/select.js';
 
 interface SprintBurndownData {
   sprint_id: string;
@@ -34,6 +37,7 @@ interface AgentTelemetryData {
     total: number;
     done: number;
     in_review: number;
+    running?: number;
     held: number;
   }[];
 }
@@ -82,6 +86,23 @@ export function MetricsPage() {
     queryFn: () => fetchTelemetry(activeWorkspaceId),
   });
 
+  // Projects in active workspace for repository metadata
+  const {
+    data: projects = [],
+    refetch: refetchProjects,
+  } = useQuery<Project[]>({
+    queryKey: ['projects', activeWorkspaceId],
+    queryFn: () => fetchProjects(activeWorkspaceId),
+  });
+
+  const projectsByName = useMemo(() => {
+    const map = new Map<string, Project>();
+    for (const p of projects) {
+      map.set(p.name, p);
+    }
+    return map;
+  }, [projects]);
+
   const formatLatency = (ms: number) => {
     if (ms <= 0) return '0s';
     if (ms < 1000) return `${ms}ms`;
@@ -106,22 +127,36 @@ export function MetricsPage() {
         </div>
         <div className="flex items-center gap-2">
           {sprints.length > 0 && (
-            <select
-              value={currentSprintId}
-              onChange={(e) => setSelectedSprintId(e.target.value)}
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
-            >
-              {sprints.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} ({s.status})
-                </option>
-              ))}
-            </select>
+            <div className="w-56">
+              <RadixSelect
+                size="sm"
+                value={currentSprintId}
+                onChange={setSelectedSprintId}
+                options={sprints.map((s) => ({
+                  value: s.id,
+                  label: s.name,
+                  badge: (
+                    <span
+                      className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                        s.status === 'active'
+                          ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                          : s.status === 'completed'
+                          ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                          : 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300'
+                      }`}
+                    >
+                      {s.status}
+                    </span>
+                  ),
+                }))}
+              />
+            </div>
           )}
           <button
             onClick={() => {
               refetchBurndown();
               refetchTelemetry();
+              refetchProjects();
             }}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-700 dark:text-slate-300"
           >
@@ -284,63 +319,117 @@ export function MetricsPage() {
 
         {/* Multi-Repo Engine Activity */}
         <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
-          <div>
-            <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <GitPullRequest className="w-4 h-4 text-indigo-500" />
-              Engine Work Distribution
-            </h2>
-            <p className="text-xs text-slate-500">Autonomous execution by repository.</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <FolderGit2 className="w-4 h-4 text-indigo-500" />
+                Engine Work Distribution
+              </h2>
+              <p className="text-xs text-slate-500">Autonomous execution by repository.</p>
+            </div>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+              {telemetry?.engine_activity?.length ?? 0} {telemetry?.engine_activity?.length === 1 ? 'repo' : 'repos'}
+            </span>
           </div>
 
           <div className="space-y-3 pt-1">
             {telemetry?.engine_activity && telemetry.engine_activity.length > 0 ? (
-              telemetry.engine_activity.map((eng) => (
-                <div key={eng.project} className="p-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-slate-800 dark:text-slate-200">{eng.project}</span>
-                    <span className="text-slate-500 font-medium">{eng.total} tasks</span>
-                  </div>
+              telemetry.engine_activity.map((eng) => {
+                const projectMeta = projectsByName.get(eng.project);
+                const hasTasks = eng.total > 0;
+                const runningCount = eng.running || 0;
 
-                  {/* Multi-segmented progress bar */}
-                  <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden flex">
-                    <div
-                      className="bg-emerald-500 h-full"
-                      style={{ width: `${(eng.done / (eng.total || 1)) * 100}%` }}
-                      title={`Done: ${eng.done}`}
-                    />
-                    <div
-                      className="bg-indigo-500 h-full"
-                      style={{ width: `${(eng.in_review / (eng.total || 1)) * 100}%` }}
-                      title={`In Review: ${eng.in_review}`}
-                    />
-                    <div
-                      className="bg-amber-500 h-full"
-                      style={{ width: `${(eng.held / (eng.total || 1)) * 100}%` }}
-                      title={`Held: ${eng.held}`}
-                    />
-                  </div>
+                return (
+                  <div
+                    key={eng.project}
+                    className="p-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40 hover:border-slate-200 dark:hover:border-slate-700 transition-colors space-y-2.5"
+                  >
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <FolderGit2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className="font-bold text-slate-800 dark:text-slate-200 truncate">
+                          {eng.project}
+                        </span>
+                        {projectMeta?.kind && (
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-300 uppercase tracking-wider shrink-0">
+                            {projectMeta.kind}
+                          </span>
+                        )}
+                        {projectMeta?.engine_type && (
+                          <span className="text-[10px] text-slate-400 shrink-0">
+                            · {projectMeta.engine_type}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-slate-500 font-medium shrink-0">
+                        {eng.total} {eng.total === 1 ? 'task' : 'tasks'}
+                      </span>
+                    </div>
 
-                  <div className="flex items-center justify-between text-[10px] text-slate-400">
-                    <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                      ✓ {eng.done} done
-                    </span>
-                    <span className="text-indigo-600 dark:text-indigo-400 font-medium">
-                      ⟲ {eng.in_review} review
-                    </span>
-                    <span className="text-amber-600 dark:text-amber-400 font-medium">
-                      ⏸ {eng.held} held
-                    </span>
+                    {/* Multi-segmented progress bar */}
+                    <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden flex">
+                      {hasTasks ? (
+                        <>
+                          <div
+                            className="bg-emerald-500 h-full transition-all"
+                            style={{ width: `${(eng.done / eng.total) * 100}%` }}
+                            title={`Done: ${eng.done}`}
+                          />
+                          <div
+                            className="bg-indigo-500 h-full transition-all"
+                            style={{ width: `${(eng.in_review / eng.total) * 100}%` }}
+                            title={`In Review: ${eng.in_review}`}
+                          />
+                          <div
+                            className="bg-purple-500 h-full transition-all"
+                            style={{ width: `${(runningCount / eng.total) * 100}%` }}
+                            title={`Running: ${runningCount}`}
+                          />
+                          <div
+                            className="bg-amber-500 h-full transition-all"
+                            style={{ width: `${(eng.held / eng.total) * 100}%` }}
+                            title={`Held: ${eng.held}`}
+                          />
+                        </>
+                      ) : (
+                        <div className="w-full h-full bg-slate-200/50 dark:bg-slate-800/50" />
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] text-slate-400">
+                      <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                        ✓ {eng.done} done
+                      </span>
+                      <span className="text-purple-600 dark:text-purple-400 font-medium">
+                        ⚡ {runningCount} active
+                      </span>
+                      <span className="text-indigo-600 dark:text-indigo-400 font-medium">
+                        ⟲ {eng.in_review} review
+                      </span>
+                      <span className="text-amber-600 dark:text-amber-400 font-medium">
+                        ⏸ {eng.held} held
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             ) : (
-              <div className="text-xs text-slate-400 py-6 text-center">
-                No active engine tasks recorded yet.
+              <div className="p-6 rounded-lg border border-dashed border-slate-200 dark:border-slate-800 text-center">
+                <FolderGit2 className="w-6 h-6 text-slate-300 dark:text-slate-600 mx-auto mb-1.5" />
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                  No repositories registered in this workspace yet.
+                </p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Connect repositories in the Projects page to track engine execution by repo.
+                </p>
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Neuron Learned Rules & Quality Audit Section */}
+      <NeuronAuditSection workspaceId={activeWorkspaceId || 'default'} />
     </div>
   );
 }

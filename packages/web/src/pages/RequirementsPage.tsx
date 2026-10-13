@@ -40,6 +40,7 @@ import {
 import { Priority, Requirement, RequirementStatus } from '@sp-kickstack/shared';
 import { RunSettingsDialog } from '../components/RunSettingsDialog.js';
 import { statusChangeStartsFanOut } from '../lib/runSettings.js';
+import { RadixSelect } from '../components/ui/select.js';
 
 const priorityConfig: Record<Priority, { color: string; label: string }> = {
   urgent: { color: 'text-rose-500 fill-rose-500', label: 'Urgent' },
@@ -760,40 +761,40 @@ export function RequirementsPage() {
               </button>
 
               {/* Group By Selector */}
-              <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424]">
-                <span className="text-[10px] uppercase font-bold text-slate-400">Group:</span>
-                <select
+              <div className="w-36">
+                <RadixSelect
+                  size="xs"
                   value={groupBy}
-                  onChange={(e) => setGroupBy(e.target.value as GroupByOption)}
-                  className="bg-transparent font-medium text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer pr-1"
-                >
-                  <option value="none" className="bg-white dark:bg-[#242424]">None (DataTable)</option>
-                  <option value="status" className="bg-white dark:bg-[#242424]">Status</option>
-                  <option value="priority" className="bg-white dark:bg-[#242424]">Priority</option>
-                  <option value="project" className="bg-white dark:bg-[#242424]">Project</option>
-                </select>
+                  onChange={(val) => setGroupBy(val as GroupByOption)}
+                  options={[
+                    { value: 'none', label: 'No Grouping' },
+                    { value: 'status', label: 'Group: Status' },
+                    { value: 'priority', label: 'Group: Priority' },
+                    { value: 'project', label: 'Group: Project' },
+                  ]}
+                />
               </div>
 
               {/* Sort By Selector */}
-              <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424]">
-                <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                <select
+              <div className="w-40">
+                <RadixSelect
+                  size="xs"
                   value={`${sortField}_${sortDirection}`}
-                  onChange={(e) => {
-                    const [field, dir] = e.target.value.split('_') as [SortField, 'asc' | 'desc'];
+                  onChange={(val) => {
+                    const [field, dir] = val.split('_') as [SortField, 'asc' | 'desc'];
                     setSortField(field);
                     setSortDirection(dir);
                   }}
-                  className="bg-transparent font-medium text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer pr-1"
-                >
-                  <option value="created_at_desc" className="bg-white dark:bg-[#242424]">Sort: Newest</option>
-                  <option value="created_at_asc" className="bg-white dark:bg-[#242424]">Sort: Oldest</option>
-                  <option value="title_asc" className="bg-white dark:bg-[#242424]">Sort: Name (A-Z)</option>
-                  <option value="title_desc" className="bg-white dark:bg-[#242424]">Sort: Name (Z-A)</option>
-                  <option value="priority_desc" className="bg-white dark:bg-[#242424]">Sort: Priority</option>
-                  <option value="status_asc" className="bg-white dark:bg-[#242424]">Sort: Status</option>
-                  <option value="id_asc" className="bg-white dark:bg-[#242424]">Sort: ID</option>
-                </select>
+                  options={[
+                    { value: 'created_at_desc', label: 'Sort: Newest' },
+                    { value: 'created_at_asc', label: 'Sort: Oldest' },
+                    { value: 'title_asc', label: 'Sort: Name (A-Z)' },
+                    { value: 'title_desc', label: 'Sort: Name (Z-A)' },
+                    { value: 'priority_desc', label: 'Sort: Priority' },
+                    { value: 'status_asc', label: 'Sort: Status' },
+                    { value: 'id_asc', label: 'Sort: ID' },
+                  ]}
+                />
               </div>
 
               {/* Search Input */}
@@ -1170,32 +1171,30 @@ export function RequirementsPage() {
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           {scrumTab === 'backlog' ? (
-                            <select
-                              value=""
-                              onChange={(e) => {
-                                if (e.target.value) {
-                                  assignSprintMutation.mutate({
-                                    reqId: req.id,
-                                    sprintId: e.target.value,
-                                  });
-                                }
-                              }}
-                              className="bg-slate-100 dark:bg-[#262626] border border-slate-200 dark:border-[#333333] text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 rounded-lg px-2 py-1 focus:outline-none cursor-pointer max-w-[130px]"
-                            >
-                              <option value="" disabled>
-                                Move to...
-                              </option>
-                              {activeSprint && (
-                                <option value={activeSprint.id}>
-                                  🏃 Active: {activeSprint.name}
-                                </option>
-                              )}
-                              {plannedSprints.map((s) => (
-                                <option key={s.id} value={s.id}>
-                                  ⏳ {s.name}
-                                </option>
-                              ))}
-                            </select>
+                            <div className="w-36">
+                              <RadixSelect
+                                size="xs"
+                                placeholder="Move to..."
+                                value=""
+                                onChange={(sprintId) => {
+                                  if (sprintId) {
+                                    assignSprintMutation.mutate({
+                                      reqId: req.id,
+                                      sprintId,
+                                    });
+                                  }
+                                }}
+                                options={[
+                                  ...(activeSprint
+                                    ? [{ value: activeSprint.id, label: `🏃 Active: ${activeSprint.name}` }]
+                                    : []),
+                                  ...plannedSprints.map((s) => ({
+                                    value: s.id,
+                                    label: `⏳ ${s.name}`,
+                                  })),
+                                ]}
+                              />
+                            </div>
                           ) : (
                             <span
                               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[10px] font-semibold border ${
@@ -1328,32 +1327,30 @@ export function RequirementsPage() {
                                   </td>
                                   <td className="px-4 py-3 whitespace-nowrap">
                                     {scrumTab === 'backlog' ? (
-                                      <select
-                                        value=""
-                                        onChange={(e) => {
-                                          if (e.target.value) {
-                                            assignSprintMutation.mutate({
-                                              reqId: req.id,
-                                              sprintId: e.target.value,
-                                            });
-                                          }
-                                        }}
-                                        className="bg-slate-100 dark:bg-[#262626] border border-slate-200 dark:border-[#333333] text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 rounded-lg px-2 py-1 focus:outline-none cursor-pointer max-w-[130px]"
-                                      >
-                                        <option value="" disabled>
-                                          Move to...
-                                        </option>
-                                        {activeSprint && (
-                                          <option value={activeSprint.id}>
-                                            🏃 Active: {activeSprint.name}
-                                          </option>
-                                        )}
-                                        {plannedSprints.map((s) => (
-                                          <option key={s.id} value={s.id}>
-                                            ⏳ {s.name}
-                                          </option>
-                                        ))}
-                                      </select>
+                                      <div className="w-36">
+                                        <RadixSelect
+                                          size="xs"
+                                          placeholder="Move to..."
+                                          value=""
+                                          onChange={(sprintId) => {
+                                            if (sprintId) {
+                                              assignSprintMutation.mutate({
+                                                reqId: req.id,
+                                                sprintId,
+                                              });
+                                            }
+                                          }}
+                                          options={[
+                                            ...(activeSprint
+                                              ? [{ value: activeSprint.id, label: `🏃 Active: ${activeSprint.name}` }]
+                                              : []),
+                                            ...plannedSprints.map((s) => ({
+                                              value: s.id,
+                                              label: `⏳ ${s.name}`,
+                                            })),
+                                          ]}
+                                        />
+                                      </div>
                                     ) : (
                                       <span
                                         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[10px] font-semibold border ${

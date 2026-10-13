@@ -43,6 +43,7 @@ import { ProjectGitReviewView } from '../components/ProjectGitReviewView.js';
 import { ProjectTerminalView } from '../components/ProjectTerminalView.js';
 import { ProjectEmbeddedIdeView } from '../components/ProjectEmbeddedIdeView.js';
 import { OpenInIdeButton } from '../components/OpenInIdeButton.js';
+import { RadixSelect } from '../components/ui/select.js';
 
 export const VALID_PROJECT_TABS = ['review', 'terminal', 'editor'] as const;
 export type ProjectSplitTab = (typeof VALID_PROJECT_TABS)[number];
@@ -603,75 +604,75 @@ export function ProjectsPage() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {projects.map((proj) => (
                   <div
                     key={proj.name}
-                    className="bg-white dark:bg-[#242424] border border-slate-200 dark:border-[#2d2d2d] rounded-xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-4 group"
+                    className="bg-white dark:bg-[#1a1b24] border border-slate-200/90 dark:border-[#272936] rounded-2xl p-5 shadow-xs hover:shadow-md hover:border-purple-200 dark:hover:border-purple-900/50 transition-all flex flex-col justify-between space-y-4 group"
                   >
                     <div>
-                      <div className="flex items-start justify-between gap-2 mb-3">
-                        <div className="flex items-center gap-2.5">
+                      {/* Card Top: Identity & Status */}
+                      <div className="flex items-start justify-between gap-2.5 mb-3.5">
+                        <div className="flex items-center gap-3 min-w-0">
                           <div
                             onClick={() => setSelectedProject(proj)}
-                            className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-[#7b68ee] dark:text-purple-300 flex items-center justify-center font-bold cursor-pointer hover:scale-105 transition"
+                            className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950/50 text-[#7b68ee] dark:text-purple-300 flex items-center justify-center font-bold cursor-pointer hover:scale-105 border border-purple-200/50 dark:border-purple-800/30 shadow-2xs transition-all shrink-0"
                             title="Open Details"
                           >
-                            <FolderGit2 className="w-4 h-4" />
+                            <FolderGit2 className="w-5 h-5" />
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <h3
                               onClick={() => setSelectedProject(proj)}
-                              className="font-bold text-sm text-slate-900 dark:text-white capitalize cursor-pointer hover:text-[#7b68ee] transition-colors"
+                              className="font-bold text-sm text-slate-900 dark:text-white capitalize cursor-pointer hover:text-[#7b68ee] transition-colors truncate"
                             >
                               {proj.name}
                             </h3>
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 dark:bg-[#2e2e2e] text-slate-600 dark:text-slate-400">
+                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-slate-100 dark:bg-[#252733] text-slate-600 dark:text-slate-400 font-semibold border border-slate-200/60 dark:border-slate-800/60">
                                 {proj.kind}
                               </span>
-                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40">
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/40 font-semibold">
                                 📁 {proj.workspace_id || 'default'}
                               </span>
                             </div>
                           </div>
                         </div>
 
-                        {/* Header Actions: Engine Status & Top Action Buttons */}
-                        <div className="flex items-center gap-1">
-                          {/* Status Pill */}
+                        {/* Top Actions: Engine Status & Fast Icons */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          {/* Engine Status Badge */}
                           {proj.engine_status === 'ok' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Online
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Online
                             </span>
                           ) : proj.engine_status === 'down' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/50">
                               <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Down
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 dark:bg-[#2a2a2a] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-[#333333]">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-slate-100 dark:bg-[#252733] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-[#2f3140]">
                               <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span> {proj.engine_type}
                             </span>
                           )}
 
-                          {/* Top Action Icon Buttons: Open, Edit, Delete */}
                           <button
                             onClick={() => setSelectedProject(proj)}
-                            className="p-1 rounded-md text-slate-400 hover:text-[#7b68ee] hover:bg-slate-100 dark:hover:bg-[#2e2e2e] transition"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-[#7b68ee] hover:bg-slate-100 dark:hover:bg-[#252733] transition-colors"
                             title="Open Project Details"
                           >
                             <FolderOpen className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => handleOpenEdit(proj)}
-                            className="p-1 rounded-md text-slate-400 hover:text-blue-500 hover:bg-slate-100 dark:hover:bg-[#2e2e2e] transition"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-slate-100 dark:hover:bg-[#252733] transition-colors"
                             title="Edit Project"
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => setDeletingProject(proj)}
-                            className="p-1 rounded-md text-slate-400 hover:text-rose-500 hover:bg-slate-100 dark:hover:bg-[#2e2e2e] transition"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-slate-100 dark:hover:bg-[#252733] transition-colors"
                             title="Delete Project"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -679,81 +680,75 @@ export function ProjectsPage() {
                         </div>
                       </div>
 
-                      {/* Metadata List */}
-                      <div className="space-y-1.5 text-xs font-mono text-slate-500 dark:text-slate-400 bg-slate-50/70 dark:bg-[#1a1a1a] p-3 rounded-lg border border-slate-100 dark:border-[#2d2d2d]">
-                        <div className="flex justify-between">
-                          <span className="text-slate-400 dark:text-slate-500">Engine:</span>
-                          <span className="text-slate-800 dark:text-slate-200 font-semibold">{proj.engine_type}</span>
+                      {/* Metadata Card: Structured & Readable */}
+                      <div className="space-y-1.5 text-xs bg-slate-50/70 dark:bg-[#15161e] p-3 rounded-xl border border-slate-200/70 dark:border-[#262835]">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 dark:text-slate-500 font-medium text-[11px]">Engine:</span>
+                          <span className="text-slate-800 dark:text-slate-200 font-mono font-semibold text-[11px]">{proj.engine_type}</span>
                         </div>
-                        <div className="flex justify-between truncate">
-                          <span className="text-slate-400 dark:text-slate-500">URL:</span>
-                          <span className="text-[#7b68ee] truncate max-w-[170px]">{proj.engine_url || 'local/manual'}</span>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 dark:text-slate-500 font-medium text-[11px]">URL:</span>
+                          <span className="text-[#7b68ee] font-mono text-[11px] truncate max-w-[180px]">{proj.engine_url || 'local/manual'}</span>
                         </div>
-                        <div className="flex justify-between truncate">
-                          <span className="text-slate-400 dark:text-slate-500">Repo:</span>
-                          <span className="text-slate-700 dark:text-slate-300 truncate max-w-[170px]" title={proj.repo_path}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 dark:text-slate-500 font-medium text-[11px]">Repo:</span>
+                          <span className="text-slate-700 dark:text-slate-300 font-mono text-[11px] truncate max-w-[180px]" title={proj.repo_path}>
                             {proj.repo_path}
                           </span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-400 dark:text-slate-500">Branch:</span>
-                          <span className="text-slate-700 dark:text-slate-300">{proj.base_branch}</span>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 dark:text-slate-500 font-medium text-[11px]">Branch:</span>
+                          <span className="text-slate-700 dark:text-slate-300 font-mono text-[11px] font-semibold">{proj.base_branch}</span>
                         </div>
                         {proj.contract_path && (
-                          <div className="flex justify-between">
-                            <span className="text-slate-400 dark:text-slate-500">Contract:</span>
-                            <span className="text-purple-600 dark:text-purple-300 font-semibold">{proj.contract_path}</span>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400 dark:text-slate-500 font-medium text-[11px]">Contract:</span>
+                            <span className="text-purple-600 dark:text-purple-300 font-mono font-semibold text-[11px] truncate max-w-[180px]">{proj.contract_path}</span>
                           </div>
                         )}
                       </div>
                     </div>
 
-                    {/* Card Footer Actions: Git Review, Terminal, Code Editor, and Test */}
-                    <div className="pt-2.5 border-t border-slate-100 dark:border-[#2d2d2d] flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* Card Bottom: Quick Actions Bar */}
+                    <div className="pt-3 border-t border-slate-100 dark:border-[#262835] flex items-center justify-between gap-2">
+                      {/* Integrated Action Buttons */}
+                      <div className="flex items-center gap-1">
                         <button
-                          onClick={() => {
-                            setSearchParams({ project: proj.name, tab: 'review' });
-                          }}
-                          className="flex items-center gap-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
-                          title="Open Git Review tab"
+                          onClick={() => setSearchParams({ project: proj.name, tab: 'review' })}
+                          className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors"
+                          title="Open Git Review"
                         >
-                          <Code2 className="w-3.5 h-3.5" />
-                          <span>Git Review</span>
+                          <Code2 className="w-3.5 h-3.5 text-blue-500" />
+                          <span>Review</span>
                         </button>
-                        <span className="text-slate-300 dark:text-slate-600">|</span>
                         <button
-                          onClick={() => {
-                            setSearchParams({ project: proj.name, tab: 'terminal' });
-                          }}
-                          className="flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
-                          title="Open Terminal tab"
+                          onClick={() => setSearchParams({ project: proj.name, tab: 'terminal' })}
+                          className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
+                          title="Open Terminal"
                         >
-                          <Terminal className="w-3.5 h-3.5" />
+                          <Terminal className="w-3.5 h-3.5 text-emerald-500" />
                           <span>Terminal</span>
                         </button>
-                        <span className="text-slate-300 dark:text-slate-600">|</span>
                         <button
-                          onClick={() => {
-                            setSearchParams({ project: proj.name, tab: 'editor' });
-                          }}
-                          className="flex items-center gap-1 text-xs font-semibold text-purple-600 dark:text-purple-400 hover:underline"
+                          onClick={() => setSearchParams({ project: proj.name, tab: 'editor' })}
+                          className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 transition-colors"
                           title="Open In-App Code Editor"
                         >
-                          <Laptop className="w-3.5 h-3.5" />
-                          <span>Code Editor</span>
+                          <Laptop className="w-3.5 h-3.5 text-purple-500" />
+                          <span>Editor</span>
                           {ideStatus?.running && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse ml-0.5" />
                           )}
                         </button>
                       </div>
 
-                      <div className="flex items-center gap-1.5">
+                      {/* Right IDE & Test Trigger */}
+                      <div className="flex items-center gap-1.5 shrink-0">
                         <OpenInIdeButton projectName={proj.name} repoPath={proj.repo_path} variant="card" />
                         <button
                           onClick={() => testMutation.mutate(proj.name)}
                           disabled={testMutation.isPending}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-[#2a2a2a] hover:bg-slate-200 dark:hover:bg-[#333333] transition-colors disabled:opacity-50"
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-[#252733] hover:bg-slate-200 dark:hover:bg-[#2e3140] transition-colors disabled:opacity-50"
                           title="Test Connection"
                         >
                           <RefreshCw className={`w-3 h-3 ${testMutation.isPending ? 'animate-spin' : ''}`} />
@@ -889,7 +884,7 @@ export function ProjectsPage() {
             </div>
 
             {/* Modal Actions */}
-            <div className="pt-3.5 border-t border-slate-200 dark:border-[#2d2d2d] flex items-center justify-between">
+            <div className="pt-3.5 border-t border-slate-200 dark:border-[#2d2d2d] flex flex-wrap items-center justify-between gap-2.5">
               <button
                 type="button"
                 onClick={() => {
@@ -897,69 +892,76 @@ export function ProjectsPage() {
                   setSelectedProject(null);
                   setDeletingProject(proj);
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete Project</span>
+                <span>Delete</span>
               </button>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const proj = selectedProject;
-                    setSelectedProject(null);
-                    setSearchParams({ project: proj.name, tab: 'review' });
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 shadow-sm transition"
-                  title="Open in-app git & code reviewer"
-                >
-                  <Code2 className="w-3.5 h-3.5" />
-                  <span>Review Code & Git</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const proj = selectedProject;
-                    setSelectedProject(null);
-                    setSearchParams({ project: proj.name, tab: 'terminal' });
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm transition"
-                  title="Open interactive project shell terminal"
-                >
-                  <Terminal className="w-3.5 h-3.5" />
-                  <span>Terminal</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const proj = selectedProject;
-                    setSelectedProject(null);
-                    setSearchParams({ project: proj.name, tab: 'editor' });
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 shadow-sm transition"
-                  title="Open in-app embedded VS Code editor"
-                >
-                  <Laptop className="w-3.5 h-3.5" />
-                  <span>Code Editor</span>
-                  {ideStatus?.running && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  )}
-                </button>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {/* Secondary Navigation Group */}
+                <div className="inline-flex items-center rounded-lg bg-slate-100 dark:bg-[#15161e] border border-slate-200 dark:border-[#2d2f3d] p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const proj = selectedProject;
+                      setSelectedProject(null);
+                      setSearchParams({ project: proj.name, tab: 'review' });
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-white dark:hover:bg-[#252733] transition-colors cursor-pointer"
+                    title="Open in-app git & code reviewer"
+                  >
+                    <Code2 className="w-3.5 h-3.5 text-blue-500" />
+                    <span>Review</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const proj = selectedProject;
+                      setSelectedProject(null);
+                      setSearchParams({ project: proj.name, tab: 'terminal' });
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-white dark:hover:bg-[#252733] transition-colors cursor-pointer"
+                    title="Open interactive project shell terminal"
+                  >
+                    <Terminal className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>Terminal</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const proj = selectedProject;
+                      setSelectedProject(null);
+                      setSearchParams({ project: proj.name, tab: 'editor' });
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-white dark:hover:bg-[#252733] transition-colors cursor-pointer"
+                    title="Open in-app embedded VS Code editor"
+                  >
+                    <Laptop className="w-3.5 h-3.5 text-purple-500" />
+                    <span>Editor</span>
+                    {ideStatus?.running && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
+                    )}
+                  </button>
+                </div>
+
                 <OpenInIdeButton
                   projectName={selectedProject.name}
                   repoPath={selectedProject.repo_path}
-                  variant="modal"
+                  variant="card"
                 />
+
                 <button
                   type="button"
                   onClick={() => testMutation.mutate(selectedProject.name)}
                   disabled={testMutation.isPending}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-[#2a2a2a] hover:bg-slate-200 dark:hover:bg-[#333333] transition"
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-[#252733] hover:bg-slate-200 dark:hover:bg-[#2e3140] transition-colors disabled:opacity-50 cursor-pointer"
+                  title="Test Connection"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${testMutation.isPending ? 'animate-spin' : ''}`} />
-                  <span>Test Connection</span>
+                  <span>Test</span>
                 </button>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -967,7 +969,7 @@ export function ProjectsPage() {
                     setSelectedProject(null);
                     handleOpenEdit(proj);
                   }}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-[#7b68ee] hover:bg-[#6c5ce7] text-white shadow-sm transition"
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#7b68ee] hover:bg-[#6c5ce7] text-white shadow-xs transition-colors cursor-pointer"
                 >
                   <Pencil className="w-3.5 h-3.5" />
                   <span>Edit</span>
@@ -1003,18 +1005,17 @@ export function ProjectsPage() {
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
                   Workspace
                 </label>
-                <select
+                <RadixSelect
                   value={editWorkspaceId}
-                  onChange={(e) => setEditWorkspaceId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee]"
-                >
-                  <option value="default">📁 default</option>
-                  {workspaces.map((ws) => (
-                    <option key={ws.id} value={ws.id}>
-                      📁 {ws.name} ({ws.id})
-                    </option>
-                  ))}
-                </select>
+                  onChange={setEditWorkspaceId}
+                  options={[
+                    { value: 'default', label: '📁 default' },
+                    ...workspaces.map((ws) => ({
+                      value: ws.id,
+                      label: `📁 ${ws.name} (${ws.id})`,
+                    })),
+                  ]}
+                />
               </div>
 
               <div>
@@ -1035,34 +1036,28 @@ export function ProjectsPage() {
                   <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
                     Kind
                   </label>
-                  <select
+                  <RadixSelect
                     value={editKind}
-                    onChange={(e) => setEditKind(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee]"
-                  >
-                    {PROJECT_KIND_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val: string) => setEditKind(val as any)}
+                    options={PROJECT_KIND_OPTIONS.map((option) => ({
+                      value: option.value,
+                      label: option.label,
+                    }))}
+                  />
                 </div>
 
                 <div>
                   <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
                     Engine Type
                   </label>
-                  <select
+                  <RadixSelect
                     value={editEngineType}
-                    onChange={(e) => setEditEngineType(e.target.value as EngineType)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee]"
-                  >
-                    {ENGINE_TYPE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val: string) => setEditEngineType(val as EngineType)}
+                    options={ENGINE_TYPE_OPTIONS.map((option) => ({
+                      value: option.value,
+                      label: option.label,
+                    }))}
+                  />
                 </div>
               </div>
 
@@ -1236,34 +1231,28 @@ export function ProjectsPage() {
                   <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
                     Kind
                   </label>
-                  <select
+                  <RadixSelect
                     value={kind}
-                    onChange={(e) => setKind(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee]"
-                  >
-                    {PROJECT_KIND_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val: string) => setKind(val as any)}
+                    options={PROJECT_KIND_OPTIONS.map((option) => ({
+                      value: option.value,
+                      label: option.label,
+                    }))}
+                  />
                 </div>
 
                 <div>
                   <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
                     Engine Type
                   </label>
-                  <select
+                  <RadixSelect
                     value={engineType}
-                    onChange={(e) => setEngineType(e.target.value as EngineType)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-[#7b68ee]"
-                  >
-                    {ENGINE_TYPE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val: string) => setEngineType(val as EngineType)}
+                    options={ENGINE_TYPE_OPTIONS.map((option) => ({
+                      value: option.value,
+                      label: option.label,
+                    }))}
+                  />
                 </div>
               </div>
 

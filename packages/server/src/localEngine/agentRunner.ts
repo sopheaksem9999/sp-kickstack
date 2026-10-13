@@ -8,6 +8,7 @@ import type { AgentCliId, AiCliSettings, BridgeTask, LocalEngineSettings, LocalE
 import type { AppDatabase } from '../db/index.js';
 import type { ProjectService } from '../services/projectService.js';
 import type { SettingsService } from '../services/settingsService.js';
+import type { NeuronService } from '../services/neuronService.js';
 import { commitsAhead, resolveCommit } from '../lib/gitRepo.js';
 import { findCliBinary } from '../services/aiDraftService.js';
 import { FINISHED_RUN_STATUSES, RunStore, type LocalRun, type RunPatch, type RunStatus } from './runStore.js';
@@ -23,6 +24,7 @@ export interface AgentRunnerOptions {
   db: AppDatabase;
   projectService: ProjectService;
   settingsService: SettingsService;
+  neuronService?: NeuronService;
   /** Server workspace: default worktree root, run folders (prompt, raw output), xticket launcher. */
   workspaceDir: string;
   /** This server's address for xticket (XTICKET_URL). */
@@ -319,7 +321,10 @@ export class AgentRunner {
 
     const model = runModel(cli, run.model, ai);
     const effort = runEffort(cli, run.effort, ai);
-    const prompt = buildRunPrompt({ bodyMd: run.body_md, worktree: dir, branch: task.branch, notesMd: run.notes_md, continuation: run.continuation === 1 });
+    let prompt = buildRunPrompt({ bodyMd: run.body_md, worktree: dir, branch: task.branch, notesMd: run.notes_md, continuation: run.continuation === 1 });
+    if (this.opts.neuronService) {
+      prompt = this.opts.neuronService.enrichPrompt(prompt, project.name);
+    }
     const runDir = path.join(this.opts.workspaceDir, 'agent-runs', run.id);
     fs.mkdirSync(runDir, { recursive: true });
     fs.writeFileSync(path.join(runDir, `prompt-${Date.now()}.md`), prompt);

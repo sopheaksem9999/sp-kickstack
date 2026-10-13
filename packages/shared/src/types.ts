@@ -287,6 +287,64 @@ export interface AiCliSettings {
 /** An AI CLI the Local AI CLI engine can run as a coding agent. */
 export type AgentCliId = 'claude-cli' | 'agy-cli' | 'codex-cli';
 
+export type NeuronCategory = 'convention' | 'architecture' | 'dependency' | 'testing' | 'triage';
+
+export interface NeuronRule {
+  id: string;
+  workspace_id: string;
+  project: string;
+  category: NeuronCategory;
+  rule_text: string;
+  confidence_score: number;
+  trigger_count: number;
+  is_active: boolean;
+  source_run_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateNeuronRuleInput {
+  workspace_id?: string;
+  project: string;
+  category: NeuronCategory;
+  rule_text: string;
+  confidence_score?: number;
+  source_run_id?: string | null;
+}
+
+/** System 1 Decision Model identifier (non-conversational calibrated decision engine). 'none' disables the engine. */
+export type DecisionEngineId = 'clef' | 'jev' | 'none';
+
+export interface JevSettings {
+  jev_enabled: boolean;
+  jev_bin_path: string;
+  jev_model: string;
+  jev_args_template: string;
+}
+
+export interface ClefSettings {
+  clef_enabled: boolean;
+  clef_account_id: string;
+  clef_api_token: string;
+  clef_model: string;
+  clef_auto_triage: boolean;
+}
+
+/** System Decision Engine settings: exactly 1 active decision engine by default. */
+export interface SystemDecisionSettings {
+  active_engine: DecisionEngineId;
+  clef: ClefSettings;
+  jev: JevSettings;
+}
+
+export interface BrowserPageContent {
+  url: string;
+  title: string;
+  textContent: string;
+  headings: string[];
+  error?: string;
+}
+
 /** Settings → AI & Local Engines → Local AI CLI engine. */
 export interface LocalEngineSettings {
   /** Off: runs wait in QUEUED and the engine shows as down. */

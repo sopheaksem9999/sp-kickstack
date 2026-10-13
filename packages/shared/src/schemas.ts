@@ -367,6 +367,42 @@ export const SingleCliConfigSchema = z.object({
   ultracode: z.boolean().optional().default(false),
 });
 
+export const DecisionEngineIdSchema = z.enum(['clef', 'jev', 'none']);
+
+export const ClefSettingsSchema = z.object({
+  clef_enabled: z.boolean().default(true),
+  clef_account_id: z.string().trim().default(''),
+  clef_api_token: z.string().trim().default(''),
+  clef_model: z.string().trim().default('@cf/cloudflare/clef-flash'),
+  clef_auto_triage: z.boolean().default(true),
+});
+
+export const JevSettingsSchema = z.object({
+  jev_enabled: z.boolean().default(true),
+  jev_bin_path: z.string().trim().default('jev'),
+  jev_model: z.string().trim().default('default'),
+  jev_args_template: z.string().trim().default('-p --model {model}'),
+});
+
+export const SystemDecisionSettingsSchema = z.object({
+  active_engine: DecisionEngineIdSchema.default('clef'),
+  clef: ClefSettingsSchema.default({
+    clef_enabled: true,
+    clef_account_id: '',
+    clef_api_token: '',
+    clef_model: '@cf/cloudflare/clef-flash',
+    clef_auto_triage: true,
+  }),
+  jev: JevSettingsSchema.default({
+    jev_enabled: true,
+    jev_bin_path: 'jev',
+    jev_model: 'default',
+    jev_args_template: '-p --model {model}',
+  }),
+});
+
+export const UpdateSystemDecisionSettingsInputSchema = SystemDecisionSettingsSchema.partial().strict();
+
 export const AiCliSettingsSchema = z.object({
   defaultProvider: z
     .enum(['claude-cli', 'agy-cli', 'codex-cli', 'ollama', 'heuristic', 'auto'])
@@ -616,3 +652,36 @@ export const UpdateRunSettingsInputSchema = z
   .strict();
 
 export type UpdateRunSettingsInput = z.input<typeof UpdateRunSettingsInputSchema>;
+
+export const NeuronCategorySchema = z.enum(['convention', 'architecture', 'dependency', 'testing', 'triage']);
+
+export const NeuronRuleSchema = z.object({
+  id: z.string().trim().min(1),
+  workspace_id: z.string().trim().default('default'),
+  project: z.string().trim().min(1),
+  category: NeuronCategorySchema,
+  rule_text: z.string().trim().min(1),
+  confidence_score: z.number().min(0).max(1).default(0.9),
+  trigger_count: z.number().int().min(0).default(1),
+  is_active: z.boolean().default(true),
+  source_run_id: z.string().nullable().optional().default(null),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export const CreateNeuronRuleInputSchema = z.object({
+  workspace_id: z.string().trim().optional().default('default'),
+  project: z.string().trim().min(1),
+  category: NeuronCategorySchema,
+  rule_text: z.string().trim().min(1),
+  confidence_score: z.number().min(0).max(1).optional().default(0.9),
+  source_run_id: z.string().nullable().optional().default(null),
+});
+
+export const BrowserPageSchema = z.object({
+  url: z.string().trim().url(),
+  title: z.string().trim().default(''),
+  textContent: z.string().default(''),
+  headings: z.array(z.string()).default([]),
+  error: z.string().optional(),
+});

@@ -7,6 +7,7 @@ import {
   fetchSettings,
   updateBranchMergeSettings,
   updateAiCliSettings,
+  updateSystemDecisionSettings,
   fetchIdeSettings,
   updateIdeSettings,
   fetchIdeStatus,
@@ -43,11 +44,17 @@ import {
   RefreshCw,
   Activity,
   Layers,
+  Zap,
+  ShieldOff,
+  Building2,
 } from 'lucide-react';
+import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { NotificationSettingsSection } from '../components/NotificationSettingsSection.js';
+import { WorkspacesSettingsSection } from '../components/WorkspacesSettingsSection.js';
 import { branchPatternExamples, optionalBranchProblem } from '../lib/runSettings.js';
 import { LocalEngineSettingsSection } from '../components/LocalEngineSettingsSection.js';
-import { BranchMergePolicy, ReasoningEffort, EngineId } from '@sp-kickstack/shared';
+import { BranchMergePolicy, ReasoningEffort, EngineId, DecisionEngineId } from '@sp-kickstack/shared';
+import { RadixSelect } from '../components/ui/select.js';
 
 export interface ModelPreset {
   id: string;
@@ -270,6 +277,42 @@ export const OLLAMA_PRESETS: ModelPreset[] = [
   },
 ];
 
+export const CLEF_DECISION_PRESETS: ModelPreset[] = [
+  {
+    id: '@cf/cloudflare/clef-flash',
+    name: 'Clef Flash (Deterministic)',
+    provider: 'Cloudflare Workers AI',
+    description: 'Sub-50ms triage & decision engine (27B multimodal)',
+    badge: '<50ms',
+    isLatest: true,
+  },
+  {
+    id: '@cf/cloudflare/clef',
+    name: 'Clef Standard (Full)',
+    provider: 'Cloudflare Workers AI',
+    description: '27B multimodal calibrated decision model',
+    badge: '27B',
+  },
+];
+
+export const JEV_DECISION_PRESETS: ModelPreset[] = [
+  {
+    id: 'default',
+    name: 'Jev Core',
+    provider: 'TypeSafe Jev',
+    description: 'RLCD trained System One decision model (70–500ms)',
+    badge: 'RLCD',
+    isLatest: true,
+  },
+  {
+    id: 'fast',
+    name: 'Jev Fast Sampler',
+    provider: 'TypeSafe Jev',
+    description: 'Non-autoregressive parallel sampler for typed decisions',
+    badge: 'Fast',
+  },
+];
+
 export const ALL_SYSTEM_ENGINES: Array<{
   id: EngineId;
   label: string;
@@ -349,13 +392,6 @@ function ModelSelector({
     }
   }, [value, presets]);
 
-  // Group presets by provider
-  const groupedPresets = presets.reduce<Record<string, ModelPreset[]>>((acc, p) => {
-    acc[p.provider] = acc[p.provider] || [];
-    acc[p.provider].push(p);
-    return acc;
-  }, {});
-
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
@@ -395,35 +431,32 @@ function ModelSelector({
           </span>
         </div>
       ) : (
-        <select
+        <RadixSelect
+          size="sm"
           value={matchedPreset ? value : '__custom_value__'}
-          onChange={(e) => {
-            if (e.target.value === '__add_manual__') {
+          onChange={(val) => {
+            if (val === '__add_manual__') {
               setIsManual(true);
-            } else if (e.target.value !== '__custom_value__') {
-              onChange(e.target.value);
+            } else if (val !== '__custom_value__') {
+              onChange(val);
             }
           }}
-          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-[#333333] bg-white dark:bg-[#202020] text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#7b68ee]"
-        >
-          {!matchedPreset && value && (
-            <option value="__custom_value__">
-              Custom: {value}
-            </option>
-          )}
-          {Object.entries(groupedPresets).map(([group, items]) => (
-            <optgroup key={group} label={`── ${group} ──`}>
-              {items.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name} ({item.id}) {item.badge ? `[${item.badge}]` : ''}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-          <optgroup label="── Manual Option ──">
-            <option value="__add_manual__">✏️ Custom / Add manual model ID...</option>
-          </optgroup>
-        </select>
+          options={[
+            ...(!matchedPreset && value
+              ? [{ value: '__custom_value__', label: `Custom: ${value}` }]
+              : []),
+            ...presets.map((item) => ({
+              value: item.id,
+              label: `${item.name} (${item.id})`,
+              badge: item.badge ? (
+                <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                  {item.badge}
+                </span>
+              ) : undefined,
+            })),
+            { value: '__add_manual__', label: '✏️ Custom / Add manual model ID...' },
+          ]}
+        />
       )}
 
       {/* Description or hint */}
@@ -886,12 +919,13 @@ export function AgyModeCard({
   );
 }
 
-export type SettingsTab = 'ai' | 'git' | 'ide' | 'appearance' | 'safety' | 'notifications';
-export const VALID_TABS: SettingsTab[] = ['ai', 'git', 'ide', 'appearance', 'safety', 'notifications'];
+export type SettingsTab = 'ai' | 'workspaces' | 'git' | 'ide' | 'appearance' | 'safety' | 'notifications';
+export const VALID_TABS: SettingsTab[] = ['ai', 'workspaces', 'git', 'ide', 'appearance', 'safety', 'notifications'];
 
 export function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const { isTabBarEnabled, setIsTabBarEnabled } = useAppTabs();
+  const { workspaces } = useWorkspace();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -1040,6 +1074,16 @@ export function SettingsPage() {
   const [ollamaModel, setOllamaModel] = useState('llama3.2');
   const [ollamaUrl, setOllamaUrl] = useState('http://127.0.0.1:11434');
 
+  const [activeDecisionEngine, setActiveDecisionEngine] = useState<DecisionEngineId>('clef');
+  const [clefModel, setClefModel] = useState('@cf/cloudflare/clef-flash');
+  const [clefAccountId, setClefAccountId] = useState('');
+  const [clefApiToken, setClefApiToken] = useState('');
+  const [clefAutoTriage, setClefAutoTriage] = useState(true);
+
+  const [jevBinPath, setJevBinPath] = useState('jev');
+  const [jevModel, setJevModel] = useState('default');
+  const [jevArgsTemplate, setJevArgsTemplate] = useState('-p --model {model}');
+
   useEffect(() => {
     if (settingsData?.branch_merge) {
       setDefaultBranch(settingsData.branch_merge.default_base_branch || 'develop');
@@ -1072,6 +1116,21 @@ export function SettingsPage() {
       setCodexPath(cli.codex?.customPath || '');
       setOllamaModel(cli.ollama?.model || 'llama3.2');
       setOllamaUrl(cli.ollama?.url || 'http://127.0.0.1:11434');
+    }
+    if (settingsData?.decision_engine) {
+      const dec = settingsData.decision_engine;
+      setActiveDecisionEngine(dec.active_engine || 'clef');
+      if (dec.clef) {
+        setClefModel(dec.clef.clef_model || '@cf/cloudflare/clef-flash');
+        setClefAccountId(dec.clef.clef_account_id || '');
+        setClefApiToken(dec.clef.clef_api_token || '');
+        setClefAutoTriage(dec.clef.clef_auto_triage !== false);
+      }
+      if (dec.jev) {
+        setJevBinPath(dec.jev.jev_bin_path || 'jev');
+        setJevModel(dec.jev.jev_model || 'default');
+        setJevArgsTemplate(dec.jev.jev_args_template || '-p --model {model}');
+      }
     }
   }, [settingsData]);
 
@@ -1157,6 +1216,33 @@ export function SettingsPage() {
     },
   });
 
+  const saveDecisionMutation = useMutation({
+    mutationFn: () =>
+      updateSystemDecisionSettings({
+        active_engine: activeDecisionEngine,
+        clef: {
+          clef_enabled: activeDecisionEngine === 'clef',
+          clef_account_id: clefAccountId.trim(),
+          clef_api_token: clefApiToken.trim(),
+          clef_model: clefModel.trim() || '@cf/cloudflare/clef-flash',
+          clef_auto_triage: clefAutoTriage,
+        },
+        jev: {
+          jev_enabled: activeDecisionEngine === 'jev',
+          jev_bin_path: jevBinPath.trim() || 'jev',
+          jev_model: jevModel.trim() || 'default',
+          jev_args_template: jevArgsTemplate.trim() || '-p --model {model}',
+        },
+      }),
+    onSuccess: () => {
+      toast.success('System Decision Engine settings saved');
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to save decision engine settings');
+    },
+  });
+
   const tabs: {
     id: SettingsTab;
     label: string;
@@ -1170,6 +1256,13 @@ export function SettingsPage() {
       sublabel: 'Claude, AGY, Codex & Ollama',
       icon: Bot,
       badge: '100% Local',
+    },
+    {
+      id: 'workspaces',
+      label: 'Workspaces',
+      sublabel: 'Manage, edit & delete workspaces',
+      icon: Building2,
+      badge: `${workspaces.length}`,
     },
     {
       id: 'git',
@@ -1711,16 +1804,17 @@ export function SettingsPage() {
                       <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
                         Reasoning Effort (--effort)
                       </label>
-                      <select
+                      <RadixSelect<ReasoningEffort>
+                        size="sm"
                         value={claudeEffort}
-                        onChange={(e) => setClaudeEffort(e.target.value as ReasoningEffort)}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-[#333333] bg-white dark:bg-[#202020] text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#7b68ee]"
-                      >
-                        <option value="low">Low (Fast, brief thinking)</option>
-                        <option value="medium">Medium (Standard thinking effort)</option>
-                        <option value="high">High (Deep complex reasoning)</option>
-                        <option value="max">Max (Exhaustive chain-of-thought)</option>
-                      </select>
+                        onChange={setClaudeEffort}
+                        options={[
+                          { value: 'low', label: 'Low (Fast, brief thinking)' },
+                          { value: 'medium', label: 'Medium (Standard thinking effort)' },
+                          { value: 'high', label: 'High (Deep complex reasoning)' },
+                          { value: 'max', label: 'Max (Exhaustive chain-of-thought)' },
+                        ]}
+                      />
                       <div className="flex items-center gap-1.5 pt-0.5">
                         <span className="text-[10px] text-slate-400">Quick:</span>
                         {(['low', 'medium', 'high', 'max'] as ReasoningEffort[]).map((lvl) => (
@@ -1822,16 +1916,17 @@ export function SettingsPage() {
                       <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
                         Reasoning Effort
                       </label>
-                      <select
+                      <RadixSelect<ReasoningEffort>
+                        size="sm"
                         value={agyEffort}
-                        onChange={(e) => setAgyEffort(e.target.value as ReasoningEffort)}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-[#333333] bg-white dark:bg-[#202020] text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                      >
-                        <option value="low">Low (Fast)</option>
-                        <option value="medium">Medium (Standard)</option>
-                        <option value="high">High (Deep reasoning)</option>
-                        <option value="max">Max (Thorough exploration)</option>
-                      </select>
+                        onChange={setAgyEffort}
+                        options={[
+                          { value: 'low', label: 'Low (Fast)' },
+                          { value: 'medium', label: 'Medium (Standard)' },
+                          { value: 'high', label: 'High (Deep reasoning)' },
+                          { value: 'max', label: 'Max (Thorough exploration)' },
+                        ]}
+                      />
                       <div className="flex items-center gap-1.5 pt-0.5">
                         <span className="text-[10px] text-slate-400">Quick:</span>
                         {(['low', 'medium', 'high', 'max'] as ReasoningEffort[]).map((lvl) => (
@@ -1903,16 +1998,17 @@ export function SettingsPage() {
                       <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
                         Reasoning Effort (-c model_reasoning_effort=)
                       </label>
-                      <select
+                      <RadixSelect<ReasoningEffort>
+                        size="sm"
                         value={codexEffort}
-                        onChange={(e) => setCodexEffort(e.target.value as ReasoningEffort)}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-[#333333] bg-white dark:bg-[#202020] text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      >
-                        <option value="low">Low (Fast reasoning)</option>
-                        <option value="medium">Medium (Balanced default)</option>
-                        <option value="high">High (Deep reasoning)</option>
-                        <option value="max">Max (Maximum depth)</option>
-                      </select>
+                        onChange={setCodexEffort}
+                        options={[
+                          { value: 'low', label: 'Low (Fast reasoning)' },
+                          { value: 'medium', label: 'Medium (Balanced default)' },
+                          { value: 'high', label: 'High (Deep reasoning)' },
+                          { value: 'max', label: 'Max (Maximum depth)' },
+                        ]}
+                      />
                       <div className="flex items-center gap-1.5 pt-0.5">
                         <span className="text-[10px] text-slate-400">Quick:</span>
                         {(['low', 'medium', 'high', 'max'] as ReasoningEffort[]).map((lvl) => (
@@ -2029,6 +2125,278 @@ export function SettingsPage() {
             </div>
           )}
 
+          {/* ========================================================= */}
+          {/* System Decision Engine (System 1 / Calibrated Decisions) */}
+          {/* ========================================================= */}
+          {activeTab === 'ai' && (
+            <div className="bg-white dark:bg-[#242424] border border-slate-200 dark:border-[#2d2d2d] rounded-2xl p-6 shadow-sm space-y-5 animate-in fade-in-50 duration-150">
+              <div className="flex items-start justify-between pb-3 border-b border-slate-100 dark:border-[#2d2d2d]">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500">
+                    <Zap className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-black uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
+                      System Decision Engine (System 1)
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
+                        Optional · 1 Active or None
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Probabilistic decision models (Cloudflare Clef &amp; TypeSafe Jev) provide calibrated, deterministic choices (P0–P3 error triage, safety &amp; risk checks, intent routing) in sub-second time. This engine is optional and can be set to None if not needed.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Active Engine Selector (Radio / Choice) - strictly 1 active or none */}
+              <div className="space-y-2">
+                <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                  <span>Active System Decision Engine</span>
+                  <span className="text-[10px] font-normal text-slate-400">Optional decision engine · Select 1 active or None</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setActiveDecisionEngine('none')}
+                    className={`p-3.5 rounded-xl border text-left transition-all ${
+                      activeDecisionEngine === 'none'
+                        ? 'border-slate-500 bg-slate-500/10 ring-2 ring-slate-500/20'
+                        : 'border-slate-200 dark:border-[#2d2d2d] bg-white dark:bg-[#1f1f1f] hover:border-slate-300 dark:hover:border-[#3d3d3d]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <ShieldOff className="w-3.5 h-3.5 text-slate-400" />
+                        None (Disabled)
+                      </span>
+                      {activeDecisionEngine === 'none' && (
+                        <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                      No decision model. Useful if your team does not need calibrated decisions or error triage.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveDecisionEngine('clef')}
+                    className={`p-3.5 rounded-xl border text-left transition-all ${
+                      activeDecisionEngine === 'clef'
+                        ? 'border-amber-500 bg-amber-500/5 ring-2 ring-amber-500/20'
+                        : 'border-slate-200 dark:border-[#2d2d2d] bg-white dark:bg-[#1f1f1f] hover:border-slate-300 dark:hover:border-[#3d3d3d]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5 text-amber-500" />
+                        Cloudflare Clef (Default)
+                      </span>
+                      {activeDecisionEngine === 'clef' && (
+                        <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/60 px-2 py-0.5 rounded">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                      27B multimodal decision model on Cloudflare Workers AI with sub-50ms latency.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveDecisionEngine('jev')}
+                    className={`p-3.5 rounded-xl border text-left transition-all ${
+                      activeDecisionEngine === 'jev'
+                        ? 'border-indigo-500 bg-indigo-500/5 ring-2 ring-indigo-500/20'
+                        : 'border-slate-200 dark:border-[#2d2d2d] bg-white dark:bg-[#1f1f1f] hover:border-slate-300 dark:hover:border-[#3d3d3d]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <Terminal className="w-3.5 h-3.5 text-indigo-500" />
+                        TypeSafe Jev
+                      </span>
+                      {activeDecisionEngine === 'jev' && (
+                        <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-950/60 px-2 py-0.5 rounded">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                      RLCD trained System One model for typed decisions in 70–500ms via parallel sampling.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Active Engine Configuration */}
+              {activeDecisionEngine === 'none' ? (
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#1a1a1a] border border-slate-200 dark:border-[#2d2d2d] flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
+                    <ShieldOff className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      System Decision Engine is Disabled
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      No System 1 decision model will execute. Probabilistic triage, risk checks, and automated classifications are skipped.
+                    </div>
+                  </div>
+                </div>
+              ) : activeDecisionEngine === 'clef' ? (
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#1a1a1a] border border-slate-200 dark:border-[#2d2d2d] space-y-4">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-200/70 dark:border-[#2d2d2d]">
+                    <div className="flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-amber-500" />
+                      <h3 className="font-bold text-xs text-slate-900 dark:text-white">
+                        Cloudflare Clef Decision Configuration
+                      </h3>
+                    </div>
+                    <span className="text-[10px] font-mono text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 px-2 py-0.5 rounded font-bold">
+                      sub-50ms deterministic
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                    <ModelSelector
+                      label="Clef Decision Model"
+                      value={clefModel}
+                      onChange={setClefModel}
+                      presets={CLEF_DECISION_PRESETS}
+                      quickPills={['@cf/cloudflare/clef-flash', '@cf/cloudflare/clef']}
+                      placeholder="@cf/cloudflare/clef-flash"
+                      helperText="Deterministic error triage and calibrated decision model"
+                    />
+
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                        Cloudflare Account ID
+                      </label>
+                      <input
+                        type="text"
+                        value={clefAccountId}
+                        onChange={(e) => setClefAccountId(e.target.value)}
+                        placeholder="Optional: Cloudflare Workers AI Account ID"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-[#333333] bg-white dark:bg-[#202020] text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start pt-2 border-t border-slate-100 dark:border-[#262626]">
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                        Cloudflare API Token
+                      </label>
+                      <input
+                        type="password"
+                        value={clefApiToken}
+                        onChange={(e) => setClefApiToken(e.target.value)}
+                        placeholder="Bearer token for Workers AI"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-[#333333] bg-white dark:bg-[#202020] text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                      <span className="text-[10px] text-slate-400">
+                        Automatic fallback to local deterministic triage if API token is unconfigured
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                        Clef Automatic Triage
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer pt-1">
+                        <input
+                          type="checkbox"
+                          checked={clefAutoTriage}
+                          onChange={(e) => setClefAutoTriage(e.target.checked)}
+                          className="w-4 h-4 rounded text-amber-500 focus:ring-amber-500"
+                        />
+                        <span className="text-xs text-slate-600 dark:text-slate-300">
+                          Automatically classify error logs into P0–P3 severity &amp; domain
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#1a1a1a] border border-slate-200 dark:border-[#2d2d2d] space-y-4">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-200/70 dark:border-[#2d2d2d]">
+                    <div className="flex items-center gap-2">
+                      <Terminal className="w-4 h-4 text-indigo-500" />
+                      <h3 className="font-bold text-xs text-slate-900 dark:text-white">
+                        TypeSafe Jev System One Configuration
+                      </h3>
+                    </div>
+                    <span className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-950/60 px-2 py-0.5 rounded font-bold">
+                      70–500ms RLCD
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                    <ModelSelector
+                      label="Jev Decision Model / Profile"
+                      value={jevModel}
+                      onChange={setJevModel}
+                      presets={JEV_DECISION_PRESETS}
+                      quickPills={['default', 'fast']}
+                      placeholder="default"
+                      helperText="RLCD decision profile passed to jev execution"
+                    />
+
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                        Jev Binary Path
+                      </label>
+                      <input
+                        type="text"
+                        value={jevBinPath}
+                        onChange={(e) => setJevBinPath(e.target.value)}
+                        placeholder="jev"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-[#333333] bg-white dark:bg-[#202020] text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <span className="text-[10px] text-slate-400">
+                        Binary name or absolute path to the local Jev runner
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-[#262626]">
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                      Arguments Template
+                    </label>
+                    <input
+                      type="text"
+                      value={jevArgsTemplate}
+                      onChange={(e) => setJevArgsTemplate(e.target.value)}
+                      placeholder="-p --model {model}"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-[#333333] bg-white dark:bg-[#202020] text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <span className="text-[10px] text-slate-400">
+                      Command-line template passed to Jev CLI execution
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Save Decision Settings Button */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => saveDecisionMutation.mutate()}
+                  disabled={saveDecisionMutation.isPending}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-md shadow-amber-500/20 active:scale-[0.98] transition-all disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{saveDecisionMutation.isPending ? 'Saving...' : 'Save Decision Engine Configuration'}</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'ai' && (
             <div className="bg-white dark:bg-[#242424] border border-slate-200 dark:border-[#2d2d2d] rounded-2xl p-6 shadow-sm space-y-4 animate-in fade-in-50 duration-150">
               <div className="flex items-center gap-2 pb-3 border-b border-slate-100 dark:border-[#2d2d2d]">
@@ -2041,6 +2409,15 @@ export function SettingsPage() {
                 </div>
               </div>
               <LocalEngineSettingsSection />
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* Workspaces Management */}
+          {/* ========================================================= */}
+          {activeTab === 'workspaces' && (
+            <div className="animate-in fade-in-50 duration-150">
+              <WorkspacesSettingsSection />
             </div>
           )}
 
@@ -2360,29 +2737,28 @@ export function SettingsPage() {
                   <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
                     Preferred Default IDE (Opened when clicking "Open in IDE" across projects)
                   </label>
-                  <select
+                  <RadixSelect
                     value={idePreferredIde}
-                    onChange={(e) => setIdePreferredIde(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-[#333333] bg-white dark:bg-[#202128] text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Auto-detect (Recommended - use first detected IDE)</option>
-                    {detectedIdesList.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name} ({d.appPath ? 'App' : 'CLI'})
-                      </option>
-                    ))}
-                    <option value="antigravity">Antigravity IDE</option>
-                    <option value="vscode">VS Code</option>
-                    <option value="cursor">Cursor</option>
-                    <option value="windsurf">Windsurf</option>
-                    <option value="trae">Trae</option>
-                    <option value="zed">Zed</option>
-                    <option value="android-studio">Android Studio</option>
-                    <option value="xcode">Xcode</option>
-                    <option value="intellij">IntelliJ IDEA</option>
-                    <option value="webstorm">WebStorm</option>
-                    <option value="sublime">Sublime Text</option>
-                  </select>
+                    onChange={setIdePreferredIde}
+                    options={[
+                      { value: '', label: 'Auto-detect (Recommended - use first detected IDE)' },
+                      ...detectedIdesList.map((d) => ({
+                        value: d.id,
+                        label: `${d.name} (${d.appPath ? 'App' : 'CLI'})`,
+                      })),
+                      { value: 'antigravity', label: 'Antigravity IDE' },
+                      { value: 'vscode', label: 'VS Code' },
+                      { value: 'cursor', label: 'Cursor' },
+                      { value: 'windsurf', label: 'Windsurf' },
+                      { value: 'trae', label: 'Trae' },
+                      { value: 'zed', label: 'Zed' },
+                      { value: 'android-studio', label: 'Android Studio' },
+                      { value: 'xcode', label: 'Xcode' },
+                      { value: 'intellij', label: 'IntelliJ IDEA' },
+                      { value: 'webstorm', label: 'WebStorm' },
+                      { value: 'sublime', label: 'Sublime Text' },
+                    ]}
+                  />
                 </div>
               </div>
 

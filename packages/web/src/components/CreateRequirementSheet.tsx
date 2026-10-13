@@ -18,7 +18,6 @@ import {
   Trash2,
   BookOpen,
   Sparkles,
-  CheckCircle2,
   FolderGit2,
   GitBranch,
   ArrowRight,
@@ -41,11 +40,12 @@ import {
   Bot,
   User,
   Cpu,
-  Terminal,
   Wand2,
   AlertTriangle,
   Building2,
   Lock,
+  Check,
+  ChevronDown,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import {
@@ -56,6 +56,13 @@ import {
   DialogDescription,
   DialogFooter,
 } from './ui/dialog.js';
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from './ui/popover.js';
+import { Tabs, TabsList, TabsTrigger } from './ui/tabs.js';
+import { RadixSelect } from './ui/select.js';
 import {
   Priority,
   RequirementStatus,
@@ -123,6 +130,7 @@ export function CreateRequirementSheet() {
   const [showAiBar, setShowAiBar] = useState(false);
   const [selectedAiProvider, setSelectedAiProvider] = useState<string>('auto');
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [projectsPopoverOpen, setProjectsPopoverOpen] = useState(false);
 
   const { data: aiProviders } = useQuery({
     queryKey: ['ai-providers'],
@@ -163,6 +171,7 @@ export function CreateRequirementSheet() {
     setCriteria(['']);
     setAttachments([]);
     setActiveGoalTab('write');
+    setProjectsPopoverOpen(false);
   };
 
   const handleClose = () => {
@@ -428,7 +437,7 @@ What feature, solution, or refactoring would you like to design today? You can s
     <Sheet open={isOpen} onOpenChange={(open) => { if (!open) triggerCancel(); }}>
       <SheetContent side="right" className="p-0 overflow-hidden sm:max-w-2xl flex flex-col w-screen">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-200 dark:border-[#262732] flex items-center justify-between bg-slate-50/70 dark:bg-[#1a1b23]/70">
+        <div className="px-6 py-2 border-b border-slate-200 dark:border-[#262732] flex items-center justify-between bg-slate-50/70 dark:bg-[#1a1b23]/70">
           <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#7b68ee] to-[#ec4899] flex items-center justify-center font-black text-white text-sm shadow-md shadow-purple-500/20">
                 ⚡
@@ -473,53 +482,42 @@ What feature, solution, or refactoring would you like to design today? You can s
           </div>
 
           {/* Mode Selector: Specification Form vs. Discuss with Local AI (Option 2) */}
-          <div className="px-6 py-2.5 bg-slate-100/70 dark:bg-[#1a1b23]/70 border-b border-slate-200 dark:border-[#262732] flex items-center justify-between gap-3">
-            <div className="flex items-center gap-1 p-1 bg-slate-200/70 dark:bg-[#23242e] rounded-lg flex-1 max-w-md">
-              <button
-                type="button"
-                onClick={() => setActiveMode('form')}
-                className={clsx(
-                  'flex-1 flex items-center justify-center gap-2 py-1.5 px-3 rounded-md text-xs font-semibold transition-all',
-                  activeMode === 'form'
-                    ? 'bg-white dark:bg-[#2d2f3d] text-slate-900 dark:text-white shadow-sm'
-                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                )}
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>Specification Form</span>
-                {title.trim().length > 0 && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Draft in progress" />
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveMode('chat')}
-                className={clsx(
-                  'flex-1 flex items-center justify-center gap-2 py-1.5 px-3 rounded-md text-xs font-semibold transition-all',
-                  activeMode === 'chat'
-                    ? 'bg-gradient-to-r from-[#7b68ee] to-[#6366f1] text-white shadow-sm shadow-indigo-500/25'
-                    : 'text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300'
-                )}
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>💬 Discuss with Local AI</span>
-                <span className="text-[9px] uppercase tracking-wider font-mono px-1 py-0.5 rounded bg-purple-200/50 dark:bg-purple-900/60 text-purple-900 dark:text-purple-200 font-bold">
-                  Option 2
-                </span>
-              </button>
-            </div>
-
-            <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
-              <Terminal className="w-3.5 h-3.5 text-emerald-500" />
-              <span>0 API Keys · Local PC AI</span>
-            </div>
+          <div className="px-6 pt-2 pb-0 flex items-center justify-between gap-3">
+            <Tabs
+              value={activeMode}
+              onValueChange={(val) => setActiveMode(val as 'form' | 'chat')}
+              className="flex-1 max-w-sm"
+            >
+              <TabsList className="bg-slate-100 dark:bg-[#1f2028] border border-slate-200 dark:border-[#2d2f3d] p-1 rounded-xl w-full flex items-center gap-1 shadow-inner">
+                <TabsTrigger
+                  value="form"
+                  className="flex-1 flex items-center justify-center gap-2 py-1.5 px-3 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all cursor-pointer data-[state=active]:bg-white dark:data-[state=active]:bg-[#2a2c38] data-[state=active]:text-[#7b68ee] dark:data-[state=active]:text-purple-300 data-[state=active]:shadow-sm data-[state=active]:font-bold border border-transparent data-[state=active]:border-slate-200/80 dark:data-[state=active]:border-purple-500/20"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Specification Form</span>
+                  {title.trim().length > 0 && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-[#2a2c38]" title="Draft in progress" />
+                  )}
+                </TabsTrigger>
+                <TabsTrigger
+                  value="chat"
+                  className="flex-1 flex items-center justify-center gap-2 py-1.5 px-3 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-purple-600 dark:hover:text-purple-300 transition-all cursor-pointer data-[state=active]:bg-white dark:data-[state=active]:bg-[#2a2c38] data-[state=active]:text-[#7b68ee] dark:data-[state=active]:text-purple-300 data-[state=active]:shadow-sm data-[state=active]:font-bold border border-transparent data-[state=active]:border-slate-200/80 dark:data-[state=active]:border-purple-500/20"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" />
+                  <span>Discuss with Local AI</span>
+                  <span className="text-[9px] uppercase tracking-wider font-mono px-1.5 py-0.2 rounded font-bold bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300">
+                    Option 2
+                  </span>
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
 
           {activeMode === 'form' ? (
-            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+            <div className="flex-1 overflow-y-auto px-6 py-2.5 space-y-3">
             {/* Shared Workspace Rules & Architecture Context Notification */}
             {currentWorkspace && (currentWorkspace.rules || currentWorkspace.context) && (
-              <div className="p-3 rounded-lg bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/40 flex items-start gap-2.5 text-xs">
+              <div className="p-2 rounded-lg bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/40 flex items-start gap-2.5 text-xs">
                 <BookOpen className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0 mt-0.5" />
                 <div className="text-slate-700 dark:text-slate-300">
                   <span className="font-bold text-purple-700 dark:text-purple-300">
@@ -531,12 +529,12 @@ What feature, solution, or refactoring would you like to design today? You can s
             )}
 
             {/* AI Requirement Drafter Banner & Expandable Panel */}
-            <div className="rounded-xl border border-purple-200 dark:border-purple-900/50 bg-gradient-to-r from-purple-50/70 via-indigo-50/40 to-pink-50/50 dark:from-purple-950/30 dark:via-indigo-950/20 dark:to-pink-950/20 p-3.5 space-y-2.5 transition-all">
+            <div className="rounded-xl border border-purple-200 dark:border-purple-900/50 bg-gradient-to-r from-purple-50/70 via-indigo-50/40 to-pink-50/50 dark:from-purple-950/30 dark:via-indigo-950/20 dark:to-pink-950/20 px-3 py-2 space-y-2 transition-all">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs font-bold text-purple-800 dark:text-purple-300">
-                  <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
                   <span>Draft with AI Assistant</span>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300">
+                  <span className="text-[10px] font-semibold px-2 py-0.2 rounded-full bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300">
                     Claude · Codex · AGY · Ollama
                   </span>
                 </div>
@@ -544,7 +542,7 @@ What feature, solution, or refactoring would you like to design today? You can s
                   <button
                     type="button"
                     onClick={() => setShowAiBar(true)}
-                    className="text-xs font-semibold text-purple-700 dark:text-purple-300 hover:text-purple-900 dark:hover:text-purple-100 flex items-center gap-1 transition-colors"
+                    className="text-xs font-semibold text-purple-700 dark:text-purple-300 hover:text-purple-900 dark:hover:text-purple-100 flex items-center gap-1 transition-colors cursor-pointer"
                   >
                     <span>Use Prompt</span> <ArrowRight className="w-3 h-3" />
                   </button>
@@ -554,20 +552,21 @@ What feature, solution, or refactoring would you like to design today? You can s
               {showAiBar && (
                 <div className="space-y-2 pt-1">
                   <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-semibold text-slate-700 dark:text-slate-300">Engine:</span>
-                      <select
+                    <div className="flex items-center gap-1.5 flex-1 max-w-sm">
+                      <span className="font-semibold text-slate-700 dark:text-slate-300 shrink-0">Engine:</span>
+                      <RadixSelect
                         value={selectedAiProvider}
-                        onChange={(e) => setSelectedAiProvider(e.target.value)}
-                        className="bg-purple-100/70 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 text-purple-900 dark:text-purple-200 rounded px-2 py-0.5 font-medium cursor-pointer focus:outline-none text-[11px]"
-                      >
-                        <option value="auto">⚡ Auto (Local Claude / AGY CLI — No API Key)</option>
-                        {aiProviders?.map((p) => (
-                          <option key={p.id} value={p.id} disabled={!p.available}>
-                            {p.name} {!p.available ? '(Offline)' : '✓'}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={setSelectedAiProvider}
+                        options={[
+                          { value: 'auto', label: '⚡ Auto (Local Claude / AGY CLI — No API Key)' },
+                          ...(aiProviders?.map((p) => ({
+                            value: p.id,
+                            label: `${p.name} ${!p.available ? '(Offline)' : '✓'}`,
+                            disabled: !p.available,
+                          })) || []),
+                        ]}
+                        className="bg-purple-100/70 dark:bg-purple-950/60 border-purple-200 dark:border-purple-800 text-purple-900 dark:text-purple-200 text-[11px] py-1 px-2 h-7"
+                      />
                     </div>
                     <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
                       🔒 Zero Cloud API Key Needed
@@ -613,10 +612,10 @@ What feature, solution, or refactoring would you like to design today? You can s
             </div>
 
             {/* Title Input */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center justify-between">
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center justify-between">
                 <span>Requirement Title *</span>
-                <span className="text-[11px] font-normal text-slate-400">Clear, unambiguous feature goal</span>
+                <span className="text-[10px] font-normal text-slate-400">Clear, unambiguous feature goal</span>
               </label>
               <input
                 type="text"
@@ -624,87 +623,91 @@ What feature, solution, or refactoring would you like to design today? You can s
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. Rider can see nearby drivers on live map"
                 autoFocus
-                className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424] text-sm font-semibold text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] focus:border-transparent transition-all"
+                className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424] text-sm font-semibold text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] focus:border-transparent transition-all"
               />
             </div>
 
-            {/* Input State, Priority, Sprint & Merge Policy Select Controls */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Input State, Priority, Sprint & Merge Policy Select Controls (2 columns per row) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* State Select */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   State
                 </label>
-                <select
+                <RadixSelect<RequirementStatus>
                   value={status}
-                  onChange={(e) => setStatus(e.target.value as RequirementStatus)}
-                  className="w-full px-3 py-2.5 rounded-lg border border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424] text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] cursor-pointer"
-                >
-                  <option value="draft">📋 ToDo (Backlog)</option>
-                  <option value="in_progress">⚡ In-Progress</option>
-                  <option value="qa">🧪 QA / Testing</option>
-                  <option value="done">✅ Done / Complete</option>
-                </select>
+                  onChange={setStatus}
+                  options={[
+                    { value: 'draft', label: 'ToDo (Backlog)', icon: <span>📋</span> },
+                    { value: 'in_progress', label: 'In-Progress', icon: <span>⚡</span> },
+                    { value: 'qa', label: 'QA / Testing', icon: <span>🧪</span> },
+                    { value: 'done', label: 'Done / Complete', icon: <span>✅</span> },
+                  ]}
+                />
               </div>
 
               {/* Priority Select */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   Priority
                 </label>
-                <select
+                <RadixSelect<Priority>
                   value={priority}
-                  onChange={(e) => setPriority(e.target.value as Priority)}
-                  className="w-full px-3 py-2.5 rounded-lg border border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424] text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] cursor-pointer"
-                >
-                  <option value="urgent">🔴 Urgent</option>
-                  <option value="high">🟠 High</option>
-                  <option value="normal">🔵 Normal</option>
-                  <option value="low">⚪ Low</option>
-                </select>
+                  onChange={setPriority}
+                  options={[
+                    { value: 'urgent', label: 'Urgent', icon: <span>🔴</span> },
+                    { value: 'high', label: 'High', icon: <span>🟠</span> },
+                    { value: 'normal', label: 'Normal', icon: <span>🔵</span> },
+                    { value: 'low', label: 'Low', icon: <span>⚪</span> },
+                  ]}
+                />
               </div>
 
               {/* Sprint Select */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   Sprint
                 </label>
-                <select
+                <RadixSelect<string>
                   value={sprintId || ''}
-                  onChange={(e) => setSprintId(e.target.value ? e.target.value : null)}
-                  className="w-full px-3 py-2.5 rounded-lg border border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424] text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] cursor-pointer"
-                >
-                  <option value="">📋 Product Backlog</option>
-                  {sprints.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.status === 'active' ? '🏃 Active: ' : s.status === 'completed' ? '🏁 ' : '⏳ Planned: '}
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setSprintId(val ? val : null)}
+                  options={[
+                    { value: '', label: 'Product Backlog', icon: <span>📋</span> },
+                    ...sprints.map((s) => ({
+                      value: s.id,
+                      label: s.name,
+                      icon: <span>{s.status === 'active' ? '🏃' : s.status === 'completed' ? '🏁' : '⏳'}</span>,
+                      badge: (
+                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-200 dark:bg-[#333] text-slate-600 dark:text-slate-400 font-semibold">
+                          {s.status}
+                        </span>
+                      ),
+                    })),
+                  ]}
+                />
               </div>
 
               {/* Merge Policy Select */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   Merge into Main
                 </label>
-                <select
+                <RadixSelect<'inherit' | BranchMergePolicy>
                   value={mergePolicy}
-                  onChange={(e) => setMergePolicy(e.target.value as any)}
-                  className="w-full px-3 py-2.5 rounded-lg border border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424] text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] cursor-pointer"
-                >
-                  <option value="inherit">⚙️ Workspace Default</option>
-                  <option value="manual_review_merge">🛡️ Review first</option>
-                  <option value="auto_merge">🚀 Auto-merge (no review)</option>
-                </select>
+                  onChange={setMergePolicy}
+                  options={[
+                    { value: 'inherit', label: 'Workspace Default', icon: <span>⚙️</span> },
+                    { value: 'manual_review_merge', label: 'Review first', icon: <span>🛡️</span> },
+                    { value: 'auto_merge', label: 'Auto-merge (no review)', icon: <span>🚀</span> },
+                  ]}
+                />
               </div>
             </div>
 
             {/* Affected Repositories / Engines */}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                   <FolderGit2 className="w-3.5 h-3.5" />
                   <span>Affected Repositories / Engines *</span>
                 </label>
@@ -714,7 +717,7 @@ What feature, solution, or refactoring would you like to design today? You can s
                       <button
                         type="button"
                         onClick={() => setSelectedProjects(projects.map((p) => p.name))}
-                        className="text-purple-600 dark:text-purple-400 font-semibold hover:underline"
+                        className="text-purple-600 dark:text-purple-400 font-semibold hover:underline cursor-pointer"
                       >
                         Select All
                       </button>
@@ -722,7 +725,7 @@ What feature, solution, or refactoring would you like to design today? You can s
                       <button
                         type="button"
                         onClick={() => setSelectedProjects([])}
-                        className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:underline"
+                        className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:underline cursor-pointer"
                       >
                         Clear
                       </button>
@@ -736,47 +739,139 @@ What feature, solution, or refactoring would you like to design today? You can s
               </div>
 
               {projects.length === 0 ? (
-                <div className="p-3.5 rounded-lg border border-dashed border-slate-200 dark:border-[#303030] text-center text-xs text-slate-500">
+                <div className="p-3 rounded-lg border border-dashed border-slate-200 dark:border-[#303030] text-center text-xs text-slate-500">
                   No projects registered in this workspace yet. Add projects in the Projects tab.
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {projects.map((proj) => {
-                    const isSelected = selectedProjects.includes(proj.name);
-                    return (
+                <div className="space-y-1.5">
+                  <Popover open={projectsPopoverOpen} onOpenChange={setProjectsPopoverOpen}>
+                    <PopoverTrigger asChild>
                       <button
-                        key={proj.name}
                         type="button"
-                        onClick={() => toggleProject(proj.name)}
-                        className={`flex items-center justify-between p-2.5 rounded-lg border text-left transition-all ${
-                          isSelected
-                            ? 'bg-purple-50/70 dark:bg-purple-950/30 border-[#7b68ee] text-purple-900 dark:text-purple-200 shadow-sm'
-                            : 'border-slate-200 dark:border-[#303030] bg-slate-50/60 dark:bg-[#242424] text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-[#3a3a3a]'
-                        }`}
+                        className={clsx(
+                          'w-full h-9 flex items-center justify-between px-3 py-2 rounded-lg border text-xs font-semibold text-slate-800 dark:text-slate-200 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#7b68ee]',
+                          selectedProjects.length === 0
+                            ? 'border-rose-300 dark:border-rose-700/60 bg-rose-50/40 dark:bg-rose-950/20'
+                            : 'border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424] hover:border-slate-300 dark:hover:border-[#3a3a3a]'
+                        )}
                       >
-                        <div className="min-w-0 pr-2">
-                          <div className="font-bold text-xs truncate flex items-center gap-1.5">
-                            <span>{proj.name}</span>
-                            <span className="text-[9px] px-1 py-0.2 rounded font-mono font-medium bg-slate-200 dark:bg-[#2c2c2c] text-slate-600 dark:text-slate-400">
-                              {proj.engine_type}
-                            </span>
-                          </div>
-                          <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate mt-0.5">
-                            {proj.repo_path} · <span className="font-semibold text-purple-600 dark:text-purple-400">{proj.base_branch || 'develop'}</span>
-                          </div>
+                        <div className="flex items-center gap-2 truncate">
+                          <FolderGit2 className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+                          <span className="truncate">
+                            {selectedProjects.length === 0
+                              ? 'Select affected repositories / engines...'
+                              : selectedProjects.length === projects.length
+                              ? `All repositories selected (${projects.length})`
+                              : `${selectedProjects.length} of ${projects.length} selected (${selectedProjects.join(', ')})`}
+                          </span>
                         </div>
-                        <div
-                          className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
-                            isSelected
-                              ? 'bg-[#7b68ee] border-[#7b68ee] text-white'
-                              : 'border-slate-300 dark:border-slate-600'
-                          }`}
-                        >
-                          {isSelected && <CheckCircle2 className="w-3.5 h-3.5" />}
-                        </div>
+                        <ChevronDown className="w-4 h-4 text-slate-400 shrink-0 ml-2" />
                       </button>
-                    );
-                  })}
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="start"
+                      sideOffset={4}
+                      className="w-[var(--radix-popover-trigger-width)] min-w-[340px] max-w-[600px] p-2 bg-white dark:bg-[#242424] border border-slate-200 dark:border-[#303030] shadow-xl rounded-xl z-50 space-y-1.5"
+                    >
+                      <div className="px-2 py-1.5 border-b border-slate-100 dark:border-[#2d2d2d] flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">Select Options</span>
+                        <div className="flex items-center gap-2 text-[11px]">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedProjects(projects.map((p) => p.name))}
+                            className="text-purple-600 dark:text-purple-400 font-semibold hover:underline cursor-pointer"
+                          >
+                            Select All
+                          </button>
+                          <span>·</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedProjects([])}
+                            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:underline cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="max-h-60 overflow-y-auto space-y-1 py-1">
+                        {projects.map((proj) => {
+                          const isSelected = selectedProjects.includes(proj.name);
+                          return (
+                            <button
+                              key={proj.name}
+                              type="button"
+                              onClick={() => toggleProject(proj.name)}
+                              className={clsx(
+                                'w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-left text-xs transition-colors cursor-pointer',
+                                isSelected
+                                  ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 font-semibold'
+                                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#2c2c2c]'
+                              )}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                                <div
+                                  className={clsx(
+                                    'w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors',
+                                    isSelected
+                                      ? 'bg-[#7b68ee] border-[#7b68ee] text-white'
+                                      : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-[#1e1e1e]'
+                                  )}
+                                >
+                                  {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                                </div>
+                                <div className="truncate">
+                                  <div className="flex items-center gap-1.5 truncate">
+                                    <span className="truncate">{proj.name}</span>
+                                    <span className="text-[9px] px-1 py-0.2 rounded font-mono font-medium bg-slate-200 dark:bg-[#333333] text-slate-600 dark:text-slate-400 shrink-0">
+                                      {proj.engine_type}
+                                    </span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate mt-0.5 font-normal">
+                                    {proj.repo_path} · <span className="font-semibold text-purple-600 dark:text-purple-400">{proj.base_branch || 'develop'}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+
+                  {/* Selected Repositories Badges/Chips */}
+                  {selectedProjects.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                      {selectedProjects.map((pName) => {
+                        const proj = projects.find((p) => p.name === pName);
+                        return (
+                          <span
+                            key={pName}
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 transition-all shadow-2xs"
+                          >
+                            <FolderGit2 className="w-3 h-3 text-purple-600 dark:text-purple-400 shrink-0" />
+                            <span className="font-semibold">{pName}</span>
+                            {proj?.engine_type && (
+                              <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-600 dark:text-purple-300">
+                                {proj.engine_type}
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleProject(pName);
+                              }}
+                              className="text-purple-400 hover:text-purple-700 dark:hover:text-purple-200 ml-0.5 p-0.5 rounded hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
+                              title={`Remove ${pName}`}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -803,9 +898,9 @@ What feature, solution, or refactoring would you like to design today? You can s
             </div>
 
             {/* Goal & Problem Context (Rich Text Editor + Attachments) */}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                   <Edit3 className="w-3.5 h-3.5 text-purple-500" />
                   <span>Goal & Problem Context (Rich Text)</span>
                   <span className="text-[10px] normal-case font-normal text-slate-400 dark:text-slate-500">
@@ -814,32 +909,24 @@ What feature, solution, or refactoring would you like to design today? You can s
                 </label>
 
                 {/* Tabs: Write vs Preview */}
-                <div className="flex items-center rounded-lg bg-slate-100 dark:bg-[#242424] p-0.5 text-xs font-semibold">
-                  <button
-                    type="button"
-                    onClick={() => setActiveGoalTab('write')}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition-all ${
-                      activeGoalTab === 'write'
-                        ? 'bg-white dark:bg-[#2e2e2e] text-slate-900 dark:text-white shadow-sm'
-                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    <Edit3 className="w-3 h-3" />
-                    <span>Write</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveGoalTab('preview')}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition-all ${
-                      activeGoalTab === 'preview'
-                        ? 'bg-white dark:bg-[#2e2e2e] text-slate-900 dark:text-white shadow-sm'
-                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    <Eye className="w-3 h-3" />
-                    <span>Preview</span>
-                  </button>
-                </div>
+                <Tabs value={activeGoalTab} onValueChange={(val) => setActiveGoalTab(val as 'write' | 'preview')}>
+                  <TabsList className="bg-slate-100 dark:bg-[#242424] p-0.5 rounded-lg border border-slate-200 dark:border-[#303030]">
+                    <TabsTrigger
+                      value="write"
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-[#2e2e2e] data-[state=active]:text-slate-900 dark:data-[state=active]:text-white data-[state=active]:shadow-sm"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                      <span>Write</span>
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="preview"
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold data-[state=active]:bg-white dark:data-[state=active]:bg-[#2e2e2e] data-[state=active]:text-slate-900 dark:data-[state=active]:text-white data-[state=active]:shadow-sm"
+                    >
+                      <Eye className="w-3 h-3" />
+                      <span>Preview</span>
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
               </div>
 
               {/* Rich Text Toolbar (when writing) */}
@@ -999,24 +1086,24 @@ What feature, solution, or refactoring would you like to design today? You can s
             </div>
 
             {/* User Story (Optional) */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center justify-between">
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center justify-between">
                 <span>User Story (Optional)</span>
-                <span className="text-[11px] font-normal text-slate-400">As a... I want... So that...</span>
+                <span className="text-[10px] font-normal text-slate-400">As a... I want... So that...</span>
               </label>
               <input
                 type="text"
                 value={userStory}
                 onChange={(e) => setUserStory(e.target.value)}
                 placeholder="As a rider, I want to see real-time drivers so I can book immediately."
-                className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424] text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] focus:border-transparent transition-all"
+                className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424] text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] focus:border-transparent transition-all"
               />
             </div>
 
             {/* Acceptance Criteria */}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-purple-500" />
                   <span>Acceptance Criteria (Optional)</span>
                 </label>
@@ -1030,7 +1117,7 @@ What feature, solution, or refactoring would you like to design today? You can s
                 </button>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {criteria.map((item, idx) => (
                   <div key={idx} className="flex items-center gap-2">
                     <span className="text-xs font-mono font-bold text-slate-400 dark:text-slate-500 w-5 text-right">
@@ -1041,7 +1128,7 @@ What feature, solution, or refactoring would you like to design today? You can s
                       value={item}
                       onChange={(e) => updateCriterion(idx, e.target.value)}
                       placeholder="e.g. Implementation complete and verified (optional)"
-                      className="flex-1 px-3 py-2 rounded-lg border border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424] text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] focus:border-transparent transition-all"
+                      className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424] text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] focus:border-transparent transition-all"
                     />
                     {criteria.length > 1 && (
                       <button
@@ -1080,19 +1167,20 @@ What feature, solution, or refactoring would you like to design today? You can s
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <Cpu className="w-3.5 h-3.5 text-slate-400" />
-                  <select
+                  <Cpu className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <RadixSelect
                     value={selectedAiProvider}
-                    onChange={(e) => setSelectedAiProvider(e.target.value)}
-                    className="bg-slate-100 dark:bg-[#23242e] border border-slate-200 dark:border-[#2d2f3d] rounded px-2 py-1 text-slate-800 dark:text-slate-200 text-[11px] font-medium focus:outline-none cursor-pointer"
-                  >
-                    <option value="auto">Auto (Best Local Engine)</option>
-                    <option value="claude-cli">Claude Code CLI</option>
-                    <option value="agy-cli">Antigravity CLI (agy)</option>
-                    <option value="codex-cli">Codex CLI</option>
-                    <option value="ollama">Local Ollama</option>
-                    <option value="heuristic">Offline Heuristic</option>
-                  </select>
+                    onChange={setSelectedAiProvider}
+                    options={[
+                      { value: 'auto', label: 'Auto (Best Local Engine)' },
+                      { value: 'claude-cli', label: 'Claude Code CLI' },
+                      { value: 'agy-cli', label: 'Antigravity CLI (agy)' },
+                      { value: 'codex-cli', label: 'Codex CLI' },
+                      { value: 'ollama', label: 'Local Ollama' },
+                      { value: 'heuristic', label: 'Offline Heuristic' },
+                    ]}
+                    className="w-48 py-1 px-2.5 text-[11px] h-7 bg-slate-100 dark:bg-[#23242e] border-slate-200 dark:border-[#2d2f3d]"
+                  />
                 </div>
               </div>
 
@@ -1236,7 +1324,7 @@ What feature, solution, or refactoring would you like to design today? You can s
           )}
 
           {/* Sticky Bottom Actions */}
-          <div className="p-4 border-t border-slate-200 dark:border-[#2d2d2d] bg-slate-50/80 dark:bg-[#1e1e1e]/80 flex items-center justify-between gap-3">
+          <div className="px-6 py-3 border-t border-slate-200 dark:border-[#2d2d2d] bg-slate-50/80 dark:bg-[#1e1e1e]/80 flex items-center justify-between gap-3">
             <button
               type="button"
               onClick={triggerCancel}

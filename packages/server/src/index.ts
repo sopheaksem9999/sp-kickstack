@@ -26,6 +26,7 @@ import { SettingsService } from './services/settingsService.js';
 import { NotificationService } from './notify/notificationService.js';
 import { startScheduler } from './services/scheduler.js';
 import { AgentRunner } from './localEngine/agentRunner.js';
+import { NeuronService } from './services/neuronService.js';
 
 const PORT = Number(process.env.PORT || 4100);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -43,12 +44,14 @@ const projectService = new ProjectService(db);
 const requirementService = new RequirementService(db, WORKSPACE_DIR);
 const sprintService = new SprintService(db);
 const settingsService = new SettingsService(db);
+const neuronService = new NeuronService(db);
 
 // The Local AI CLI engine runs agents on this PC for repositories whose engine is 'local'.
 const localEngine = new AgentRunner({
   db,
   projectService,
   settingsService,
+  neuronService,
   workspaceDir: WORKSPACE_DIR,
   bridgeUrl: `http://${HOST === '0.0.0.0' || HOST === '::' ? '127.0.0.1' : HOST}:${PORT}`,
   agentToken: process.env.AGENT_TOKEN || undefined,
@@ -139,6 +142,7 @@ const app = createApp({
   questionService,
   settingsService,
   notificationService,
+  neuronService,
   localEngine,
   branchService,
   demoMode: process.env.DEMO_MODE === '1',

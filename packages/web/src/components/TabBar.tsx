@@ -16,6 +16,7 @@ import {
   Copy,
   ChevronRight,
   Maximize2,
+  Globe,
 } from 'lucide-react';
 import {
   Popover,
@@ -31,6 +32,8 @@ function getTabIcon(icon?: string) {
       return <ListTodo className="w-3.5 h-3.5 text-amber-400 shrink-0" />;
     case 'chat':
       return <Sparkles className="w-3.5 h-3.5 text-purple-400 shrink-0" />;
+    case 'globe':
+      return <Globe className="w-3.5 h-3.5 text-indigo-400 shrink-0" />;
     case 'paperclip':
       return <Paperclip className="w-3.5 h-3.5 text-slate-400 shrink-0" />;
     case 'folder':

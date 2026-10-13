@@ -7,15 +7,20 @@ import {
   Search,
   X,
   FolderGit2,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { Workspace } from '@sp-kickstack/shared';
 import { Popover, PopoverTrigger, PopoverContent } from './ui/popover.js';
+import { EditWorkspaceModal, DeleteWorkspaceModal } from './WorkspaceModals.js';
 
 export interface WorkspaceSelectProps {
   value: string;
   onValueChange: (workspaceId: string) => void;
   workspaces: Workspace[];
   onCreateNew?: () => void;
+  onEditWorkspace?: (workspace: Workspace) => void;
+  onDeleteWorkspace?: (workspace: Workspace) => void;
   className?: string;
   compact?: boolean;
 }
@@ -25,11 +30,15 @@ export function WorkspaceSelect({
   onValueChange,
   workspaces,
   onCreateNew,
+  onEditWorkspace,
+  onDeleteWorkspace,
   className = '',
   compact = false,
 }: WorkspaceSelectProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [editingWs, setEditingWs] = useState<Workspace | null>(null);
+  const [deletingWs, setDeletingWs] = useState<Workspace | null>(null);
 
   const activeWs = useMemo(() => {
     return workspaces.find((w) => w.id === value);
@@ -62,61 +71,86 @@ export function WorkspaceSelect({
     onCreateNew?.();
   };
 
+  const renderModals = () => (
+    <>
+      <EditWorkspaceModal
+        workspace={editingWs}
+        isOpen={!!editingWs}
+        onClose={() => setEditingWs(null)}
+        onOpenDelete={(ws) => {
+          setEditingWs(null);
+          setDeletingWs(ws);
+        }}
+      />
+      <DeleteWorkspaceModal
+        workspace={deletingWs}
+        isOpen={!!deletingWs}
+        onClose={() => setDeletingWs(null)}
+      />
+    </>
+  );
+
   if (compact) {
     return (
+      <>
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className={`p-2 rounded-lg text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-slate-100 dark:hover:bg-[#2a2a2a] transition-colors relative cursor-pointer ${className}`}
+              title={`Active Workspace: ${activeTitle}`}
+              aria-label="Select Active Workspace"
+            >
+              <Building2 className="w-4 h-4 text-[#7b68ee]" />
+              <span className="absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full bg-[#7b68ee]" />
+            </button>
+          </PopoverTrigger>
+
+          <PopoverContent
+            side="right"
+            align="start"
+            sideOffset={8}
+            className="w-72 p-0 overflow-hidden shadow-2xl border-slate-200 dark:border-[#2e303d] bg-white dark:bg-[#1a1b23] z-50"
+          >
+            {renderDropdownBody()}
+          </PopoverContent>
+        </Popover>
+        {renderModals()}
+      </>
+    );
+  }
+
+  return (
+    <>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
             type="button"
-            className={`p-2 rounded-lg text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-slate-100 dark:hover:bg-[#2a2a2a] transition-colors relative cursor-pointer ${className}`}
-            title={`Active Workspace: ${activeTitle}`}
+            className={`w-full flex items-center justify-between gap-1.5 bg-slate-100 dark:bg-[#262626] border border-slate-200 dark:border-[#333333] hover:border-purple-300 dark:hover:border-purple-700/60 data-[state=open]:border-purple-500 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 transition-colors cursor-pointer group text-left ${className}`}
+            title="Select Active Workspace"
             aria-label="Select Active Workspace"
           >
-            <Building2 className="w-4 h-4 text-[#7b68ee]" />
-            <span className="absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full bg-[#7b68ee]" />
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Building2 className="w-3.5 h-3.5 text-[#7b68ee] shrink-0" />
+              <span className="truncate text-xs font-semibold">
+                {activeTitle}
+              </span>
+            </div>
+            <ChevronsUpDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300 shrink-0" />
           </button>
         </PopoverTrigger>
 
         <PopoverContent
-          side="right"
+          side="bottom"
           align="start"
-          sideOffset={8}
+          sideOffset={6}
           className="w-72 p-0 overflow-hidden shadow-2xl border-slate-200 dark:border-[#2e303d] bg-white dark:bg-[#1a1b23] z-50"
         >
           {renderDropdownBody()}
         </PopoverContent>
       </Popover>
-    );
-  }
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className={`flex-1 min-w-0 flex items-center justify-between gap-1.5 bg-slate-100 dark:bg-[#262626] border border-slate-200 dark:border-[#333333] hover:border-purple-300 dark:hover:border-purple-700/60 data-[state=open]:border-purple-500 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 transition-colors cursor-pointer group text-left ${className}`}
-          title="Select Active Workspace"
-          aria-label="Select Active Workspace"
-        >
-          <div className="flex items-center gap-1.5 min-w-0">
-            <Building2 className="w-3.5 h-3.5 text-[#7b68ee] shrink-0" />
-            <span className="truncate text-xs font-semibold">
-              {activeTitle}
-            </span>
-          </div>
-          <ChevronsUpDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300 shrink-0" />
-        </button>
-      </PopoverTrigger>
-
-      <PopoverContent
-        side="bottom"
-        align="start"
-        sideOffset={6}
-        className="w-72 p-0 overflow-hidden shadow-2xl border-slate-200 dark:border-[#2e303d] bg-white dark:bg-[#1a1b23] z-50"
-      >
-        {renderDropdownBody()}
-      </PopoverContent>
-    </Popover>
+      {renderModals()}
+    </>
   );
 
   function renderDropdownBody() {
@@ -152,29 +186,65 @@ export function WorkspaceSelect({
           {filteredWorkspaces.map((ws) => {
             const isSelected = ws.id === value;
             return (
-              <button
+              <div
                 key={ws.id}
-                type="button"
-                onClick={() => handleSelect(ws.id)}
-                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-md transition-colors text-left cursor-pointer ${
+                className={`group w-full flex items-center justify-between px-2.5 py-1.5 rounded-md transition-colors text-left ${
                   isSelected
-                    ? 'bg-purple-100 dark:bg-purple-950/60 text-[#7b68ee] font-bold'
+                    ? 'bg-purple-100 dark:bg-purple-950/60 text-[#7b68ee]'
                     : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#252735]'
                 }`}
               >
-                <div className="flex items-center gap-2 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => handleSelect(ws.id)}
+                  className="flex items-center gap-2 min-w-0 flex-1 text-left cursor-pointer"
+                >
                   <FolderGit2 className="w-3.5 h-3.5 text-[#7b68ee] shrink-0" />
-                  <div className="min-w-0">
-                    <div className="font-semibold truncate">{ws.name}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold truncate text-xs">{ws.name}</div>
                     <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate">
                       {ws.id}
                     </div>
                   </div>
+                  {isSelected && (
+                    <Check className="w-4 h-4 text-[#7b68ee] shrink-0 mr-1" />
+                  )}
+                </button>
+
+                {/* Edit & Delete Action Buttons */}
+                <div className="flex items-center gap-0.5 opacity-80 group-hover:opacity-100 transition-opacity shrink-0 ml-1">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpen(false);
+                      if (onEditWorkspace) onEditWorkspace(ws);
+                      else setEditingWs(ws);
+                    }}
+                    className="p-1 rounded text-slate-400 hover:text-purple-600 dark:hover:text-purple-300 hover:bg-purple-100/70 dark:hover:bg-purple-950/60 transition-colors cursor-pointer"
+                    title={`Edit & View ${ws.name}`}
+                    aria-label={`Edit ${ws.name}`}
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                  {ws.id !== 'default' && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpen(false);
+                        if (onDeleteWorkspace) onDeleteWorkspace(ws);
+                        else setDeletingWs(ws);
+                      }}
+                      className="p-1 rounded text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
+                      title={`Delete ${ws.name}`}
+                      aria-label={`Delete ${ws.name}`}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
-                {isSelected && (
-                  <Check className="w-4 h-4 text-[#7b68ee] shrink-0 ml-2" />
-                )}
-              </button>
+              </div>
             );
           })}
 

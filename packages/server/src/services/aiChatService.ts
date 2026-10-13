@@ -5,6 +5,8 @@ import { ProjectService } from './projectService.js';
 import { SettingsService } from './settingsService.js';
 import { RequirementService } from './requirementService.js';
 import { findCliBinary } from './aiDraftService.js';
+import { ClefService } from './clefService.js';
+import { NeuronService } from './neuronService.js';
 import {
   AiChatMessage,
   AiChatRequest,
@@ -19,14 +21,20 @@ import {
 
 export class AiChatService {
   private requirementService: RequirementService;
+  private clefService: ClefService;
+  private neuronService?: NeuronService;
 
   constructor(
     private db: AppDatabase,
     private projectService: ProjectService,
     private settingsService?: SettingsService,
-    requirementService?: RequirementService
+    requirementService?: RequirementService,
+    clefService?: ClefService,
+    neuronService?: NeuronService
   ) {
     this.requirementService = requirementService || new RequirementService(this.db);
+    this.clefService = clefService || new ClefService();
+    this.neuronService = neuronService;
   }
 
   public listSessions(workspaceId?: string): AiChatSession[] {
@@ -69,8 +77,19 @@ export class AiChatService {
       .run(id, workspaceId, title, provider, input.model || null, effort, now, now);
 
     const welcomeId = `msg-${crypto.randomUUID()}`;
+    const isBrowser = title.startsWith('Browser:') || title.includes('In-App Browser');
     const projects = this.projectService.listProjects(workspaceId).map((p) => p.name);
-    const welcomeContent = `👋 Hello! I am your **Local AI Principal Architect** running locally on your Mac with **Zero Cloud API Keys**.
+    const welcomeContent = isBrowser
+      ? `👋 Welcome! I am your **Browser AI Assistant** grounded on this active webpage.
+
+I can help you:
+- 🔍 **Summarize**: Get an executive architectural summary of this page
+- 📑 **Extract Requirements**: Convert capabilities or specs into development tickets
+- 🧪 **Inspect & Code**: Break down APIs, code samples, contracts, and component designs
+- 💬 **Ask Page**: Answer any question about this page with grounded references
+
+Select an action above or ask any question to get started!`
+      : `👋 Hello! I am your **Local AI Principal Architect** running locally on your Mac with **Zero Cloud API Keys**.
 
 Workspace Stack & Repositories:
 - **${projects.length > 0 ? projects.join(', ') : 'backend, frontend'}**
@@ -299,6 +318,13 @@ What feature, solution, or refactoring would you like to design today? Tell me w
     // Prevent queries from triggering creation
     if (/\b(?:what\s+did\s+we\s+create|read\s+data\s+from\s+record|what\s+was\s+created|how\s+to\s+create)\b/i.test(trimmed)) {
       return { isCreate: false, separateByModule: false };
+    }
+
+    // In webpage grounding context, only create if user explicitly issued /create or requested system app persistence
+    if (trimmed.includes('[Active Webpage Context]') || trimmed.includes('--- Page Grounding Context ---')) {
+      if (!trimmed.startsWith('/create') && !/\b(?:system\s+app|ai\s+brigith|in\s+app)\b/i.test(trimmed)) {
+        return { isCreate: false, separateByModule: false };
+      }
     }
 
     if (trimmed.startsWith('/create')) {
@@ -1283,15 +1309,19 @@ ${reqLines.length > 0 ? `\n### Existing Workspace Requirements / Tickets (refere
     let provider = req.provider || cliSettings?.defaultProvider || 'auto';
 
     if (provider === 'auto') {
-      const claudeBin = cliSettings?.claude?.customPath || findCliBinary('claude');
-      const agyBin = cliSettings?.agy?.customPath || findCliBinary('agy');
-
-      if (claudeBin && cliSettings?.claude?.enabled !== false) {
-        provider = 'claude-cli';
-      } else if (agyBin && cliSettings?.agy?.enabled !== false) {
-        provider = 'agy-cli';
-      } else {
+      if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
         provider = 'heuristic';
+      } else {
+        const claudeBin = cliSettings?.claude?.customPath || findCliBinary('claude');
+        const agyBin = cliSettings?.agy?.customPath || findCliBinary('agy');
+
+        if (claudeBin && cliSettings?.claude?.enabled !== false) {
+          provider = 'claude-cli';
+        } else if (agyBin && cliSettings?.agy?.enabled !== false) {
+          provider = 'agy-cli';
+        } else {
+          provider = 'heuristic';
+        }
       }
     }
 
@@ -1326,7 +1356,7 @@ Guidelines:
         try {
           return await this.chatWithClaudeCli(req, systemPrompt, claudeBin, cliSettings, sessionId);
         } catch {
-          // Fall back to heuristic
+          // Fall back to heuristic / grounded browser assistant
         }
       }
     }
@@ -1338,12 +1368,43 @@ Guidelines:
         try {
           return await this.chatWithAgyCli(req, systemPrompt, agyBin, cliSettings, sessionId);
         } catch {
-          // Fall back to heuristic
+          // Fall back to heuristic / grounded browser assistant
         }
       }
     }
 
-    // 3. Fallback Heuristic Architect
+    // 3. Try Ollama local inference if specified
+    if (provider === 'ollama') {
+      try {
+        const rawLastUser = [...req.messages].reverse().find((m) => m.role === 'user')?.content || '';
+        const ollamaRes = await fetch('http://127.0.0.1:11434/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: req.model || 'llama3.2',
+            messages: [{ role: 'user', content: rawLastUser }],
+            stream: false,
+          }),
+          signal: AbortSignal.timeout(6000),
+        });
+        if (ollamaRes.ok) {
+          const data: any = await ollamaRes.json();
+          if (data?.message?.content) {
+            return {
+              message: {
+                id: `msg-${Date.now()}`,
+                role: 'assistant',
+                content: data.message.content,
+                timestamp: new Date().toISOString(),
+              },
+              provider_used: `Ollama (${data.model || 'local'})`,
+            };
+          }
+        }
+      } catch {}
+    }
+
+    // 6. Intelligent Grounded Browser Assistant & Heuristic Architect
     return this.chatWithHeuristic(req);
   }
 
@@ -1450,12 +1511,275 @@ Guidelines:
     };
   }
 
+  private parseWebpageContext(rawContent: string): {
+    hasContext: boolean;
+    url: string;
+    title: string;
+    headings: string[];
+    content: string;
+    userQuery: string;
+  } {
+    const contextMarker = '--- Page Grounding Context ---';
+    const activeMarker = '[Active Webpage Context]';
+
+    if (!rawContent.includes(contextMarker) && !rawContent.includes(activeMarker)) {
+      return {
+        hasContext: false,
+        url: '',
+        title: '',
+        headings: [],
+        content: '',
+        userQuery: rawContent,
+      };
+    }
+
+    let userQuery = rawContent;
+    let contextPart = '';
+
+    if (rawContent.includes(contextMarker)) {
+      const parts = rawContent.split(contextMarker);
+      userQuery = parts[0].trim();
+      contextPart = parts[1].trim();
+    } else if (rawContent.includes(activeMarker)) {
+      const idx = rawContent.indexOf(activeMarker);
+      userQuery = rawContent.substring(0, idx).trim();
+      contextPart = rawContent.substring(idx).trim();
+    }
+
+    const urlMatch = contextPart.match(/URL:\s*([^\n]+)/i);
+    const titleMatch = contextPart.match(/Title:\s*([^\n]+)/i);
+    const headingsMatch = contextPart.match(/Headings:\s*([^\n]+)/i);
+    const contentMatch = contextPart.match(/Content:\s*\n([\s\S]+)/i);
+
+    const url = urlMatch ? urlMatch[1].trim() : '';
+    const title = titleMatch ? titleMatch[1].trim() : (url ? new URL(url).hostname : 'Webpage');
+    const headings = headingsMatch
+      ? headingsMatch[1].split('|').map((h) => h.trim()).filter(Boolean)
+      : [];
+    const content = contentMatch ? contentMatch[1].trim() : '';
+
+    return {
+      hasContext: true,
+      url,
+      title,
+      headings,
+      content,
+      userQuery: userQuery || 'Analyze this webpage',
+    };
+  }
+
+  private handleWebpageChat(
+    req: AiChatRequest,
+    parsed: {
+      url: string;
+      title: string;
+      headings: string[];
+      content: string;
+      userQuery: string;
+    }
+  ): AiChatResponse {
+    const { url, title, headings, content, userQuery } = parsed;
+    const lower = userQuery.toLowerCase();
+
+    // Check if NeuronService has relevant learned rules
+    let neuronLearnedNotes = '';
+    if (this.neuronService) {
+      const relevant = this.neuronService.searchRules(userQuery, 3);
+      if (relevant.length > 0) {
+        neuronLearnedNotes = `\n\n> 🧠 **Neuron Learned Pattern**: Applied ${relevant.map((r) => `\`[${r.category}] ${r.rule_text.slice(0, 45)}\``).join(', ')}`;
+      }
+    }
+
+    // A. Summarize Tool / Request
+    if (lower.includes('summarize') || lower.includes('summary') || lower.includes('overview') || lower.includes('breakdown')) {
+      const summaryHeadings = headings.slice(0, 8);
+      const paragraphs = content
+        .split('\n\n')
+        .map((p) => p.trim())
+        .filter((p) => p.length > 30)
+        .slice(0, 4);
+
+      const replyContent = `### 🌐 Architectural Summary: ${title}
+
+**URL**: [${url}](${url})
+
+#### 1. Executive Summary
+${paragraphs[0] || `${title} provides capabilities accessible via web interface and API endpoints.`}
+
+#### 2. Key Sections & Modules
+${summaryHeadings.length > 0 ? summaryHeadings.map((h) => `- **${h}**`).join('\n') : '- Core Architecture & Navigation'}
+
+#### 3. Technical Highlights
+${paragraphs.slice(1, 3).map((p) => `- ${p.slice(0, 200)}...`).join('\n') || '- Modern reactive frontend with API service contracts.'}
+
+#### 4. Developer Takeaways
+- Directly compatible with in-app workflow and project fan-out.
+- Use **Extract Req** tool to convert these specifications into a formal development ticket candidate.${neuronLearnedNotes}`;
+
+      return {
+        message: {
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: replyContent,
+          timestamp: new Date().toISOString(),
+        },
+        provider_used: 'Browser AI Assistant (Page Grounded)',
+      };
+    }
+
+    // B. Extract Requirement Tool / Request
+    if (
+      lower.includes('extract requirement') ||
+      lower.includes('requirement candidate') ||
+      lower.includes('extract req') ||
+      lower.includes('ticket draft') ||
+      lower.includes('create ticket candidate')
+    ) {
+      const projects = this.projectService.listProjects().map((p) => p.name);
+      const affected = projects.length > 0 ? projects.slice(0, 2) : ['frontend'];
+
+      const criteria = headings.length >= 3
+        ? headings.slice(0, 4).map((h) => `[Module: ${h}] Implement specifications and verification for ${h}`)
+        : [
+            `[Module: Core] Implement integration contracts for ${title}`,
+            `[Module: UI / View] Surface page components in responsive web view`,
+            `[Module: Quality] Automated unit and integration tests verify contract compliance`,
+          ];
+
+      const apiHint = content.match(/(?:GET|POST|PUT|DELETE)\s+\/[a-zA-Z0-9_/-]+/i)?.[0] || 'GET /api/v1/resource';
+
+      const spec: DraftRequirementResult = {
+        title: `${title} Integration`,
+        goal: `Implement and integrate ${title} capabilities across affected workspace services.`,
+        user_story: `As a developer, I want to integrate ${title}, so that users can utilize its features within the platform.`,
+        acceptance_criteria: criteria,
+        affected_projects: affected,
+        api_hints: apiHint,
+        notes: `Extracted from grounded page: ${url}\n\n${content.slice(0, 1000)}`,
+        provider_used: 'Browser AI Assistant (Spec Extractor)',
+      };
+
+      const replyContent = `### 📑 Extracted Requirement: ${spec.title}
+
+**Source URL**: [${url}](${url})
+
+\`\`\`json:spec
+${JSON.stringify(spec, null, 2)}
+\`\`\`
+
+#### Proposed Scope & Modules:
+${criteria.map((c) => `- [ ] ${c}`).join('\n')}
+
+- **Affected Projects**: \`${affected.join(', ')}\`
+- **Target Branch**: \`develop\` (contract-isolated)
+${spec.api_hints ? `- **API Hint**: \`${spec.api_hints}\`` : ''}
+
+Click **"Create Requirement"** below to prefill this specification into the Requirement Sheet!${neuronLearnedNotes}`;
+
+      return {
+        message: {
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: replyContent,
+          timestamp: new Date().toISOString(),
+          suggested_spec: spec,
+        },
+        suggested_spec: spec,
+        provider_used: 'Browser AI Assistant (Spec Extractor)',
+      };
+    }
+
+    // C. Inspect & Code Tool / Request
+    if (lower.includes('inspect') || lower.includes('code') || lower.includes('api') || lower.includes('contracts')) {
+      const codeMatches = [...content.matchAll(/```[\s\S]*?```/g)].map((m) => m[0]);
+      const apiMatches = [...content.matchAll(/(?:GET|POST|PUT|DELETE|PATCH)\s+\/[a-zA-Z0-9_/-]+/gi)].map((m) => m[0]);
+
+      let codeSnippet = '';
+      if (codeMatches.length > 0) {
+        codeSnippet = codeMatches.slice(0, 2).join('\n\n');
+      } else {
+        codeSnippet = `// Example client integration for ${title}
+export async function fetch${title.replace(/[^a-zA-Z0-9]/g, '')}Data(): Promise<any> {
+  const res = await fetch('${url}');
+  if (!res.ok) throw new Error('Failed to fetch ${title} data');
+  return res.json();
+}`;
+      }
+
+      const replyContent = `### 🧪 Technical Inspection & APIs: ${title}
+
+**Target URL**: [${url}](${url})
+
+#### 1. Discovered API Contracts & Methods
+${apiMatches.length > 0 ? apiMatches.slice(0, 5).map((a) => `- \`${a}\``).join('\n') : `- Web standard endpoints accessible at \`${url}\``}
+
+#### 2. Architecture & Code Integration
+\`\`\`typescript
+${codeSnippet}
+\`\`\`
+
+#### 3. Developer Guidance & Implementation
+- Keep contract types strongly typed in \`@sp-kickstack/shared\`.
+- Use the **Create Requirement** tool if you need to dispatch this implementation to agents.${neuronLearnedNotes}`;
+
+      return {
+        message: {
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: replyContent,
+          timestamp: new Date().toISOString(),
+        },
+        provider_used: 'Browser AI Assistant (Code Inspector)',
+      };
+    }
+
+    // D. General Q&A / Ask Page
+    const queryTokens = userQuery.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+    const paragraphs = content.split('\n\n').filter((p) => p.trim().length > 20);
+
+    const scoredParagraphs = paragraphs.map((p) => {
+      const pLower = p.toLowerCase();
+      let score = 0;
+      for (const t of queryTokens) {
+        if (pLower.includes(t)) score += 1;
+      }
+      return { paragraph: p.trim(), score };
+    }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score);
+
+    const bestParagraphs = scoredParagraphs.slice(0, 3).map((item) => item.paragraph);
+
+    const replyContent = `### 💬 Answer from "${title}"
+
+${bestParagraphs.length > 0 ? bestParagraphs.join('\n\n') : content.slice(0, 600) || `This page describes ${title} (${url}).`}
+
+---
+**Relevant Headings**:
+${headings.slice(0, 5).map((h) => `- ${h}`).join('\n') || '- None'}
+
+*Ask follow-up questions or use the quick tools above to summarize or extract tasks.*${neuronLearnedNotes}`;
+
+    return {
+      message: {
+        id: `msg-${Date.now()}`,
+        role: 'assistant',
+        content: replyContent,
+        timestamp: new Date().toISOString(),
+      },
+      provider_used: 'Browser AI Assistant (Q&A)',
+    };
+  }
+
   private chatWithHeuristic(req: AiChatRequest): AiChatResponse {
     const rawLastUser = [...req.messages].reverse().find((m) => m.role === 'user')?.content || '';
     const lastUserMessage =
       rawLastUser.startsWith('> Replying to ') && rawLastUser.includes('\n\n')
         ? rawLastUser.slice(rawLastUser.indexOf('\n\n') + 2).trim()
         : rawLastUser;
+
+    const parsedWeb = this.parseWebpageContext(lastUserMessage);
+    if (parsedWeb.hasContext) {
+      return this.handleWebpageChat(req, parsedWeb);
+    }
 
     const attachmentTexts = req.messages.flatMap((m) => this.extractAttachmentTexts(m.attachments));
     const attachedMd = attachmentTexts.find((a) => a.name.match(/\.(md|markdown|txt)$/i)) || attachmentTexts[0];

@@ -12,6 +12,7 @@ interface WorkspaceContextType {
   isLoading: boolean;
   refreshWorkspaces: () => Promise<void>;
   upsertWorkspace: (workspace: Workspace, autoSwitch?: boolean) => void;
+  removeWorkspace: (id: string) => void;
   wsPath: (subpath: string) => string;
 }
 
@@ -112,6 +113,26 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     [queryClient, setActiveWorkspaceId]
   );
 
+  const removeWorkspace = useCallback(
+    (id: string) => {
+      queryClient.setQueryData<Workspace[]>(['workspaces'], (old = []) => {
+        return old.filter((w) => w.id !== id);
+      });
+
+      if (activeWorkspaceId === id) {
+        setActiveWorkspaceId('default');
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['requirements'] });
+      queryClient.invalidateQueries({ queryKey: ['sprints'] });
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-chat-sessions'] });
+    },
+    [queryClient, activeWorkspaceId, setActiveWorkspaceId]
+  );
+
   const refreshWorkspaces = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
   }, [queryClient]);
@@ -130,6 +151,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         refreshWorkspaces,
         upsertWorkspace,
+        removeWorkspace,
         wsPath,
       }}
     >

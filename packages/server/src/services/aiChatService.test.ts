@@ -453,6 +453,53 @@ Frontend views for viewing invoices.`;
     expect(updatedReq.priority).toBe('urgent');
     expect(updatedReq.body_md).toContain('Implement query caching with Redis');
   });
+
+  it('supports Browser AI Assistant sessions and grounded webpage chat', async () => {
+    // 1. Create a browser chat session
+    const session = chatService.createSession({
+      workspace_id: 'default',
+      title: 'Browser: Vite Tooling Documentation',
+      provider: 'auto',
+    });
+
+    expect(session.messages?.[0]?.content).toContain('Browser AI Assistant');
+
+    // 2. Test Summarization with grounded page context
+    const summaryRes = await chatService.sendSessionMessage(session.id, {
+      content: `Please summarize this page thoroughly.
+--- Page Grounding Context ---
+[Active Webpage Context]
+URL: https://vite.dev
+Title: Vite | Next Generation Frontend Tooling
+Headings: Overview | Lightning Fast HMR | Rich Features | Optimized Build
+Content:
+Vite is a modern frontend build tool that significantly improves developer experience.
+It provides instant server start, lightning fast Hot Module Replacement, and out of the box TypeScript support.
+Vite uses Rollup under the hood for highly optimized production builds.`,
+    });
+
+    expect(summaryRes.message.content).toContain('Architectural Summary');
+    expect(summaryRes.message.content).toContain('Vite | Next Generation Frontend Tooling');
+    expect(summaryRes.message.content).toContain('https://vite.dev');
+
+    // 3. Test Requirement Extraction with embedded spec block
+    const extractRes = await chatService.sendSessionMessage(session.id, {
+      content: `Extract an actionable development requirement candidate from this page.
+--- Page Grounding Context ---
+[Active Webpage Context]
+URL: https://vite.dev/guide/api
+Title: Vite Plugin API
+Headings: Plugin Definition | Hook Order | Rollup Compatibility
+Content:
+Vite plugins extend Rollup's well-designed plugin interface with a few Vite-specific options.
+You can use buildStart and transformIndexHtml hooks to process assets.`,
+    });
+
+    expect(extractRes.message.content).toContain('Extracted Requirement');
+    expect(extractRes.message.content).toContain('```json:spec');
+    expect(extractRes.suggested_spec).toBeDefined();
+    expect(extractRes.suggested_spec?.title).toContain('Vite Plugin API Integration');
+  });
 });
 
 

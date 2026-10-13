@@ -33,9 +33,11 @@ import {
   Reply,
   Copy,
   Info,
-  EyeOff,
   Eye,
+  EyeOff,
   Upload,
+  Globe,
+  AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
@@ -1031,10 +1033,10 @@ export function AiChatPage() {
             type="button"
             onClick={() => createSessionMutation.mutate()}
             disabled={createSessionMutation.isPending}
-            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-gradient-to-r from-[#7b68ee] to-[#6366f1] hover:from-[#6c5ce7] hover:to-[#4f46e5] text-white font-semibold text-xs shadow-sm transition-all active:scale-[0.98] disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-gradient-to-r from-[#7b68ee] via-[#6c5ce7] to-[#6366f1] hover:from-[#6c5ce7] hover:to-[#4f46e5] text-white font-bold text-xs shadow-sm hover:shadow-md hover:shadow-purple-500/20 transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
-            <span>+ New Chat Session</span>
+            <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span>New Chat Session</span>
           </button>
 
           {/* Search bar */}
@@ -1074,6 +1076,9 @@ export function AiChatPage() {
                 hour: '2-digit',
                 minute: '2-digit',
               });
+              const isBrowserSession = s.title?.toLowerCase().startsWith('browser:');
+              const displayTitle = isBrowserSession ? s.title.replace(/^browser:\s*/i, '') : s.title;
+              const providerLabel = (s.provider || 'ai').replace(/-cli$/, '').toUpperCase();
 
               return (
                 <div
@@ -1081,20 +1086,28 @@ export function AiChatPage() {
                   onClick={() => handleSelectSession(s.id)}
                   className={`group relative flex items-start justify-between p-2.5 rounded-xl cursor-pointer transition-all ${
                     isActive
-                      ? 'bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/60 shadow-sm'
-                      : 'hover:bg-slate-100 dark:hover:bg-[#22232e] border border-transparent'
+                      ? 'bg-purple-50/90 dark:bg-purple-950/50 border border-purple-200/80 dark:border-purple-700/60 shadow-xs ring-1 ring-purple-500/20'
+                      : 'hover:bg-slate-100/80 dark:hover:bg-[#22232e] border border-transparent'
                   }`}
                 >
-                  <div className="min-w-0 flex-1 pr-2">
+                  <div className="min-w-0 flex-1 pr-1.5">
                     <div className="flex items-center gap-1.5">
+                      {isBrowserSession ? (
+                        <span title="Browser Grounded" className="flex items-center shrink-0">
+                          <Globe className="w-3.5 h-3.5 text-sky-500" />
+                        </span>
+                      ) : (
+                        <Sparkles className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                      )}
                       <div
                         className={`text-xs font-semibold truncate ${
                           isActive
-                            ? 'text-purple-900 dark:text-purple-200'
+                            ? 'text-purple-950 dark:text-purple-100 font-bold'
                             : 'text-slate-800 dark:text-slate-200'
                         }`}
+                        title={s.title}
                       >
-                        {s.title}
+                        {displayTitle}
                       </div>
                       {isSessionRunning && (
                         <span className="shrink-0 flex items-center gap-1 px-1.5 py-0.2 rounded-full bg-purple-100 dark:bg-purple-900/60 text-[9px] font-semibold text-purple-600 dark:text-purple-300 animate-pulse">
@@ -1103,21 +1116,30 @@ export function AiChatPage() {
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-1.5 mt-1 text-[10px] text-slate-400">
-                      <Clock className="w-2.5 h-2.5 shrink-0" />
-                      <span>{formattedDate}</span>
-                      <span>·</span>
-                      <span className="font-mono text-purple-600 dark:text-purple-400 font-semibold">{s.provider}</span>
+                    {/* Compact single-line metadata chip bar */}
+                    <div className="flex items-center gap-1.5 mt-1.5 text-[10px] text-slate-400 overflow-hidden whitespace-nowrap">
+                      <span className="shrink-0 text-[10px] text-slate-500 dark:text-slate-400 font-mono flex items-center gap-1">
+                        <Clock className="w-2.5 h-2.5 shrink-0" />
+                        {formattedDate}
+                      </span>
+                      <span className="text-slate-300 dark:text-slate-600 shrink-0">·</span>
+                      <span className="shrink-0 px-1 py-0.2 rounded font-mono text-[9px] font-bold tracking-tight bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                        {providerLabel}
+                      </span>
                       {s.model && (
                         <>
-                          <span>·</span>
-                          <span className="font-mono text-[9px] truncate max-w-[70px]">{s.model}</span>
+                          <span className="text-slate-300 dark:text-slate-600 shrink-0">·</span>
+                          <span className="shrink-0 font-mono text-[9px] text-slate-500 dark:text-slate-400 truncate max-w-[80px]" title={s.model}>
+                            {s.model.replace(/^gemini-/, 'g-').replace(/^claude-/, '')}
+                          </span>
                         </>
                       )}
-                      {s.effort && (
+                      {s.effort && s.effort !== 'medium' && (
                         <>
-                          <span>·</span>
-                          <span className="text-slate-500 capitalize">{s.effort}</span>
+                          <span className="text-slate-300 dark:text-slate-600 shrink-0">·</span>
+                          <span className="shrink-0 text-[9px] text-amber-600 dark:text-amber-400 capitalize font-medium">
+                            {s.effort}
+                          </span>
                         </>
                       )}
                     </div>
@@ -1130,7 +1152,7 @@ export function AiChatPage() {
                       setSessionToDelete(s);
                     }}
                     title="Delete session"
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all shrink-0"
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all shrink-0 mt-0.5"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -1153,7 +1175,11 @@ export function AiChatPage() {
         <header className="px-5 py-3 border-b border-slate-200 dark:border-[#23242e] bg-white dark:bg-[#1e1f2b] flex flex-wrap items-center justify-between gap-3 shadow-xs">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#7b68ee] to-[#ec4899] flex items-center justify-center text-white shadow-md shadow-purple-500/20 shrink-0">
-              <Sparkles className="w-5 h-5" />
+              {activeSession?.title?.toLowerCase().startsWith('browser:') ? (
+                <Globe className="w-5 h-5" />
+              ) : (
+                <Sparkles className="w-5 h-5" />
+              )}
             </div>
 
             <div className="min-w-0">
@@ -1200,8 +1226,10 @@ export function AiChatPage() {
                   <span>0 API Keys · Local PC AI</span>
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                Workspace: <span className="font-semibold text-slate-700 dark:text-slate-300">{activeWorkspace?.name || activeWorkspaceId}</span> · Base branch: <span className="font-mono text-slate-600 dark:text-slate-400">{appSettings?.branch_merge?.default_base_branch || 'develop'}</span>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 flex-wrap">
+                <span>Workspace: <strong className="text-slate-700 dark:text-slate-300 font-medium">{activeWorkspace?.name || activeWorkspaceId}</strong></span>
+                <span>·</span>
+                <span>Base branch: <code className="font-mono text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/50 px-1 py-0.2 rounded border border-purple-200/50 dark:border-purple-800/40 text-[10px]">{appSettings?.branch_merge?.default_base_branch || 'develop'}</code></span>
               </p>
             </div>
           </div>
@@ -1506,10 +1534,17 @@ export function AiChatPage() {
                         </div>
                       ) : (
                         <div className="font-sans text-xs">
-                          <MarkdownMessage
-                            content={actualContent}
-                            onSelectRequirement={(reqId) => setSelectedTicketId(reqId)}
-                          />
+                          {actualContent.trim() ? (
+                            <MarkdownMessage
+                              content={actualContent}
+                              onSelectRequirement={(reqId) => setSelectedTicketId(reqId)}
+                            />
+                          ) : (
+                            <div className="flex items-center gap-2 text-slate-400 dark:text-slate-500 italic py-1 text-xs">
+                              <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                              <span>No response text recorded for this message.</span>
+                            </div>
+                          )}
 
                           {msg.suggested_spec && (
                             <div className="mt-2.5 flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg border border-purple-200 dark:border-purple-800/50 bg-purple-50/80 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 font-semibold text-[11px]">

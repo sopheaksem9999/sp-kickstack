@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { commentLocation, fileSize, requestChangesOutcome, requestChangesState, reviewableTasks, taskReviewView } from './reviewActions';
+import { appendMention, changeStatusLabel, changeSummary, commentLocation, fileSize, requestChangesOutcome, requestChangesState, reviewableTasks, taskReviewView } from './reviewActions';
 
 const c = (task_id: number, state: string) => ({ task_id, state }) as any;
 
@@ -54,5 +54,16 @@ describe('review actions', () => {
     expect(fileSize(900)).toBe('900 B');
     expect(fileSize(2048)).toBe('2 KB');
     expect(fileSize(3.5 * 1024 * 1024)).toBe('3.5 MB');
+  });
+
+  it('sums up changed files, words their status and adds #path to a comment', () => {
+    const file = { path: 'a.ts', status: 'M' as const, additions: 1, deletions: 0, binary: false };
+    expect(changeSummary({ branch: 'REQ-1', base: 'develop', files: [file, file], additions: 120, deletions: 30, truncated: false })).toBe('2 files · +120 −30');
+    expect(changeSummary({ branch: 'REQ-1', base: 'develop', files: [file], additions: 1, deletions: 0, truncated: false })).toBe('1 file · +1 −0');
+    expect(changeSummary({ branch: 'REQ-1', base: 'develop', files: [file], additions: 9, deletions: 9, truncated: true })).toBe('1+ files · +9 −9');
+    expect(['A', 'M', 'D', 'R'].map((s) => changeStatusLabel(s as 'A'))).toEqual(['added', 'modified', 'deleted', 'renamed']);
+    expect(appendMention('', 'src/a.ts')).toBe('#src/a.ts ');
+    expect(appendMention('Fix this', 'src/a.ts')).toBe('Fix this #src/a.ts ');
+    expect(appendMention('Fix this\n', 'src/a.ts')).toBe('Fix this\n#src/a.ts ');
   });
 });

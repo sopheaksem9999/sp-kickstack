@@ -20,6 +20,11 @@ With the **Auto-merge (no review)** policy the merge starts at this point by its
 Each task's work is on its branch `<REQ-ID>` (a ticket: `<REQ-ID>-ticket-<id>`; tasks created before 2026-10-13 keep `req/<REQ-ID>/task-<id>`) in the project's repository. The task
 card shows the branch name.
 
+- In the app, each repository's task card (In Review or QA) has **Changed files**, for example
+  `Changed files 9 files · +120 −30`. Click it to list what the task committed on its branch: `A` added,
+  `M` modified, `D` deleted or `R` renamed, with added and removed lines. Click a file to see its diff against
+  the branch the task started from (the base branch, or the requirement's target branch). **Comment on this
+  file** puts `#path` into that card's comment box. Work the agent did not commit is not shown.
 - In a terminal, compare a task branch with its base branch:
 
   ```bash

@@ -1,4 +1,4 @@
-import type { BridgeTask, Requirement, RequestChangesResult, ReviewComment } from '@sp-kickstack/shared';
+import type { BridgeTask, Requirement, RequestChangesResult, ReviewComment, TaskChangedFile, TaskChanges } from '@sp-kickstack/shared';
 
 const REVIEW_STATUSES = ['in_review', 'qa'];
 
@@ -20,6 +20,25 @@ export function taskReviewView(
   const own = comments.filter((c) => c.task_id === task.id);
   const canAdd = REVIEW_STATUSES.includes(req.status);
   return { show: canAdd || own.length > 0, canAdd, comments: own };
+}
+
+/** "9 files · +120 −30" ("300+ files" when the list was cut). */
+export function changeSummary(changes: TaskChanges): string {
+  const count = changes.files.length;
+  const files = changes.truncated ? `${count}+ files` : `${count} ${count === 1 ? 'file' : 'files'}`;
+  return `${files} · +${changes.additions} −${changes.deletions}`;
+}
+
+const STATUS_LABEL: Record<TaskChangedFile['status'], string> = { A: 'added', M: 'modified', D: 'deleted', R: 'renamed' };
+
+export function changeStatusLabel(status: TaskChangedFile['status']): string {
+  return STATUS_LABEL[status];
+}
+
+/** "Comment on this file": `#path ` added to the comment, on its own word. */
+export function appendMention(body: string, path: string): string {
+  const separator = !body || /\s$/.test(body) ? '' : ' ';
+  return `${body}${separator}#${path} `;
 }
 
 /** "900 B", "2 KB", "3.5 MB". */

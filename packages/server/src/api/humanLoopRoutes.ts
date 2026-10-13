@@ -93,6 +93,23 @@ export function registerHumanLoopRoutes(app: Express, deps: HumanLoopRouteDeps) 
     }
   });
 
+  // Files a task changed on its branch (status, line counts) and one file's diff: the review card's "Changed files".
+  app.get('/api/tasks/:id/changes', (req, res, next) => {
+    try {
+      res.json(reviewService.changes(Number(req.params.id)));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.get('/api/tasks/:id/changes/diff', (req, res, next) => {
+    try {
+      res.json(reviewService.fileDiff(Number(req.params.id), typeof req.query.file === 'string' ? req.query.file : ''));
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // Files changed on a task's branch: the "#" list of the review comment box.
   app.get('/api/tasks/:id/branch-files', (req, res, next) => {
     try {

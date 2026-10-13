@@ -115,6 +115,47 @@ export function changedFiles(repo: string, base: string, branch: string, limit =
     .slice(0, limit);
 }
 
+/** Files changed on `to` since it left `from` (`from...to`): status, old path of a rename, line counts. */
+export function diffSummary(
+  repo: string,
+  from: string,
+  to: string
+): Array<{ path: string; oldPath?: string; status: 'A' | 'M' | 'D' | 'R'; additions: number; deletions: number; binary: boolean }> {
+  const range = `${from}...${to}`;
+  const names = (tryGit(repo, ['diff', '--name-status', '-z', '-M', range]) ?? '').split('\0');
+  const files: Array<{ path: string; oldPath?: string; status: 'A' | 'M' | 'D' | 'R' }> = [];
+  for (let i = 0; i < names.length; ) {
+    const code = names[i++];
+    if (!code) continue;
+    if (code.startsWith('R') || code.startsWith('C')) {
+      const oldPath = names[i++];
+      files.push({ path: names[i++], oldPath, status: 'R' });
+    } else {
+      files.push({ path: names[i++], status: code[0] === 'A' ? 'A' : code[0] === 'D' ? 'D' : 'M' });
+    }
+  }
+  // --numstat -z: "adds\tdels\tpath\0", or for a rename "adds\tdels\t\0old\0new\0"; binary files count "-".
+  const counts = new Map<string, { additions: number; deletions: number; binary: boolean }>();
+  const nums = (tryGit(repo, ['diff', '--numstat', '-z', '-M', range]) ?? '').split('\0');
+  for (let i = 0; i < nums.length; ) {
+    const head = nums[i++];
+    if (!head) continue;
+    const [adds, dels, file] = head.split('\t');
+    let key = file;
+    if (file === '') {
+      i++;
+      key = nums[i++];
+    }
+    counts.set(key, { additions: adds === '-' ? 0 : Number(adds), deletions: dels === '-' ? 0 : Number(dels), binary: adds === '-' });
+  }
+  return files.map((f) => ({ ...f, ...(counts.get(f.path) ?? { additions: 0, deletions: 0, binary: false }) }));
+}
+
+/** The unified diff of `paths` between `from` and `to` (`from...to`), or null when git fails. */
+export function diffFile(repo: string, from: string, to: string, paths: string[]): string | null {
+  return tryGit(repo, ['diff', '--no-color', '-M', `${from}...${to}`, '--', ...paths]);
+}
+
 /** A file's content at `ref`, or null when it does not exist there. */
 export function readFileAt(repo: string, ref: string, file: string): string | null {
   return tryGit(repo, ['show', `${ref}:${file}`]);

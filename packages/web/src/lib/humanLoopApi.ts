@@ -14,6 +14,8 @@ import type {
   Requirement,
   RequestChangesResult,
   ReviewComment,
+  TaskChanges,
+  TaskFileDiff,
   UpdateNotificationSettingsInput,
   UpdateReviewCommentInput,
 } from '@sp-kickstack/shared';
@@ -58,6 +60,16 @@ export function addReviewComment(reqId: string, input: CreateReviewCommentInput)
 /** Where a review comment's attached file is served. */
 export function attachmentUrl(commentId: number, name: string): string {
   return `${BASE}/comments/${commentId}/attachments/${encodeURIComponent(name)}`;
+}
+
+/** Files a task changed on its branch, with status and line counts. */
+export function fetchTaskChanges(taskId: number): Promise<TaskChanges> {
+  return request(`${BASE}/tasks/${taskId}/changes`);
+}
+
+/** One changed file's diff on a task's branch. */
+export function fetchTaskFileDiff(taskId: number, file: string): Promise<TaskFileDiff> {
+  return request(`${BASE}/tasks/${taskId}/changes/diff?file=${encodeURIComponent(file)}`);
 }
 
 /** Files changed on a task's branch: what # offers in the comment box. */

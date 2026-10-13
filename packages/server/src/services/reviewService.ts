@@ -10,6 +10,8 @@ import {
   RequestChangesInputSchema,
   RequestChangesResult,
   ReviewComment,
+  TaskChanges,
+  TaskFileDiff,
   SendTaskNoteInput,
   SendTaskNoteInputSchema,
   UpdateReviewCommentInput,
@@ -24,6 +26,7 @@ import type { RequirementService } from './requirementService.js';
 import { rerunTask, TaskRow } from './taskRetry.js';
 import { ReviewAssistService, isSafeRelativePath } from './reviewAssist.js';
 import { attachmentPath, decodeUploads, listAttachments, writeAttachments } from './reviewAttachments.js';
+import { TaskChangesService } from './taskChanges.js';
 
 /** Task states that can be sent back to their agent. */
 const REVIEWABLE = ['in_review', 'done'];
@@ -63,6 +66,7 @@ export function reviewNote(round: number, branch: string | null | undefined, com
 /** Reviewer comments, "Request changes" (a new run on the same branch) and notes to running agents. */
 export class ReviewService {
   private assist: ReviewAssistService;
+  private taskChanges: TaskChangesService;
 
   constructor(
     private db: AppDatabase,
@@ -74,6 +78,16 @@ export class ReviewService {
     assist?: ReviewAssistService
   ) {
     this.assist = assist ?? new ReviewAssistService(db, requirementService);
+    this.taskChanges = new TaskChangesService(db);
+  }
+
+  /** Files a task changed on its branch: the review card's "Changed files". */
+  public changes(taskId: number): TaskChanges {
+    return this.taskChanges.changes(taskId);
+  }
+
+  public fileDiff(taskId: number, file: string): TaskFileDiff {
+    return this.taskChanges.fileDiff(taskId, file);
   }
 
   /** "Improve with AI": the reviewer's draft rewritten for the agent; nothing is saved. */

@@ -8,13 +8,14 @@ import {
   addReviewComment, attachmentUrl, deleteReviewComment, fetchBranchFiles, fetchReviewComments, improveReviewComment, requestChanges, updateReviewComment,
 } from '../lib/humanLoopApi.js';
 import { fetchAssets, fetchProjects, fetchRequirements } from '../lib/api.js';
-import { commentLocation, fileSize, requestChangesOutcome, requestChangesState, reviewableTasks, taskReviewView } from '../lib/reviewActions.js';
+import { appendMention, commentLocation, fileSize, requestChangesOutcome, requestChangesState, reviewableTasks, taskReviewView } from '../lib/reviewActions.js';
 import type { MentionSources } from '../lib/mentions.js';
 import { hasPin, requestChangesProfile } from '../lib/agentProfile.js';
 import type { ProfileValue } from '../lib/agentProfile.js';
 import { AgentProfilePicker } from './AgentProfilePicker.js';
 import { MarkdownMessage } from './MarkdownMessage.js';
 import { RichCommentEditor, type PendingFile } from './RichCommentEditor.js';
+import { TaskChangedFiles } from './TaskChangedFiles.js';
 
 const STATE_STYLE: Record<ReviewComment['state'], string> = {
   open: 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300',
@@ -92,6 +93,7 @@ export function TaskReviewComments({ req, task }: { req: Requirement; task: Brid
 
   return (
     <div className="pt-2 border-t border-slate-100 dark:border-[#2d2d2d] space-y-2">
+      <TaskChangedFiles task={task} canComment={view.canAdd} onComment={(path) => setBody((current) => appendMention(current, path))} />
       <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
         <MessageSquare className="w-3 h-3" />
         <span>Review comments{view.comments.length ? ` (${view.comments.length})` : ''}</span>

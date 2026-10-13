@@ -43,7 +43,7 @@ interface Snippet {
 }
 
 /** The ref to compare a task branch with: the local base branch, else origin's; null when neither exists. */
-function baseRef(repo: string, base: string): string | null {
+export function baseRef(repo: string, base: string): string | null {
   if (resolveCommit(repo, `refs/heads/${base}`)) return base;
   return resolveCommit(repo, `refs/remotes/origin/${base}`) ? `origin/${base}` : null;
 }

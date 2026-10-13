@@ -634,3 +634,38 @@ export interface NotificationTestResult {
   ok: boolean;
   error?: string;
 }
+
+/** A file a task changed on its branch, against the branch it started from. */
+export interface TaskChangedFile {
+  path: string;
+  /** The old path of a renamed file. */
+  oldPath?: string;
+  status: 'A' | 'M' | 'D' | 'R';
+  additions: number;
+  deletions: number;
+  binary: boolean;
+}
+
+export interface TaskChanges {
+  branch: string | null;
+  base: string | null;
+  files: TaskChangedFile[];
+  additions: number;
+  deletions: number;
+  /** More files changed than are listed. */
+  truncated: boolean;
+}
+
+export interface TaskDiffLine {
+  type: 'hunk' | 'add' | 'del' | 'context';
+  text: string;
+  oldLine?: number;
+  newLine?: number;
+}
+
+export interface TaskFileDiff {
+  path: string;
+  binary: boolean;
+  lines: TaskDiffLine[];
+  truncated: boolean;
+}

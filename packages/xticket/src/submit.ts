@@ -17,21 +17,29 @@ export interface SubmitResult {
   stderr?: string;
 }
 
+/** Outbox file prefix: the bridge reads the kind from the file, and people from its name. */
+function outboxKind(payload: Record<string, unknown>): 'question' | 'qa-comment' | 'qa-result' | 'ticket' {
+  const kind = payload.kind;
+  return kind === 'question' || kind === 'qa-comment' || kind === 'qa-result' ? kind : 'ticket';
+}
+
 function queueInOutbox(payload: Record<string, unknown>, outboxDir: string, reason: string): SubmitResult {
-  const question = payload.kind === 'question';
+  const kind = outboxKind(payload);
   try {
     fs.mkdirSync(outboxDir, { recursive: true });
-    const prefix = question ? 'question' : 'ticket';
-    const file = path.join(outboxDir, `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.json`);
+    const file = path.join(outboxDir, `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.json`);
     fs.writeFileSync(file, JSON.stringify(payload, null, 2), 'utf-8');
-    const result = question
-      ? {
-          questionId: 0,
-          status: 'queued_outbox',
-          reason,
-          message: 'The bridge files your question as soon as it can. Stop working now; the answer arrives as a note when your task resumes.',
-        }
-      : { ticketId: 0, target: payload.to, blocking: Boolean(payload.blocking), status: 'queued_outbox', reason };
+    const result =
+      kind === 'question'
+        ? {
+            questionId: 0,
+            status: 'queued_outbox',
+            reason,
+            message: 'The bridge files your question as soon as it can. Stop working now; the answer arrives as a note when your task resumes.',
+          }
+        : kind === 'ticket'
+          ? { ticketId: 0, target: payload.to, blocking: Boolean(payload.blocking), status: 'queued_outbox', reason }
+          : { status: 'queued_outbox', reason, message: 'The bridge saves it as soon as it can; carry on with the QA run.' };
     return { exitCode: 0, stdout: JSON.stringify(result) };
   } catch (fsErr: any) {
     return { exitCode: 4, stderr: `${reason} and outbox failed: ${fsErr.message}` };
@@ -50,7 +58,8 @@ export function resolveOutboxDir(env: NodeJS.ProcessEnv = process.env, cwd: stri
 
 export async function submitTicket(payload: Record<string, unknown>, opts: SubmitOptions): Promise<SubmitResult> {
   const fetchImpl = opts.fetchImpl ?? fetch;
-  const noun = payload.kind === 'question' ? 'question' : 'ticket';
+  const kind = outboxKind(payload);
+  const noun = kind === 'qa-comment' ? 'finding' : kind === 'qa-result' ? 'QA result' : kind;
 
   let res: Response;
   try {

@@ -27,7 +27,7 @@ engine is **Local AI CLI** (see [02](02-projects-and-engines.md#local-ai-cli)).
 | **Agent CLI** | **Use AI default** | Which CLI runs agents. **Use AI default** follows the AI default above; when that is Ollama, the heuristic or Auto, the first installed and active of Claude Code, AGY and Codex is used. |
 | **Parallel agents** | 2 | 1 to 8 agents at once, all workspaces together. |
 | **Time limit per run** | 60 minutes | 5 to 480. A longer run is stopped and the task FAILS; **Retry** continues it. |
-| **Worktree folder** | `agent-worktrees` in the server workspace | Where task copies are made: an absolute path, or empty for the default. |
+| **Worktree folder** | `agent-worktrees` in the server workspace, or `~/.sp-kickstack/agent-worktrees` when the workspace lies inside a git repository (`npm run dev`) | Where task copies are made: an absolute path, or empty for the default. A task that already has a worktree keeps using it. |
 
 Below the settings the card shows which CLI the next run uses; how many runs are running, queued,
 waiting for a person and rate limited; and for each CLI **Installed on PC** / **Not Detected** and

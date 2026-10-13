@@ -84,8 +84,9 @@ After **Start Fan-Out**, each task of the repository moves by itself:
 
 1. **QUEUED**: waiting for a free slot. At most 2 agents run at once (change it in Settings).
 2. **IN PROGRESS**: the agent works in its own copy of the repository, a git worktree on the task
-   branch (`req/<REQ-ID>/task-<id>`) in the `agent-worktrees` folder of the server workspace. Your own
-   checkout is never touched. Open **Logs** on the task to watch it: its messages, the commands it
+   branch (`req/<REQ-ID>/task-<id>`) in the `agent-worktrees` folder of the server workspace, or in
+   `~/.sp-kickstack/agent-worktrees` when that workspace lies inside a git repository (as with
+   `npm run dev`). Your own checkout is never touched. Open **Logs** on the task to watch it: its messages, the commands it
    runs (`→ Bash: npm test`) and the files it edits.
 3. **IN REVIEW**: the agent finished and the branch has commits. Your merge policy takes over.
 
@@ -119,6 +120,8 @@ the repository (see [Edit or delete a project](#edit-or-delete-a-project)), set 
 
 - Every QUEUED task of that repository goes to the local engine and starts within a few seconds.
 - Tasks in other states (WAITING / HELD, IN REVIEW, COMPLETE, …) are left as they are.
+- The other way round: once a repository is switched to another engine or disabled, no new agent
+  starts there. Its waiting runs start again if you switch it back to **Local AI CLI**.
 
 Example: REQ-008 has tasks #8 (`backend`) and #9 (`frontend`) QUEUED on Manual. Switch `backend` and
 `frontend` to **Local AI CLI**: both tasks move to IN PROGRESS (2 agents at once), and **Logs** shows

@@ -2,7 +2,6 @@
 
 // packages/xticket/src/cli.ts
 import fs3 from "node:fs";
-import path2 from "node:path";
 import { parseArgs as parseArgs2 } from "node:util";
 
 // packages/xticket/src/submit.ts
@@ -25,6 +24,9 @@ function queueInOutbox(payload, outboxDir, reason) {
   } catch (fsErr) {
     return { exitCode: 4, stderr: `${reason} and outbox failed: ${fsErr.message}` };
   }
+}
+function resolveOutboxDir(env = process.env, cwd = process.cwd()) {
+  return env.XTICKET_OUTBOX ? path.resolve(cwd, env.XTICKET_OUTBOX) : path.resolve(cwd, ".devflow", "outbox");
 }
 async function submitTicket(payload, opts) {
   const fetchImpl = opts.fetchImpl ?? fetch;
@@ -125,7 +127,7 @@ Options for ask:
   }
   const bridgeUrl = process.env.XTICKET_URL || "http://127.0.0.1:4100";
   const token = process.env.XTICKET_TOKEN;
-  const outboxDir = path2.resolve(".devflow", "outbox");
+  const outboxDir = resolveOutboxDir();
   if (command === "ask") {
     const parsed = parseAskArgs(args.slice(1), process.env);
     if ("error" in parsed) {

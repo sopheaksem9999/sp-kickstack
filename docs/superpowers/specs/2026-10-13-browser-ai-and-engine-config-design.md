@@ -111,22 +111,58 @@ flowchart TD
 
 ---
 
-## 5. Settings Screen Updates (`SettingsPage.tsx`)
+## 5. Neuron Service: Agent Run Audit & Continuous Quality Improvement
+
+### 5.1 Purpose & Vision
+To elevate AI agent output quality over time, the **Neuron Service** creates an automated closed-loop learning cycle:
+1. **Audit & Telemetry**: Captures structured telemetry for every agent run (status, retry count, failure domain via Clef, commit delta, and review feedback).
+2. **Post-Run Reflection**: Analyzes completed tasks and human code review rejections to distill concrete rules and lessons learned.
+3. **Learned Rules Synthesis**: Maintains a structured memory of repository-specific rules (`.agents/rules/learned-patterns.md` and SQLite table `neuron_rules`).
+4. **Dynamic Prompt Enrichment**: Injects the highest-confidence learned rules directly into subsequent task prompts in `agentRunner.ts` (`buildRunPrompt`), ensuring future agent runs do not repeat past mistakes.
+
+### 5.2 Schema & Database Integration
+- **Table `neuron_rules`**:
+  - `id` (string PRIMARY KEY)
+  - `workspace_id` (string)
+  - `project` (string)
+  - `category` ('convention' | 'architecture' | 'dependency' | 'testing' | 'triage')
+  - `rule_text` (string)
+  - `confidence_score` (number, 0.0 to 1.0)
+  - `trigger_count` (number)
+  - `is_active` (boolean)
+  - `source_run_id` (string NULL)
+  - `created_at` (string)
+  - `updated_at` (string)
+
+### 5.3 Learning Workflow (`NeuronService`)
+- **Reflection Trigger**: Invoked on task settlement in `agentRunner.ts` (`finish()`) and upon human review comment submission.
+- **Rule Extraction**:
+  - If a task failed due to missing dependency, type mismatch, or missing test command, `NeuronService` extracts a concise guideline.
+  - If a review comment resolved a bug, the fix is summarized into a guardrail rule.
+- **Auto-Sync to Markdown**: `NeuronService` can write approved high-confidence rules to `.agents/rules/learned-patterns.md`.
+
+---
+
+## 6. Settings Screen Updates (`SettingsPage.tsx`)
 
 1. **AI & Local Engines Tab (`ai`)**:
    - Add **Jev Engine** configuration card alongside Claude, AGY, Codex, and Ollama.
    - Add **Cloudflare Clef Decision Engine** configuration card with account credentials and model selector.
+   - Add **Neuron Engine & Continuous Improvement** card: toggle auto-reflection, confidence threshold, and export rules button.
 2. **Safety & Governance Tab (`safety`)**:
    - Display auto-triage rules and Clef severity definitions (P0–P3).
+3. **Telemetry & Audit (`/metrics`)**:
+   - Add **Neuron Agent Audit** view: pass rates, frequent error taxonomies, and interactive learned rules manager (approve, edit, disable).
 
 ---
 
-## 6. Verification & Governance Checklist
+## 7. Verification & Governance Checklist
 
-- [ ] All new settings typed in `@sp-kickstack/shared` (`types.ts`, `schemas.ts`).
+- [ ] All new settings and neuron types typed in `@sp-kickstack/shared` (`types.ts`, `schemas.ts`).
+- [ ] Database migration for `neuron_rules` applied via SQLite migration runner.
 - [ ] Settings persisted in SQLite database via `settingsService.ts`.
 - [ ] Zero hardcoded credentials or unconfigurable constants.
 - [ ] Desktop module compatibility: Tauri IPC and HTTP origins (`tauri://localhost`, `127.0.0.1:4100`) verified.
 - [ ] Tab URL sync: `/browser?url=...` synchronized in URL query parameters and Tab Bar.
 - [ ] TypeScript typecheck passes: `npx tsc --noEmit`.
-- [ ] All unit and component tests passing.
+- [ ] All unit, neuron, and component tests passing.

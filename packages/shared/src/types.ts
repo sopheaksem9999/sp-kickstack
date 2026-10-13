@@ -109,6 +109,18 @@ export interface Workspace {
   updated_at: string;
 }
 
+export interface WorkspaceDataSummary {
+  workspaceId: string;
+  name: string;
+  projectsCount: number;
+  requirementsCount: number;
+  tasksCount: number;
+  sprintsCount: number;
+  assetsCount: number;
+  chatSessionsCount: number;
+  filesCount: number;
+}
+
 export interface Project {
   name: string;
   workspace_id?: string;

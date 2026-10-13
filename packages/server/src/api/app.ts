@@ -246,10 +246,22 @@ export function createApp(deps: AppDependencies): Express {
     }
   });
 
+  app.get('/api/workspaces/:id/summary', (req, res, next) => {
+    try {
+      const summary = deps.workspaceService.getWorkspaceSummary(req.params.id);
+      res.json(summary);
+    } catch (err: any) {
+      if (err.message && err.message.includes('not found')) {
+        return res.status(404).json({ error: err.message });
+      }
+      next(err);
+    }
+  });
+
   app.delete('/api/workspaces/:id', (req, res, next) => {
     try {
-      deps.workspaceService.deleteWorkspace(req.params.id);
-      res.json({ ok: true });
+      const summary = deps.workspaceService.deleteWorkspace(req.params.id);
+      res.json({ ok: true, summary });
     } catch (err) {
       next(err);
     }

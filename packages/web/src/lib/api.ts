@@ -1,5 +1,6 @@
 import {
   Workspace,
+  WorkspaceDataSummary,
   Project,
   Requirement,
   BridgeTask,
@@ -101,8 +102,14 @@ export async function updateWorkspace(id: string, input: UpdateWorkspaceInput): 
   return res.json();
 }
 
-export async function deleteWorkspace(id: string): Promise<{ ok: boolean }> {
-  const res = await fetch(`${BASE}/workspaces/${id}`, { method: 'DELETE' });
+export async function fetchWorkspaceSummary(id: string): Promise<WorkspaceDataSummary> {
+  const res = await fetch(`${BASE}/workspaces/${encodeURIComponent(id)}/summary`);
+  if (!res.ok) throw new Error((await res.json()).error || 'Failed to fetch workspace summary');
+  return res.json();
+}
+
+export async function deleteWorkspace(id: string): Promise<{ ok: boolean; summary?: WorkspaceDataSummary }> {
+  const res = await fetch(`${BASE}/workspaces/${encodeURIComponent(id)}`, { method: 'DELETE' });
   if (!res.ok) throw new Error((await res.json()).error || 'Failed to delete workspace');
   return res.json();
 }

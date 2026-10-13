@@ -1,12 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
-import { createWorkspace, updateWorkspace, deleteWorkspace } from '../lib/api.js';
+import { createWorkspace, updateWorkspace, deleteWorkspace, fetchWorkspaceSummary } from '../lib/api.js';
 import { toast } from 'sonner';
-import { X, Plus, BookOpen, Save, Trash2, AlertTriangle, Sliders, ShieldAlert } from 'lucide-react';
+import {
+  X,
+  Plus,
+  BookOpen,
+  Save,
+  Trash2,
+  AlertTriangle,
+  Sliders,
+  ShieldAlert,
+  Loader2,
+  FolderGit2,
+  FileCode,
+  CheckCircle2,
+  Layers,
+  Database,
+  Bot,
+  HardDrive,
+} from 'lucide-react';
 import { AgentProfilePicker } from './AgentProfilePicker.js';
 import type { ProfileValue } from '../lib/agentProfile.js';
 import { Portal } from './ui/portal.js';
-import type { Workspace } from '@sp-kickstack/shared';
+import type { Workspace, WorkspaceDataSummary } from '@sp-kickstack/shared';
 
 interface CreateWorkspaceModalProps {
   isOpen: boolean;
@@ -588,13 +605,68 @@ export interface DeleteWorkspaceModalProps {
   onDeleted?: () => void;
 }
 
+type DeletionStage = 'confirm' | 'deleting' | 'done';
+
 export function DeleteWorkspaceModal({ workspace, isOpen, onClose, onDeleted }: DeleteWorkspaceModalProps) {
   const { removeWorkspace } = useWorkspace();
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [stage, setStage] = useState<DeletionStage>('confirm');
+  const [confirmInput, setConfirmInput] = useState('');
+  const [summary, setSummary] = useState<WorkspaceDataSummary | null>(null);
+  const [isLoadingSummary, setIsLoadingSummary] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+
+  // Progress animation state
+  const [progress, setProgress] = useState(0);
+  const [statusMessage, setStatusMessage] = useState('');
+  const [deletedSummary, setDeletedSummary] = useState<WorkspaceDataSummary | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Reset state when modal opens/closes or target workspace changes
+  useEffect(() => {
+    if (isOpen && workspace) {
+      setStage('confirm');
+      setConfirmInput('');
+      setProgress(0);
+      setStatusMessage('');
+      setDeletedSummary(null);
+      setSummary(null);
+      setSummaryError(null);
+
+      if (workspace.id !== 'default') {
+        setIsLoadingSummary(true);
+        fetchWorkspaceSummary(workspace.id)
+          .then((data) => {
+            setSummary(data);
+          })
+          .catch((err: any) => {
+            setSummaryError(err.message || 'Failed to load workspace data preview');
+          })
+          .finally(() => {
+            setIsLoadingSummary(false);
+          });
+      }
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isOpen, workspace?.id]);
 
   if (!isOpen || !workspace) return null;
 
   const isDefault = workspace.id === 'default';
+  const isConfirmMatch = confirmInput.trim() === workspace.id;
+
+  const totalItems = summary
+    ? summary.projectsCount +
+      summary.requirementsCount +
+      summary.tasksCount +
+      summary.sprintsCount +
+      summary.assetsCount +
+      summary.chatSessionsCount +
+      summary.filesCount
+    : 0;
 
   const handleDelete = async () => {
     if (isDefault) {
@@ -602,24 +674,67 @@ export function DeleteWorkspaceModal({ workspace, isOpen, onClose, onDeleted }: 
       return;
     }
 
-    setIsDeleting(true);
+    if (!isConfirmMatch && totalItems > 0) {
+      toast.error(`Please type "${workspace.id}" to confirm deletion`);
+      return;
+    }
+
+    setStage('deleting');
+    setProgress(15);
+    setStatusMessage('Scanning workspace entities and attached storage...');
+
+    // Progress simulation steps while API request runs
+    let currentPct = 15;
+    const progressInterval = setInterval(() => {
+      currentPct += Math.floor(Math.random() * 12) + 5;
+      if (currentPct < 40) {
+        setProgress(currentPct);
+        setStatusMessage('Scanning database entities and associated files...');
+      } else if (currentPct < 70) {
+        setProgress(currentPct);
+        setStatusMessage('Purging physical markdown files and asset attachments on disk...');
+      } else if (currentPct < 90) {
+        setProgress(currentPct);
+        setStatusMessage('Cascading database deletion across projects, requirements, tasks, and chats...');
+      } else {
+        setProgress(92);
+        setStatusMessage('Finalizing workspace purge...');
+      }
+    }, 280);
+    timerRef.current = progressInterval;
+
     try {
-      await deleteWorkspace(workspace.id);
+      const result = await deleteWorkspace(workspace.id);
+      clearInterval(progressInterval);
+      setProgress(100);
+      setStatusMessage('Workspace and parent data deleted successfully');
+      setDeletedSummary(result.summary || summary);
+      setStage('done');
+
       removeWorkspace(workspace.id);
       toast.success(`Workspace "${workspace.name}" deleted`);
-      onDeleted?.();
-      onClose();
+
+      // Auto close or notify after brief display
+      setTimeout(() => {
+        onDeleted?.();
+      }, 1200);
     } catch (err: any) {
+      clearInterval(progressInterval);
+      setStage('confirm');
+      setProgress(0);
       toast.error(err.message || 'Failed to delete workspace');
-    } finally {
-      setIsDeleting(false);
     }
+  };
+
+  const handleClose = () => {
+    if (stage === 'deleting') return; // prevent closing during critical cascade
+    onClose();
   };
 
   return (
     <Portal>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-        <div className="bg-white dark:bg-[#1e1f26] border border-slate-200 dark:border-[#2e303d] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+        <div className="bg-white dark:bg-[#1e1f26] border border-slate-200 dark:border-[#2e303d] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
           {/* Header */}
           <div className="p-4 border-b border-slate-200 dark:border-[#262732] flex items-center justify-between bg-rose-50/70 dark:bg-rose-950/30">
             <div className="flex items-center gap-2.5">
@@ -627,67 +742,236 @@ export function DeleteWorkspaceModal({ workspace, isOpen, onClose, onDeleted }: 
                 <AlertTriangle className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="font-bold text-slate-900 dark:text-white text-sm">Delete Workspace</h3>
-                <p className="text-[11px] text-rose-600 dark:text-rose-400">Irreversible action</p>
+                <h3 className="font-bold text-slate-900 dark:text-white text-sm">
+                  {stage === 'done' ? 'Workspace Deleted' : 'Delete Workspace & Cascade Data'}
+                </h3>
+                <p className="text-[11px] text-rose-600 dark:text-rose-400">
+                  {stage === 'done'
+                    ? 'All resources were purged successfully'
+                    : 'Permanent cascading removal of all parent data'}
+                </p>
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#282935] transition-colors cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            {stage !== 'deleting' && (
+              <button
+                onClick={handleClose}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#282935] transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
           {/* Body */}
-          <div className="p-5 space-y-4 text-xs">
+          <div className="p-5 space-y-4 text-xs overflow-y-auto">
             {isDefault ? (
-              <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg text-amber-800 dark:text-amber-200">
-                <p className="font-semibold">The default workspace cannot be deleted.</p>
-                <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
-                  It is the core anchor workspace used for general projects and default requirements.
+              <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg text-amber-800 dark:text-amber-200">
+                <p className="font-semibold text-sm flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-amber-600" />
+                  The default workspace cannot be deleted.
+                </p>
+                <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">
+                  It serves as the root system anchor workspace used for default projects and requirements.
                 </p>
               </div>
-            ) : (
+            ) : stage === 'confirm' ? (
               <>
                 <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
-                  Are you sure you want to delete workspace{' '}
+                  You are about to permanently delete workspace{' '}
                   <span className="font-bold text-slate-900 dark:text-white">&ldquo;{workspace.name}&rdquo;</span>{' '}
-                  (<code className="font-mono text-purple-600 dark:text-purple-400">{workspace.id}</code>)?
+                  (<code className="font-mono text-purple-600 dark:text-purple-400 px-1 py-0.5 bg-purple-50 dark:bg-purple-950/50 rounded">{workspace.id}</code>).
                 </p>
 
-                <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-lg text-rose-800 dark:text-rose-300 text-[11px] space-y-1">
-                  <div className="font-semibold flex items-center gap-1.5">
-                    <ShieldAlert className="w-3.5 h-3.5 shrink-0 text-rose-600" />
-                    <span>Warning: Data Cascade</span>
+                {/* Data Cascade Impact Summary Box */}
+                <div className="p-3.5 bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/60 rounded-xl space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="font-semibold text-rose-900 dark:text-rose-200 flex items-center gap-1.5 text-[12px]">
+                      <ShieldAlert className="w-4 h-4 text-rose-600" />
+                      <span>Data Cascade Impact Preview</span>
+                    </div>
+                    {isLoadingSummary && (
+                      <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Scanning...
+                      </span>
+                    )}
                   </div>
-                  <p>
-                    All repositories, requirements, sprints, and shared rules scoped strictly to this workspace will be deleted or unassigned.
+                  <p className="text-[11px] text-rose-800/90 dark:text-rose-300/90 leading-relaxed">
+                    Deleting this workspace will also permanently remove all of its parent projects, requirements, tasks, sprints, assets, and delete requirement markdown specs from the filesystem.
                   </p>
+
+                  {/* Summary Grid */}
+                  {summaryError ? (
+                    <div className="text-[11px] text-rose-600 dark:text-rose-400 italic">
+                      {summaryError}
+                    </div>
+                  ) : summary ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
+                      <div className="p-2 rounded-lg bg-white/70 dark:bg-[#181920] border border-rose-100 dark:border-rose-900/40 flex items-center gap-2">
+                        <FolderGit2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                        <div>
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400">Projects</div>
+                          <div className="font-bold text-slate-900 dark:text-white text-xs">{summary.projectsCount}</div>
+                        </div>
+                      </div>
+
+                      <div className="p-2 rounded-lg bg-white/70 dark:bg-[#181920] border border-rose-100 dark:border-rose-900/40 flex items-center gap-2">
+                        <FileCode className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                        <div>
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400">Requirements</div>
+                          <div className="font-bold text-slate-900 dark:text-white text-xs">{summary.requirementsCount}</div>
+                        </div>
+                      </div>
+
+                      <div className="p-2 rounded-lg bg-white/70 dark:bg-[#181920] border border-rose-100 dark:border-rose-900/40 flex items-center gap-2">
+                        <Layers className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                        <div>
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400">Tasks</div>
+                          <div className="font-bold text-slate-900 dark:text-white text-xs">{summary.tasksCount}</div>
+                        </div>
+                      </div>
+
+                      <div className="p-2 rounded-lg bg-white/70 dark:bg-[#181920] border border-rose-100 dark:border-rose-900/40 flex items-center gap-2">
+                        <Database className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                        <div>
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400">Sprints & Assets</div>
+                          <div className="font-bold text-slate-900 dark:text-white text-xs">
+                            {summary.sprintsCount + summary.assetsCount}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-2 rounded-lg bg-white/70 dark:bg-[#181920] border border-rose-100 dark:border-rose-900/40 flex items-center gap-2">
+                        <Bot className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                        <div>
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400">AI Chats</div>
+                          <div className="font-bold text-slate-900 dark:text-white text-xs">{summary.chatSessionsCount}</div>
+                        </div>
+                      </div>
+
+                      <div className="p-2 rounded-lg bg-white/70 dark:bg-[#181920] border border-rose-100 dark:border-rose-900/40 flex items-center gap-2">
+                        <HardDrive className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                        <div>
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400">Disk Files</div>
+                          <div className="font-bold text-slate-900 dark:text-white text-xs">{summary.filesCount}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Type-to-confirm input */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    To confirm deletion, type <code className="font-mono text-rose-600 dark:text-rose-400 font-bold">{workspace.id}</code> below:
+                  </label>
+                  <input
+                    type="text"
+                    value={confirmInput}
+                    onChange={(e) => setConfirmInput(e.target.value)}
+                    placeholder={workspace.id}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#14151b] border border-slate-300 dark:border-[#2e303d] rounded-lg text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                  />
                 </div>
               </>
+            ) : stage === 'deleting' ? (
+              <div className="py-6 px-2 space-y-5 text-center">
+                <div className="w-12 h-12 mx-auto rounded-2xl bg-rose-100 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 flex items-center justify-center text-rose-600 shadow-inner">
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-slate-900 dark:text-white mb-1">
+                    Deleting Workspace & Cascading Data...
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 min-h-[16px]">
+                    {statusMessage}
+                  </p>
+                </div>
+
+                {/* Animated Progress Bar */}
+                <div className="space-y-1.5">
+                  <div className="w-full bg-slate-100 dark:bg-[#14151b] h-2.5 rounded-full overflow-hidden border border-slate-200 dark:border-[#2e303d]">
+                    <div
+                      className="bg-gradient-to-r from-rose-500 to-amber-500 h-full rounded-full transition-all duration-300 ease-out"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+                    <span>Purging parent data</span>
+                    <span>{progress}%</span>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 rounded-lg text-left text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <span>
+                    Please keep this window open while Kickstack safely removes files on disk and cleans database dependencies.
+                  </span>
+                </div>
+              </div>
+            ) : (
+              /* Stage: done */
+              <div className="py-6 px-2 space-y-4 text-center">
+                <div className="w-12 h-12 mx-auto rounded-full bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center text-emerald-600 shadow-sm">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-slate-900 dark:text-white mb-1">
+                    Deletion Completed
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Workspace &ldquo;{workspace.name}&rdquo; and all associated data have been permanently purged.
+                  </p>
+                </div>
+
+                {deletedSummary && (
+                  <div className="p-3 bg-slate-50 dark:bg-[#181920] border border-slate-200 dark:border-[#2e303d] rounded-xl text-left text-[11px] space-y-1 text-slate-600 dark:text-slate-300 font-mono">
+                    <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Purged Totals</div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 pt-1 text-[11px]">
+                      <div>Projects: <span className="font-bold text-slate-900 dark:text-white">{deletedSummary.projectsCount}</span></div>
+                      <div>Requirements: <span className="font-bold text-slate-900 dark:text-white">{deletedSummary.requirementsCount}</span></div>
+                      <div>Tasks: <span className="font-bold text-slate-900 dark:text-white">{deletedSummary.tasksCount}</span></div>
+                      <div>Disk Files: <span className="font-bold text-slate-900 dark:text-white">{deletedSummary.filesCount}</span></div>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Actions */}
             <div className="pt-3 border-t border-slate-200 dark:border-[#262732] flex justify-end gap-2.5">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-3.5 py-2 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#282935] transition-colors cursor-pointer"
-              >
-                {isDefault ? 'Close' : 'Cancel'}
-              </button>
-              {!isDefault && (
+              {stage === 'confirm' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="px-3.5 py-2 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#282935] transition-colors cursor-pointer"
+                  >
+                    {isDefault ? 'Close' : 'Cancel'}
+                  </button>
+                  {!isDefault && (
+                    <button
+                      type="button"
+                      onClick={handleDelete}
+                      disabled={isLoadingSummary || (totalItems > 0 && !isConfirmMatch)}
+                      className="px-4 py-2 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-600/20 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Delete Workspace & All Data
+                    </button>
+                  )}
+                </>
+              ) : stage === 'done' ? (
                 <button
                   type="button"
-                  onClick={handleDelete}
-                  disabled={isDeleting}
-                  className="px-4 py-2 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-600/20 flex items-center gap-1.5 disabled:opacity-50 transition-all cursor-pointer"
+                  onClick={() => {
+                    onDeleted?.();
+                    onClose();
+                  }}
+                  className="px-4 py-2 rounded-lg text-xs font-semibold bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 transition-all cursor-pointer"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  {isDeleting ? 'Deleting...' : 'Delete Workspace'}
+                  Done
                 </button>
-              )}
+              ) : null}
             </div>
           </div>
         </div>

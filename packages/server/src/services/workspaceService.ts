@@ -1,7 +1,9 @@
+import fs from 'node:fs';
 import { AppDatabase } from '../db/index.js';
 import {
   Workspace,
   WorkspaceSchema,
+  WorkspaceDataSummary,
   CreateWorkspaceInput,
   CreateWorkspaceInputSchema,
   UpdateWorkspaceInput,
@@ -122,13 +124,84 @@ export class WorkspaceService {
     return this.getWorkspace(id)!;
   }
 
-  public deleteWorkspace(id: string): void {
+  public getWorkspaceSummary(id: string): WorkspaceDataSummary {
+    const ws = this.getWorkspace(id);
+    if (!ws) {
+      throw new Error(`Workspace '${id}' not found`);
+    }
+
+    const projectsCount =
+      (this.db.prepare('SELECT count(*) as c FROM projects WHERE workspace_id = ?').get(id) as any)?.c || 0;
+
+    const reqRows = this.db.prepare('SELECT file_path FROM requirements WHERE workspace_id = ?').all(id) as any[];
+    const requirementsCount = reqRows.length;
+    let filesCount = 0;
+    for (const r of reqRows) {
+      if (r.file_path && fs.existsSync(r.file_path)) {
+        filesCount++;
+      }
+    }
+
+    const tasksCount =
+      (
+        this.db
+          .prepare(
+            `
+        SELECT count(*) as c FROM bridge_tasks bt
+        JOIN requirements r ON bt.req_id = r.id
+        WHERE r.workspace_id = ?
+      `
+          )
+          .get(id) as any
+      )?.c || 0;
+
+    const sprintsCount =
+      (this.db.prepare('SELECT count(*) as c FROM sprints WHERE workspace_id = ?').get(id) as any)?.c || 0;
+    const assetsCount =
+      (this.db.prepare('SELECT count(*) as c FROM shared_assets WHERE workspace_id = ?').get(id) as any)?.c || 0;
+    const chatSessionsCount =
+      (this.db.prepare('SELECT count(*) as c FROM ai_chat_sessions WHERE workspace_id = ?').get(id) as any)?.c || 0;
+
+    return {
+      workspaceId: id,
+      name: ws.name,
+      projectsCount,
+      requirementsCount,
+      tasksCount,
+      sprintsCount,
+      assetsCount,
+      chatSessionsCount,
+      filesCount,
+    };
+  }
+
+  public deleteWorkspace(id: string): WorkspaceDataSummary {
     if (id === 'default') {
       throw new Error('Cannot delete default workspace');
     }
+
+    const summary = this.getWorkspaceSummary(id);
+
+    // 1. Purge physical requirement markdown files on disk
+    const reqRows = this.db.prepare('SELECT file_path FROM requirements WHERE workspace_id = ?').all(id) as any[];
+    for (const r of reqRows) {
+      if (r.file_path) {
+        try {
+          if (fs.existsSync(r.file_path)) {
+            fs.unlinkSync(r.file_path);
+          }
+        } catch {
+          // ignore unlink error
+        }
+      }
+    }
+
+    // 2. Cascade delete database records (projects, requirements, tasks, sprints, assets, chat sessions)
     const res = this.db.prepare('DELETE FROM workspaces WHERE id = ?').run(id);
     if (res.changes === 0) {
       throw new Error(`Workspace '${id}' not found`);
     }
+
+    return summary;
   }
 }

@@ -4,6 +4,7 @@ import { ProjectService } from '../services/projectService.js';
 import { TicketService } from '../services/ticketService.js';
 import type { QuestionService } from '../services/questionService.js';
 import { AskQuestionInputSchema, CreateTicketInputSchema } from '@sp-kickstack/shared';
+import { folderName } from '../localEngine/worktrees.js';
 
 type OutboxKind = 'question' | 'ticket';
 
@@ -19,8 +20,17 @@ export class OutboxScanner {
   constructor(
     private projectService: ProjectService,
     private ticketService: TicketService,
-    private questionService?: QuestionService
+    private questionService?: QuestionService,
+    /** Local AI CLI agents queue here (XTICKET_OUTBOX), one folder per repository. */
+    private agentOutboxRoot?: string
   ) {}
+
+  /** The repository's own .devflow/outbox, and its Local AI CLI agents' outbox. */
+  private outboxDirs(project: { name: string; repo_path: string }): string[] {
+    const dirs = [path.join(project.repo_path, '.devflow', 'outbox')];
+    if (this.agentOutboxRoot) dirs.push(path.join(this.agentOutboxRoot, folderName(project.name)));
+    return dirs;
+  }
 
   public async scanOnce(): Promise<number> {
     if (this.isScanning) return 0;
@@ -38,38 +48,38 @@ export class OutboxScanner {
 
     for (const project of projects) {
       if (!project.enabled) continue;
-      const outboxDir = path.join(project.repo_path, '.devflow', 'outbox');
+      for (const outboxDir of this.outboxDirs(project)) {
+        if (!fs.existsSync(outboxDir)) continue;
 
-      if (!fs.existsSync(outboxDir)) continue;
+        const files = fs.readdirSync(outboxDir).filter((f) => f.endsWith('.json'));
 
-      const files = fs.readdirSync(outboxDir).filter((f) => f.endsWith('.json'));
+        for (const file of files) {
+          const filePath = path.join(outboxDir, file);
+          // xticket names question files question-*.json; the file's own kind wins once it parses.
+          let kind: OutboxKind = file.startsWith('question-') ? 'question' : 'ticket';
+          try {
+            const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            kind = data?.kind === 'question' ? 'question' : 'ticket';
+            const sourceProject = data.project || project.name;
+            const sourceTaskId = data.engineTaskId || data.taskId;
 
-      for (const file of files) {
-        const filePath = path.join(outboxDir, file);
-        // xticket names question files question-*.json; the file's own kind wins once it parses.
-        let kind: OutboxKind = file.startsWith('question-') ? 'question' : 'ticket';
-        try {
-          const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-          kind = data?.kind === 'question' ? 'question' : 'ticket';
-          const sourceProject = data.project || project.name;
-          const sourceTaskId = data.engineTaskId || data.taskId;
+            if (kind === 'question') {
+              if (!this.questionService) throw Object.assign(new Error('This bridge does not take questions'), { status: 400 });
+              // Idempotent: a re-scan returns the same question.
+              await this.questionService.ask(AskQuestionInputSchema.parse(data), sourceProject, sourceTaskId);
+            } else {
+              // Idempotent: a re-scan after a partial failure returns the same ticket.
+              await this.ticketService.createTicket(CreateTicketInputSchema.parse(data), sourceProject, sourceTaskId);
+            }
 
-          if (kind === 'question') {
-            if (!this.questionService) throw Object.assign(new Error('This bridge does not take questions'), { status: 400 });
-            // Idempotent: a re-scan returns the same question.
-            await this.questionService.ask(AskQuestionInputSchema.parse(data), sourceProject, sourceTaskId);
-          } else {
-            // Idempotent: a re-scan after a partial failure returns the same ticket.
-            await this.ticketService.createTicket(CreateTicketInputSchema.parse(data), sourceProject, sourceTaskId);
+            this.moveTo(outboxDir, 'processed', file);
+            processed++;
+          } catch (err: any) {
+            if (err instanceof SyntaxError || isPermanent(err)) {
+              this.reject(outboxDir, file, project.name, kind, err);
+            }
+            // Otherwise transient (engine down, hold failed): leave the file for the next scan.
           }
-
-          this.moveTo(outboxDir, 'processed', file);
-          processed++;
-        } catch (err: any) {
-          if (err instanceof SyntaxError || isPermanent(err)) {
-            this.reject(outboxDir, file, project.name, kind, err);
-          }
-          // Otherwise transient (engine down, hold failed): leave the file for the next scan.
         }
       }
     }

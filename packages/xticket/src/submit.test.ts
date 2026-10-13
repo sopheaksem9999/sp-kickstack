@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { submitTicket } from './submit.js';
+import { resolveOutboxDir, submitTicket } from './submit.js';
 
 const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), 'xticket-outbox-'));
 const payload = { to: 'backend', type: 'api_request', title: 'GET /x', body: 'Provide it please', blocking: true, project: 'mobile' };
@@ -70,5 +70,12 @@ describe('xticket submitTicket', () => {
     expect(JSON.parse(r.stdout!)).toMatchObject({ questionId: 0, status: 'queued_outbox' });
     expect(JSON.parse(r.stdout!).message).toMatch(/stop working/i);
     expect(outboxFiles().some((f) => f.startsWith('question-'))).toBe(true);
+  });
+});
+
+describe('resolveOutboxDir', () => {
+  it('uses XTICKET_OUTBOX when the bridge set one (Local AI CLI agents), else .devflow/outbox', () => {
+    expect(resolveOutboxDir({ XTICKET_OUTBOX: '/ws/agent-outbox/backend' }, '/w/task-1')).toBe('/ws/agent-outbox/backend');
+    expect(resolveOutboxDir({}, '/w/task-1')).toBe(path.join('/w/task-1', '.devflow', 'outbox'));
   });
 });

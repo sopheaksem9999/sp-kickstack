@@ -108,7 +108,7 @@ const watcher = new EngineWatcher(
   reactor
 );
 
-const outboxScanner = new OutboxScanner(projectService, ticketService, questionService);
+const outboxScanner = new OutboxScanner(projectService, ticketService, questionService, path.join(WORKSPACE_DIR, 'agent-outbox'));
 const retrySweeper = new RetrySweeper(db, fanOutService, ticketService, linkService, { throttle: engineThrottle });
 const TICK_MS = Number(process.env.WATCH_INTERVAL_MS) || 5000;
 

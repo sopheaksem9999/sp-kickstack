@@ -3,7 +3,7 @@
 // called as `-p <prompt> …`, AGY's stream-json. Lines "FAKE: <action> <arg>" in the prompt drive it:
 //   say <text> · commit <file> · dirty <file> · sleep <ms> · wait-for-note <ms> · wait-once <ms>
 //   exit <code> · fail-unless-retry <code> · limit <epoch s> · limit-once <epoch s>
-//   stderr <text> · background <ms>
+//   stderr <text> · background <ms> · chatty-background
 // With FAKE_AGENT_LOG_DIR set, each prompt is saved as <XTICKET_TASK>-<n>.md (and argv/env as .json).
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,7 +18,10 @@ if (logDir) {
   fs.mkdirSync(logDir, { recursive: true });
   const n = fs.readdirSync(logDir).filter((f) => f.startsWith(`${task}-`) && f.endsWith('.md')).length + 1;
   fs.writeFileSync(path.join(logDir, `${task}-${n}.md`), prompt);
-  const env = { XTICKET_URL: process.env.XTICKET_URL, XTICKET_PROJECT: process.env.XTICKET_PROJECT, XTICKET_TASK: task, PATH: process.env.PATH };
+  const env = {
+    XTICKET_URL: process.env.XTICKET_URL, XTICKET_PROJECT: process.env.XTICKET_PROJECT, XTICKET_TASK: task, XTICKET_OUTBOX: process.env.XTICKET_OUTBOX,
+    PATH: process.env.PATH, PORT: process.env.PORT, npm_lifecycle_event: process.env.npm_lifecycle_event,
+  };
   fs.writeFileSync(path.join(logDir, `${task}-${n}.json`), JSON.stringify({ argv, env, cwd: process.cwd() }));
 }
 
@@ -64,6 +67,11 @@ for (const [action, arg] of actions) {
   else if (action === 'stderr') process.stderr.write(`${arg}\n`);
   else if (action === 'background') {
     const child = spawn('sleep', [String(Math.ceil(Number(arg) / 1000))], { stdio: ['ignore', 'inherit', 'inherit'] });
+    if (logDir) fs.writeFileSync(path.join(logDir, `${task}-bg.pid`), String(child.pid));
+    child.unref();
+  } else if (action === 'chatty-background') {
+    // Writes as fast as it can (keeps the pipe full) until its process group is stopped.
+    const child = spawn('yes', ['GET /health 200'], { stdio: ['ignore', 'inherit', 'inherit'] });
     if (logDir) fs.writeFileSync(path.join(logDir, `${task}-bg.pid`), String(child.pid));
     child.unref();
   } else if (action === 'exit' || (action === 'fail-unless-retry' && !isRetry)) {

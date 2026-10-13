@@ -11,7 +11,8 @@ import type { SettingsService } from '../services/settingsService.js';
 import { commitsAhead, resolveCommit } from '../lib/gitRepo.js';
 import { findCliBinary } from '../services/aiDraftService.js';
 import { FINISHED_RUN_STATUSES, RunStore, type LocalRun, type RunPatch, type RunStatus } from './runStore.js';
-import { AgentWorktrees } from './worktrees.js';
+import { AgentWorktrees, defaultWorktreeRoot, folderName } from './worktrees.js';
+import { agentEnvironment } from './agentEnv.js';
 import { buildCommand, chooseCli, CLI_LABELS, cliBinary, cliEnabled, quotaResetAt as defaultQuotaResetAt, runEffort, runModel, type FindBinary } from './cliProfiles.js';
 import { createParser, looksLikeRateLimit, resetFromText, type ParsedOutput } from './outputParsers.js';
 import { buildRunPrompt } from './prompt.js';
@@ -36,6 +37,8 @@ export interface AgentRunnerOptions {
   stopGraceMs?: number;
   quotaResetAt?: (cli: AgentCliId, bin: string) => Promise<string | null>;
   now?: () => number;
+  /** Home folder for the default worktree root (tests). */
+  homeDir?: string;
 }
 
 /** Log lines kept per run in task_logs; the raw output file keeps everything. */
@@ -76,6 +79,7 @@ export class AgentRunner {
   private stopping = false;
   private binDir: string | null = null;
   private dirtyLogged = new Set<string>();
+  private defaultRoot: string;
   private find: FindBinary;
   private now: () => number;
 
@@ -83,7 +87,9 @@ export class AgentRunner {
     this.runs = new RunStore(opts.db);
     this.find = opts.findBinary ?? findCliBinary;
     this.now = opts.now ?? Date.now;
-    this.worktrees = new AgentWorktrees(() => this.settings().worktreeRoot || path.join(opts.workspaceDir, 'agent-worktrees'));
+    const defaultRoot = defaultWorktreeRoot(opts.workspaceDir, opts.homeDir);
+    this.defaultRoot = defaultRoot;
+    this.worktrees = new AgentWorktrees(() => this.settings().worktreeRoot || defaultRoot);
   }
 
   health(): { ok: boolean; version?: string; error?: string } {
@@ -233,7 +239,7 @@ export class AgentRunner {
         running: this.runs.count('running'), queued: this.runs.count('queued'), held: this.runs.count('held'), rate_limited: this.runs.count('rate_limited'),
       },
       maxParallel: settings.maxParallel,
-      worktreeRoot: settings.worktreeRoot || path.join(this.opts.workspaceDir, 'agent-worktrees'),
+      worktreeRoot: settings.worktreeRoot || this.defaultRoot,
     };
   }
 
@@ -263,6 +269,10 @@ export class AgentRunner {
 
   /** Start one queued run; false when it could not start (then it is failed or cancelled). */
   private start(run: LocalRun, cli: AgentCliId, bin: string, ai: AiCliSettings, settings: LocalEngineSettings): boolean {
+    if (run.cancel_requested_at) {
+      this.runs.transition(run.id, ['queued'], { status: 'cancelled', finished_at: this.iso() });
+      return false;
+    }
     const task = this.task(run.bridge_task_id);
     if (!task || task.status === 'done' || task.status === 'cancelled') {
       this.runs.transition(run.id, ['queued'], { status: 'cancelled', error: 'The task is no longer active', finished_at: this.iso() });
@@ -274,8 +284,11 @@ export class AgentRunner {
     };
     const project = this.opts.projectService.getProject(run.project);
     if (!project) return fail(`Repository ${run.project} is not registered`);
+    // Switched to another engine or disabled: no agent starts there; the run waits until it is back.
+    if (!project.enabled || project.engine_type !== 'local') return false;
     if (!task.branch) return fail(`Local AI CLI needs a git repository: ${project.repo_path} is not the top of a git work tree`);
-    const dir = this.worktrees.pathFor(project.name, task.id);
+    // A task keeps its worktree (even after the worktree folder setting changed); new tasks use the current root.
+    const dir = this.recordedWorktree(task.id) ?? this.worktrees.pathFor(project.name, task.id);
     let gitCommonDir: string;
     try {
       this.worktrees.ensure(project.repo_path, task.branch, dir);
@@ -291,14 +304,19 @@ export class AgentRunner {
     fs.mkdirSync(runDir, { recursive: true });
     fs.writeFileSync(path.join(runDir, `prompt-${Date.now()}.md`), prompt);
     const command = buildCommand(cli, bin, { prompt, model, effort, worktree: dir, gitCommonDir });
-    const env: NodeJS.ProcessEnv = {
-      ...process.env,
-      XTICKET_URL: this.opts.bridgeUrl,
-      XTICKET_PROJECT: project.name,
-      XTICKET_TASK: run.id,
-      ...(this.opts.agentToken ? { XTICKET_TOKEN: this.opts.agentToken } : {}),
-      PATH: `${this.launcherDir()}${path.delimiter}${process.env.PATH ?? ''}`,
-    };
+    const env = agentEnvironment(process.env, {
+      launcherDir: this.launcherDir(),
+      cliBin: bin,
+      homeDir: this.opts.homeDir,
+      extra: {
+        XTICKET_URL: this.opts.bridgeUrl,
+        XTICKET_PROJECT: project.name,
+        XTICKET_TASK: run.id,
+        // Queued questions/tickets land where the bridge's outbox scanner reads them, not in the worktree.
+        XTICKET_OUTBOX: path.join(this.opts.workspaceDir, 'agent-outbox', folderName(project.name)),
+        ...(this.opts.agentToken ? { XTICKET_TOKEN: this.opts.agentToken } : {}),
+      },
+    });
     const startSha = resolveCommit(project.repo_path, `refs/heads/${task.branch}`);
     let agent: SpawnedAgent;
     try {
@@ -306,10 +324,11 @@ export class AgentRunner {
     } catch (err: any) {
       return fail(`Could not start ${CLI_LABELS[cli]} (${bin}): ${err?.message || err}`);
     }
-    const claimed = this.runs.transition(run.id, ['queued'], {
+    // A cancel requested meanwhile keeps the run from starting (cancel_requested_at is never reset).
+    const claimed = !this.runs.get(run.id)?.cancel_requested_at && this.runs.transition(run.id, ['queued'], {
       status: 'running', cli, model, effort, worktree: dir, start_sha: startSha, end_sha: null, pid: agent.pid,
       pid_started_at: agent.startedAt, started_at: this.iso(), finished_at: null, notes_md: '', continuation: 0,
-      hold_requested_at: null, cancel_requested_at: null, exit_code: null, error: null, resume_at: null,
+      hold_requested_at: null, exit_code: null, error: null, resume_at: null,
     });
     if (!claimed) {
       void stopGroup(agent.pid, agent.exited, this.stopGrace());
@@ -324,7 +343,10 @@ export class AgentRunner {
   private supervise(runId: string, task: BridgeTask, repo: string, cli: AgentCliId, bin: string, agent: SpawnedAgent, minutes: number, runDir: string) {
     const parser = createParser(cli);
     const raw = fs.createWriteStream(path.join(runDir, 'output.log'), { flags: 'a' });
+    raw.on('error', (err) => console.warn(`[local-engine] run ${runId} output file: ${err.message}`));
     const out: OutputState = { lines: 0, tail: [], rateLimit: null, cliError: null };
+    /** Set once the run is settling: output that still arrives (a leftover process) is dropped. */
+    let closed = false;
     const emit = (stream: LogStream, text: string) => {
       const line = text.length > MAX_LINE_CHARS ? `${text.slice(0, MAX_LINE_CHARS - 1)}…` : text;
       out.tail.push(line);
@@ -341,20 +363,35 @@ export class AgentRunner {
       if (parsed.rateLimit) out.rateLimit = parsed.rateLimit;
       if (parsed.error) out.cliError = parsed.error;
     };
+    const readers: readline.Interface[] = [];
     if (agent.child.stdout) {
-      readline.createInterface({ input: agent.child.stdout }).on('line', (line) => {
+      const reader = readline.createInterface({ input: agent.child.stdout });
+      readers.push(reader);
+      reader.on('line', (line) => {
+        if (closed) return;
         raw.write(`${line}\n`);
         handle(parser.push(line));
       });
     }
     if (agent.child.stderr) {
-      readline.createInterface({ input: agent.child.stderr }).on('line', (line) => {
+      const reader = readline.createInterface({ input: agent.child.stderr });
+      readers.push(reader);
+      reader.on('line', (line) => {
+        if (closed) return;
         raw.write(`[stderr] ${line}\n`);
         if (!line.trim()) return;
         emit('stderr', line);
         if (looksLikeRateLimit(line)) out.rateLimit ??= { resetAt: resetFromText(line) };
       });
     }
+    /** Stop reading: the CLI has exited and anything still writing is a leftover. */
+    const close = () => {
+      closed = true;
+      for (const reader of readers) reader.close();
+      agent.child.stdout?.destroy();
+      agent.child.stderr?.destroy();
+      raw.end();
+    };
 
     const active: ActiveRun = { runId, taskId: task.id, agent, timers: [], timedOut: false, settled: Promise.resolve() };
     active.timers.push(
@@ -367,7 +404,7 @@ export class AgentRunner {
       active.timers.forEach(clearTimeout);
       killGroupLeftovers(agent.pid);
       handle(parser.flush());
-      raw.end();
+      close();
       try {
         await this.finish(runId, task.id, repo, cli, bin, exit, out, active.timedOut);
       } catch (err: any) {
@@ -390,7 +427,10 @@ export class AgentRunner {
     const label = CLI_LABELS[cli];
 
     if (run.cancel_requested_at) {
-      if (this.runs.transition(runId, ['running', 'held'], { ...base, status: 'cancelled' })) this.log(taskId, 'system', '■ Stopped: the task was cancelled');
+      // Any state: a run released or re-queued while its agent was stopping must not start again.
+      if (this.runs.transition(runId, ['running', 'held', 'queued', 'rate_limited'], { ...base, status: 'cancelled' })) {
+        this.log(taskId, 'system', '■ Stopped: the task was cancelled');
+      }
       return;
     }
     if (run.status === 'queued') {
@@ -500,6 +540,13 @@ export class AgentRunner {
     if (this.runs.transition(runId, ['running'], patch)) {
       this.log(taskId, 'system', message ?? `✗ ${(patch.error ?? patch.status).split('\n')[0]}`);
     }
+  }
+
+  private recordedWorktree(taskId: number): string | null {
+    const row = this.opts.db
+      .prepare('SELECT worktree FROM local_runs WHERE bridge_task_id = ? AND worktree IS NOT NULL ORDER BY created_at DESC, rowid DESC LIMIT 1')
+      .get(taskId) as { worktree: string } | undefined;
+    return row?.worktree ?? null;
   }
 
   private task(id: number): BridgeTask | undefined {

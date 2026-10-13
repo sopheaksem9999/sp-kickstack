@@ -108,8 +108,6 @@ export class EngineWatcher {
       throw err;
     }
     if (!health.ok) {
-      const delayMs = Math.min((backoff?.delayMs ?? this.pollIntervalMs / 2) * 2, MAX_DOWN_BACKOFF_MS);
-      this.downBackoff.set(projectName, { until: Date.now() + delayMs, delayMs });
       if (project.engine_status !== 'down') {
         this.projectService.updateEngineStatus(projectName, 'down');
         this.recordEvent('engine_down', undefined, undefined, {
@@ -117,12 +115,19 @@ export class EngineWatcher {
           error: health.error,
         });
       }
-      return 0;
-    }
-    this.downBackoff.delete(projectName);
-    if (project.engine_status === 'down') {
-      this.projectService.updateEngineStatus(projectName, 'ok');
-      this.recordEvent('engine_up', undefined, undefined, { project: projectName });
+      // The Local AI CLI engine keeps its runs in this database, so their state stays readable while
+      // it cannot start new runs (turned off, no CLI): keep syncing, without backoff.
+      if (project.engine_type !== 'local') {
+        const delayMs = Math.min((backoff?.delayMs ?? this.pollIntervalMs / 2) * 2, MAX_DOWN_BACKOFF_MS);
+        this.downBackoff.set(projectName, { until: Date.now() + delayMs, delayMs });
+        return 0;
+      }
+    } else {
+      this.downBackoff.delete(projectName);
+      if (project.engine_status === 'down') {
+        this.projectService.updateEngineStatus(projectName, 'ok');
+        this.recordEvent('engine_up', undefined, undefined, { project: projectName });
+      }
     }
 
     let changes = 0;

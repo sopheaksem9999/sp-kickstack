@@ -75,7 +75,8 @@ export function makeLocalHarness(opts: LocalHarnessOptions = {}): LocalHarness {
     [key]: { enabled: true, customPath: FAKE_AGENT_CLI, model: 'default', effort: undefined },
     enabledEngines: ['claude-cli', 'agy-cli', 'codex-cli'],
   } as any);
-  settingsService.updateLocalEngineSettings({ agentCli: cli });
+  // Explicit: the default would leave the test tree (it lies inside SP-Kickstack's checkout).
+  settingsService.updateLocalEngineSettings({ agentCli: cli, worktreeRoot: path.join(ws, 'agent-worktrees') });
   projectService.registerProject({ name: 'backend', kind: 'backend', repo_path: repo, engine_type: 'local', base_branch: 'develop', enabled: true });
 
   const runnerOptions: AgentRunnerOptions = {

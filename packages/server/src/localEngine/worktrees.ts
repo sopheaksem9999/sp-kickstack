@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { checkoutPathOf, isClean, isGitWorkTree, runGit } from '../lib/gitRepo.js';
 
@@ -9,6 +10,26 @@ const real = (p: string) => {
     return path.resolve(p);
   }
 };
+
+/** True when `dir` (or its nearest existing parent) lies inside a git work tree. */
+function insideGitWorkTree(dir: string): boolean {
+  let probe = path.resolve(dir);
+  while (!fs.existsSync(probe) && path.dirname(probe) !== probe) probe = path.dirname(probe);
+  try {
+    return runGit(probe, ['rev-parse', '--is-inside-work-tree']).trim() === 'true';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Default home of task worktrees: the server workspace, unless that lies inside a git work tree (as with
+ * `npm run dev`, inside SP-Kickstack) — there SP-Kickstack's test runner and CLAUDE.md would reach the
+ * agents' repositories — then `<home>/.sp-kickstack/agent-worktrees`.
+ */
+export function defaultWorktreeRoot(workspaceDir: string, homeDir: string = os.homedir()): string {
+  return insideGitWorkTree(workspaceDir) ? path.join(homeDir, '.sp-kickstack', 'agent-worktrees') : path.join(workspaceDir, 'agent-worktrees');
+}
 
 /** Folder-safe name for a repository (never "." or "..", which would leave the worktree root). */
 export function folderName(project: string): string {

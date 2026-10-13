@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { submitTicket } from './submit.js';
+import { resolveOutboxDir, submitTicket } from './submit.js';
 import { parseAskArgs } from './ask.js';
 
 async function main() {
@@ -38,7 +38,7 @@ Options for ask:
 
   const bridgeUrl = process.env.XTICKET_URL || 'http://127.0.0.1:4100';
   const token = process.env.XTICKET_TOKEN;
-  const outboxDir = path.resolve('.devflow', 'outbox');
+  const outboxDir = resolveOutboxDir();
 
   if (command === 'ask') {
     const parsed = parseAskArgs(args.slice(1), process.env);

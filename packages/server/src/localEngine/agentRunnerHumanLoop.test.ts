@@ -1,5 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest';
-import { cleanLocalHarnesses, makeLocalHarness } from '../testing/localEngineFixture.js';
+import { cleanLocalHarnesses, makeLocalHarness, waitFor } from '../testing/localEngineFixture.js';
+import { isAlive } from './processes.js';
 
 afterAll(() => cleanLocalHarnesses());
 
@@ -20,6 +21,21 @@ describe('AgentRunner: questions and notes', () => {
     const second = h.prompts(run.id)[1];
     expect(second).toContain('## Continue');
     expect(second).toContain('## Notes since your last run\nAnswer to your question: use Postgres');
+  }, 15_000);
+
+  it('cancelling a run that was released while its agent was still stopping starts nothing new', async () => {
+    const h = makeLocalHarness({ runner: { holdGraceMs: 5000 } });
+    const { run } = h.queueRun('FAKE: wait-for-note 20000\nFAKE: commit a.txt');
+    await h.runner.tick();
+    await waitFor(() => h.invocations(run.id).length === 1); // the first agent is at work
+    const pid = h.run(run.id).pid!;
+    h.runner.hold(run.id, 'question');
+    h.runner.release(run.id, 'Answer: Postgres'); // answered within the hold grace: the first agent still runs
+    await h.runner.cancel(run.id);
+    await h.runner.idle();
+    expect(h.run(run.id)).toMatchObject({ status: 'cancelled', pid: null });
+    expect(h.invocations(run.id)).toHaveLength(1);
+    expect(isAlive(pid)).toBe(false);
   }, 15_000);
 
   it('refuses to pause a finished run', async () => {

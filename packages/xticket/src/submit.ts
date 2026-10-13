@@ -43,6 +43,11 @@ function queueInOutbox(payload: Record<string, unknown>, outboxDir: string, reas
  * bridge to retry), 2 validation, 3 limit, 4 outbox write failed, 5 unauthorized,
  * 1 any other rejection. Every failure explains itself on stderr.
  */
+/** Where to queue a submission the bridge did not take: XTICKET_OUTBOX (set by the bridge for Local AI CLI agents), else ./.devflow/outbox. */
+export function resolveOutboxDir(env: NodeJS.ProcessEnv = process.env, cwd: string = process.cwd()): string {
+  return env.XTICKET_OUTBOX ? path.resolve(cwd, env.XTICKET_OUTBOX) : path.resolve(cwd, '.devflow', 'outbox');
+}
+
 export async function submitTicket(payload: Record<string, unknown>, opts: SubmitOptions): Promise<SubmitResult> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const noun = payload.kind === 'question' ? 'question' : 'ticket';

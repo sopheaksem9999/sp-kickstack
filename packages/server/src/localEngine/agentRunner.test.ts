@@ -162,6 +162,87 @@ describe('AgentRunner: limits and settings', () => {
   }, 15_000);
 });
 
+describe('AgentRunner: review fixes', () => {
+  it('survives a leftover process that keeps writing after the agent exits', async () => {
+    const h = makeLocalHarness();
+    const { run } = h.queueRun('FAKE: commit a.txt\nFAKE: chatty-background');
+    try {
+      await h.settle();
+      expect(h.run(run.id).status).toBe('review');
+      await new Promise((r) => setTimeout(r, 500)); // lines that arrive late must not crash the server
+    } finally {
+      const pidFile = path.join(h.promptsDir, `${run.id}-bg.pid`);
+      const pid = fs.existsSync(pidFile) ? Number(fs.readFileSync(pidFile, 'utf8')) : 0;
+      if (pid > 0 && isAlive(pid)) process.kill(pid, 'SIGKILL'); // only the process this test started
+    }
+  }, 15_000);
+});
+
+describe('AgentRunner: agent environment', () => {
+  it("gives the agent no server settings, and an outbox the server reads", async () => {
+    const h = makeLocalHarness();
+    const saved = { PORT: process.env.PORT, npm_lifecycle_event: process.env.npm_lifecycle_event };
+    process.env.PORT = '4100';
+    process.env.npm_lifecycle_event = 'dev';
+    try {
+      const { run } = h.queueRun('FAKE: commit a.txt');
+      await h.settle();
+      const [call] = h.invocations(run.id);
+      expect(call.env.PORT).toBeUndefined();
+      expect(call.env.npm_lifecycle_event).toBeUndefined();
+      expect(call.env.XTICKET_OUTBOX).toBe(path.join(h.ws, 'agent-outbox', 'backend'));
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+});
+
+describe('AgentRunner: repository engine', () => {
+  it('starts no agent for a repository that left Local AI CLI or is disabled, and resumes when it is back', async () => {
+    const h = makeLocalHarness();
+    const { run } = h.queueRun('FAKE: commit a.txt');
+    h.projectService.updateProject('backend', { engine_type: 'manual' });
+    await h.settle();
+    expect(h.run(run.id).status).toBe('queued');
+    h.projectService.updateProject('backend', { engine_type: 'local', enabled: false });
+    await h.settle();
+    expect(h.run(run.id).status).toBe('queued');
+    expect(h.invocations(run.id)).toHaveLength(0);
+    h.projectService.updateProject('backend', { enabled: true });
+    await h.settle();
+    expect(h.run(run.id).status).toBe('review');
+  });
+});
+
+describe('AgentRunner: worktree folder', () => {
+  it('keeps using a task\'s worktree after the worktree folder setting changes', async () => {
+    const h = makeLocalHarness();
+    const { run, task } = h.queueRun('FAKE: commit a.txt');
+    await h.settle();
+    const first = h.run(run.id).worktree!;
+    h.settingsService.updateLocalEngineSettings({ worktreeRoot: path.join(h.ws, 'moved-worktrees') });
+    const next = h.runner.runs.create({ bridgeTaskId: task.id, project: 'backend', title: 'T', bodyMd: 'FAKE: commit b.txt' });
+    await h.settle();
+    expect(h.run(next.id)).toMatchObject({ status: 'review', worktree: first });
+    const fresh = h.queueRun('FAKE: commit c.txt');
+    await h.settle();
+    expect(h.run(fresh.run.id).worktree!.startsWith(path.join(h.ws, 'moved-worktrees'))).toBe(true);
+  });
+});
+
+describe('AgentRunner: default worktree folder', () => {
+  it('uses a folder outside git when the server workspace is inside a repository', () => {
+    const h = makeLocalHarness();
+    h.settingsService.updateLocalEngineSettings({ worktreeRoot: '' });
+    const home = path.join(h.ws, 'home');
+    const runner = h.newRunner({ workspaceDir: path.join(h.repo, 'workspace'), homeDir: home });
+    expect(runner.status().worktreeRoot).toBe(path.join(home, '.sp-kickstack', 'agent-worktrees'));
+  });
+});
+
 describe('AgentRunner: cancel', () => {
   it('stops a running agent and its process group', async () => {
     const h = makeLocalHarness();

@@ -1,10 +1,11 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeRepo, sh } from '../testing/gitFixture.js';
 import { checkoutPathOf, createBranch, resolveCommit } from '../lib/gitRepo.js';
-import { AgentWorktrees, folderName } from './worktrees.js';
+import { AgentWorktrees, defaultWorktreeRoot, folderName } from './worktrees.js';
 import { isAlive, isSameProcess, processStartTime, spawnAgent, stopGroup } from './processes.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -58,6 +59,19 @@ describe('AgentWorktrees', () => {
     expect(worktrees.removeIfClean(repo, dir)).toBe('removed');
     expect(checkoutPathOf(repo, 'req/REQ-001/task-1')).toBeNull();
     expect(worktrees.removeIfClean(repo, dir)).toBe('missing');
+  });
+
+  it('keeps task worktrees out of a git work tree by default', () => {
+    const { ws, repo } = setup();
+    const home = path.join(ws, 'home');
+    // npm run dev keeps the server workspace inside SP-Kickstack's own checkout.
+    expect(defaultWorktreeRoot(path.join(repo, 'packages', 'server', 'workspace'), home)).toBe(path.join(home, '.sp-kickstack', 'agent-worktrees'));
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-ws-'));
+    try {
+      expect(defaultWorktreeRoot(outside, home)).toBe(path.join(outside, 'agent-worktrees'));
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it('names folders safely and finds the shared .git folder', () => {

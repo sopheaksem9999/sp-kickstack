@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { appendMention, changeStatusLabel, changeSummary, commentLocation, fileSize, requestChangesOutcome, requestChangesState, reviewableTasks, taskReviewView } from './reviewActions';
+import { appendMention, changeStatusLabel, changeSummary, commentLocation, fileSize, gitReviewHeadline, gitReviewTasks, requestChangesOutcome, requestChangesState, reviewableTasks, taskReviewView } from './reviewActions';
 
 const c = (task_id: number, state: string) => ({ task_id, state }) as any;
 
@@ -65,5 +65,18 @@ describe('review actions', () => {
     expect(appendMention('', 'src/a.ts')).toBe('#src/a.ts ');
     expect(appendMention('Fix this', 'src/a.ts')).toBe('Fix this #src/a.ts ');
     expect(appendMention('Fix this\n', 'src/a.ts')).toBe('Fix this\n#src/a.ts ');
+  });
+
+  it('lists the branched goals and tickets for Git Review and words what the merge brings', () => {
+    const t = (id: number, project: string, over: object = {}) =>
+      ({ id, project, role: 'goal', status: 'in_review', branch: 'REQ-008', merged_at: null, ...over }) as any;
+    const tasks = [t(2, 'frontend'), t(1, 'backend'), t(3, 'backend', { role: 'question', branch: null }), t(4, 'mobile', { branch: null }), t(5, 'api', { status: 'cancelled' })];
+    expect(gitReviewTasks(tasks).map((x) => x.id)).toEqual([1, 2]);
+    expect(gitReviewHeadline('REQ-008', [{ merged: false, base: 'develop' }, { merged: false, base: 'develop' }])).toBe('What merging REQ-008 brings into develop');
+    expect(gitReviewHeadline('REQ-008', [{ merged: true, base: 'develop' }, { merged: true, base: 'main' }])).toBe('What REQ-008 merged into develop, main');
+    expect(gitReviewHeadline('REQ-008', [{ merged: true, base: 'develop' }, { merged: false, base: 'develop' }])).toBe(
+      'REQ-008: some branches merged into develop, some still to merge'
+    );
+    expect(gitReviewHeadline('REQ-008', [])).toBe('REQ-008: no branches to review');
   });
 });

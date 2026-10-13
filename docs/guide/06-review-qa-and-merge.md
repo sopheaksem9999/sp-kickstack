@@ -34,11 +34,14 @@ card shows the branch name.
 
   The agent's own notes are in `specs/<REQ-ID>/` on that branch (`spec.md`, `plan.md`, and
   `decision.md` if it made choices for you).
-- In the app, **Review Code & Git Changes** on the requirement page (or **Git Review** on a
-  project card) opens a diff viewer with **Changes**, **Files** and **Commits**. It compares the
-  branch **currently checked out in the project folder** with `main`. It does not switch to the
-  task branch for you. If there is no `main` branch, it shows only uncommitted changes. Use the
-  git commands above when you need the exact task diff.
+- In the app, **Git Review** in the requirement's header (side panel and full page, next to
+  **Merge & move to QA**) shows everything the requirement's branches change, in one dialog: each
+  repository's task branch against the branch it merges into (`backend · REQ-008 → develop`), marked
+  **to merge** or **merged ✓**, with its changed files; click a file to see its diff. The headline says
+  "What merging REQ-008 brings into develop" before the merge and "What REQ-008 merged into develop"
+  after it. It reads only what the agents committed.
+- **Git Review** on a project card (Projects page) is a different viewer: it compares the branch
+  **currently checked out in the project folder** with `main` (**Changes**, **Files**, **Commits**).
 
 ## Comment on a task
 

@@ -58,7 +58,7 @@ import {
   Copy,
 } from 'lucide-react';
 import { LiveTaskLogsDrawer } from '../components/LiveTaskLogsDrawer.js';
-import { ProjectGitReviewModal } from '../components/ProjectGitReviewModal.js';
+import { RequirementGitReviewButton } from '../components/RequirementGitReview.js';
 import { MarkdownMessage } from '../components/MarkdownMessage.js';
 import { RadixSelect } from '../components/ui/select.js';
 import {
@@ -88,8 +88,6 @@ export function RequirementDetailPage() {
   const mergeText = mergeCopy(demoMode);
 
   // Embedded VS Code Review Modal state
-  const [reviewModalOpen, setReviewModalOpen] = useState(false);
-  const [selectedReviewProject, setSelectedReviewProject] = useState<string | undefined>(undefined);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const { data: req, isLoading: reqLoading } = useQuery({
@@ -356,21 +354,12 @@ export function RequirementDetailPage() {
             <RunSettingsDialog req={req} mode="fan-out" open={fanOutOpen} onOpenChange={setFanOutOpen} />
           )}
 
-          {/* In-App Git Review & Code Diff Button */}
-          {req.affected_projects && req.affected_projects.length > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedReviewProject(req.affected_projects[0]);
-                setReviewModalOpen(true);
-              }}
-              className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold shadow-md shadow-blue-500/20 active:scale-[0.98] transition-all"
-              title="Review project code and git diffs before merging to main"
-            >
-              <Code2 className="w-3.5 h-3.5" />
-              <span>Review Code & Git Changes</span>
-            </button>
-          )}
+          {/* What the requirement's branches change, per repository */}
+          <RequirementGitReviewButton
+            req={req}
+            tasks={graph?.tasks ?? []}
+            className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold shadow-md shadow-blue-500/20 active:scale-[0.98] transition-all"
+          />
 
           {/* Merge gate: merge every task branch, run the project tests, push, move to QA */}
           {mergeAction === 'merge' && (
@@ -905,19 +894,6 @@ export function RequirementDetailPage() {
         task={logTask}
         isOpen={Boolean(logTask)}
         onClose={() => setLogTask(null)}
-      />
-
-      {/* In-App Git Review & Code Diff Modal (100% Self-Contained) */}
-      <ProjectGitReviewModal
-        isOpen={reviewModalOpen}
-        onClose={() => setReviewModalOpen(false)}
-        projectName={selectedReviewProject || req.affected_projects?.[0]}
-        projectNames={req.affected_projects || []}
-        requirementTitle={req.title}
-        baseBranch="develop"
-        targetBranch="main"
-        onMergeToMain={isMergeReady ? () => mergeMutation.mutate() : undefined}
-        isMerging={mergeMutation.isPending}
       />
 
       {/* Radix UI Cancel Confirmation Dialog */}

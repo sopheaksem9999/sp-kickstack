@@ -35,6 +35,22 @@ export function changeStatusLabel(status: TaskChangedFile['status']): string {
   return STATUS_LABEL[status];
 }
 
+/** Git Review: the requirement's goals and tickets that have a branch, by repository. */
+export function gitReviewTasks(tasks: BridgeTask[]): BridgeTask[] {
+  return reviewableTasks(tasks)
+    .filter((t) => t.branch)
+    .sort((a, b) => a.project.localeCompare(b.project) || a.id - b.id);
+}
+
+/** Git Review headline: what merging brings, what was merged, or both. */
+export function gitReviewHeadline(reqId: string, entries: Array<{ merged: boolean; base: string | null }>): string {
+  if (entries.length === 0) return `${reqId}: no branches to review`;
+  const bases = [...new Set(entries.map((e) => e.base).filter((b): b is string => Boolean(b)))].join(', ') || 'the base branch';
+  if (entries.every((e) => e.merged)) return `What ${reqId} merged into ${bases}`;
+  if (entries.every((e) => !e.merged)) return `What merging ${reqId} brings into ${bases}`;
+  return `${reqId}: some branches merged into ${bases}, some still to merge`;
+}
+
 /** "Comment on this file": `#path ` added to the comment, on its own word. */
 export function appendMention(body: string, path: string): string {
   const separator = !body || /\s$/.test(body) ? '' : ' ';

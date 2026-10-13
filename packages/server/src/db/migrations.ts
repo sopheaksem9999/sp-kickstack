@@ -210,6 +210,15 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 9,
+    name: 'requirement run settings: CLI and target branch; preferred CLI of a local run',
+    up: (db) => {
+      addColumn(db, 'requirements', 'agent_cli', 'TEXT');
+      addColumn(db, 'requirements', 'target_branch', 'TEXT');
+      addColumn(db, 'local_runs', 'preferred_cli', 'TEXT');
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

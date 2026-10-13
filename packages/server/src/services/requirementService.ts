@@ -161,6 +161,8 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
       sprint_id: row.sprint_id || null,
       agent_model: row.agent_model ?? null,
       agent_effort: row.agent_effort ?? null,
+      agent_cli: row.agent_cli ?? null,
+      target_branch: row.target_branch ?? null,
     };
   }
 

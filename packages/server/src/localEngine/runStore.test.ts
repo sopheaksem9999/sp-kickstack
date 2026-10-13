@@ -7,10 +7,9 @@ const store = () => new RunStore(initDatabase(':memory:'));
 const input = (bridgeTaskId = 1) => ({ bridgeTaskId, project: 'backend', title: 'T', bodyMd: 'Do it' });
 
 describe('RunStore', () => {
-  it('is created by migration 8', () => {
+  it('is created by migration 8 and kept by later ones', () => {
     const db = initDatabase(':memory:');
-    expect(LATEST_VERSION).toBe(8);
-    expect(getUserVersion(db)).toBe(8);
+    expect(getUserVersion(db)).toBe(LATEST_VERSION);
     expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'local_runs'").get()).toBeTruthy();
   });
 

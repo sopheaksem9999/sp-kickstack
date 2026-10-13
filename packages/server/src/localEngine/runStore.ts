@@ -26,6 +26,8 @@ export interface LocalRun {
   model: string | null;
   effort: string | null;
   cli: AgentCliId | null;
+  /** The requirement's CLI, when it chose one. */
+  preferred_cli: AgentCliId | null;
   status: RunStatus;
   /** Notes and answers not yet given to the agent; delivered when its next run starts. */
   notes_md: string;
@@ -65,6 +67,7 @@ export interface CreateRunInput {
   bodyMd: string;
   model?: string | null;
   effort?: string | null;
+  preferredCli?: AgentCliId | null;
 }
 
 /** Storage for agent runs (table local_runs). Status changes are compare-and-set. */
@@ -89,12 +92,12 @@ export class RunStore {
       }
       this.db
         .prepare(`
-          INSERT INTO local_runs (id, bridge_task_id, project, title, body_md, model, effort, status, notes_md, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)
+          INSERT INTO local_runs (id, bridge_task_id, project, title, body_md, model, effort, preferred_cli, status, notes_md, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)
         `)
         .run(
           id, input.bridgeTaskId, input.project, input.title, input.bodyMd, input.model ?? null, input.effort ?? null,
-          pending.map((r) => r.notes_md).join('\n\n'), now, now
+          input.preferredCli ?? null, pending.map((r) => r.notes_md).join('\n\n'), now, now
         );
     })();
     return this.get(id)!;

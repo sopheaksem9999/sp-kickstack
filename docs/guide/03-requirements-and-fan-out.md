@@ -239,8 +239,8 @@ open one.
 - **Search tasks**: type part of a task title, a requirement id or title, a project, a branch or an
   engine ID. Capital letters do not matter. The **x** in the box clears it.
 - **All repositories**: opens a list of the workspace's projects. Choose one to see only its tasks
-  (arrow keys and Enter work, Esc closes the list), or choose **All repositories** to see every
-  project again.
+  (arrow keys, Home, End and Enter work, typing the first letters of a name jumps to it, and Esc or
+  Tab closes the list), or choose **All repositories** to see every project again.
 
 The filters work together with the tab. When nothing matches, the page says
 `No tasks match this view`. When the workspace has no goals or tickets yet it says

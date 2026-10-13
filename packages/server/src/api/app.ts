@@ -368,6 +368,17 @@ export function createApp(deps: AppDependencies): Express {
     }
   });
 
+  // CLI, model, effort, target branch and merge policy; editable after fan-out (the target branch excepted).
+  app.put('/api/requirements/:id/run-settings', (req, res, next) => {
+    try {
+      const updated = deps.requirementService.updateRunSettings(req.params.id, req.body ?? {});
+      deps.broadcaster.broadcast({ type: 'requirement_updated', payload: updated });
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  });
+
   app.post('/api/requirements/:id/ready', async (req, res, next) => {
     try {
       const tasks = await deps.fanOutService.execute(req.params.id);

@@ -8,6 +8,8 @@ import {
   AttachmentItem,
   AgentProfileInput,
   AgentProfileInputSchema,
+  UpdateRunSettingsInput,
+  UpdateRunSettingsInputSchema,
 } from '@sp-kickstack/shared';
 import { HttpError, badRequest, conflict } from '../lib/httpError.js';
 import fs from 'node:fs';
@@ -324,6 +326,48 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
     this.db
       .prepare("UPDATE requirements SET agent_model = ?, agent_effort = ?, updated_at = datetime('now') WHERE id = ?")
       .run(model, effort, id);
+    return this.getRequirement(id)!;
+  }
+
+  /**
+   * CLI, model, effort, target branch and merge policy for this requirement's runs: undefined keeps a
+   * value, null clears it. Editable until the requirement is done or cancelled; the target branch only
+   * until fan-out, because tasks were branched from it.
+   */
+  public updateRunSettings(id: string, input: UpdateRunSettingsInput): Requirement {
+    const parsed = UpdateRunSettingsInputSchema.parse(input ?? {});
+    const req = this.getRequirement(id);
+    if (!req) throw new HttpError(404, `Requirement ${id} not found`);
+    if (req.status === 'done' || req.status === 'cancelled') {
+      throw conflict(`${id} is ${req.status}; its run settings can no longer change`);
+    }
+
+    const current = req.target_branch ?? null;
+    const target = parsed.target_branch === undefined ? current : parsed.target_branch || null;
+    if (target !== current) {
+      const fannedOut = this.db.prepare("SELECT 1 FROM bridge_tasks WHERE req_id = ? AND role IN ('goal', 'ticket') LIMIT 1").get(id);
+      if (fannedOut) {
+        throw conflict(
+          `${id} was already fanned out to ${current ?? "each repository's base branch"}; the target branch cannot change (create a new requirement for another branch)`
+        );
+      }
+      if (target) {
+        const owner = this.db.prepare('SELECT id FROM bridge_tasks WHERE branch = ? LIMIT 1').get(target) as { id: number } | undefined;
+        if (owner) throw badRequest(`${target} is the branch of task #${owner.id}; choose another target branch`);
+      }
+    }
+
+    const keep = <T>(next: T | null | undefined, value: T | null | undefined) => (next === undefined ? value ?? null : next);
+    this.db
+      .prepare(`
+        UPDATE requirements
+        SET agent_cli = ?, agent_model = ?, agent_effort = ?, target_branch = ?, merge_policy = ?, updated_at = datetime('now')
+        WHERE id = ?
+      `)
+      .run(
+        keep(parsed.agent_cli, req.agent_cli), keep(parsed.agent_model, req.agent_model), keep(parsed.agent_effort, req.agent_effort),
+        target, keep(parsed.merge_policy, req.merge_policy), id
+      );
     return this.getRequirement(id)!;
   }
 

@@ -53996,6 +53996,7 @@ function buildQaPrompt(input) {
     `- One finding per problem; at most ${input.maxFindings} findings, the most important first.`,
     "- Severity: **blocker** (a criterion is not met, tests or the build fail, data loss, security), **major** (a real bug or a likely failure), **minor** (quality, naming, small gaps).",
     "- Do not ask a person questions: report what is unclear as a finding.",
+    "- Report only real problems in this repository: never post a test finding (for example to check that xticket works), and do not report that something belongs to another repository (each repository has its own QA run). Use the qa-result summary for notes.",
     "",
     "## Reporting",
     "Report each finding as soon as you find it:",
@@ -56760,10 +56761,14 @@ ${out.tail.join("\n")}`.trim() });
     const status = toEngineTask(run).status;
     this.opts.db.prepare("UPDATE bridge_tasks SET status = ?, last_error = ?, updated_at = ? WHERE id = ? AND role = 'qa' AND status <> 'cancelled'").run(status, status === "failed" ? run.error : null, (/* @__PURE__ */ new Date()).toISOString(), run.bridge_task_id);
   }
-  /** Remove an AI QA checkout; whatever the agent left in it is thrown away. */
+  /** Remove an AI QA checkout; whatever the agent left in it is thrown away. Never throws: it must not stop a run's finish or the engine. */
   dropQaCheckout(taskId, repo, worktree) {
     if (!worktree) return;
-    removeWorktree(repo, worktree);
+    try {
+      removeWorktree(repo, worktree);
+    } catch (err) {
+      this.log(taskId, "system", `\u26A0 Could not delete the AI QA checkout ${worktree} (${err?.message || err}); delete it yourself`);
+    }
     this.opts.db.prepare("UPDATE local_runs SET worktree = NULL, updated_at = ? WHERE bridge_task_id = ?").run((/* @__PURE__ */ new Date()).toISOString(), taskId);
   }
   qaSettings() {

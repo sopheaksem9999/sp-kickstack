@@ -37511,6 +37511,8 @@ function gitEnv(extra = {}) {
   return {
     ...process.env,
     GIT_TERMINAL_PROMPT: "0",
+    GIT_ASKPASS: "",
+    SSH_ASKPASS: "",
     ...process.env.GIT_SSH_COMMAND || process.env.GIT_SSH ? {} : { GIT_SSH_COMMAND: "ssh -o BatchMode=yes" },
     ...extra
   };

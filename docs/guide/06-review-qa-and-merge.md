@@ -252,9 +252,15 @@ Fix the cause, then click **Merge & move to QA** again.
 
 ## AI QA
 
-When a requirement enters QA after **Merge & move to QA**, an AI agent checks each repository's merged
-code. This happens automatically when Settings → AI & Local Engines → **AI QA** → **Run automatically**
-is on, which is the default. For each repository, the agent checks:
+AI QA checks a requirement's code with an AI agent **before it is merged**. When a requirement enters
+**In Review**, AI QA starts by itself (Settings → AI & Local Engines → **AI QA** → **Run automatically
+when a requirement enters In Review**, on by default).
+
+### What it checks
+
+For each repository, AI QA builds a **merge preview**: the repository's task branches merged into its
+target branch (else its base branch) in a temporary copy, exactly what **Merge & move to QA** would
+produce. No branch moves. The agent then checks:
 
 1. Each acceptance criterion: is it met by the code?
 2. The changed files: bugs, missing error handling and edge cases, security problems, and breaches of the
@@ -265,20 +271,41 @@ is on, which is the default. For each repository, the agent checks:
 How the agent runs:
 
 - It uses the Local AI CLI engine's CLI, or the one chosen for AI QA.
-- It works in a temporary copy of the merged commit, for every repository that is a git repository,
-  whatever that repository's engine.
+- It works in a temporary copy, for every repository that is a git repository, whatever that repository's
+  engine.
 - It never commits, pushes or changes a branch, and the copy is deleted when the run ends.
 - QA runs count toward **Parallel agents**.
+- If the branches conflict, that repository's check stops at once and names the conflicting files:
+  `backend: merging … into develop conflicts in a.ts (Merge & move to QA would conflict too)`.
 
-The requirement header shows the result:
+### Model by size and risk
 
-- `AI QA running… (backend ✓, frontend …)` while it runs.
-- `AI QA: 3 findings (1 blocker)`, `AI QA passed`, or `AI QA passed · 3 minor findings` (every run passed and no
-  finding is a blocker) when it is done.
-- `AI QA failed: <reason>` for a run that could not finish.
+With **Model: Auto** (the default), each repository's check uses a model that fits its change:
+
+| Tier | When | Claude Code |
+|---|---|---|
+| **Light** | Up to 150 changed lines in up to 8 files | haiku · low effort |
+| **Standard** | Anything between light and deep | sonnet · medium |
+| **Deep** | 1000+ changed lines, 40+ files, or a risky path | opus · high |
+
+The risky paths are the project's **High-risk paths** (see [02](02-projects-and-engines.md)), plus
+database migrations, auth and security code, payments, CI and deploy files, and env or secret files. The
+tiers and limits are editable (see [09](09-settings-and-environment.md#ai-qa)). The header popover shows
+each repository's tier and why, for example `backend · light · 42 lines in 3 files`.
+
+### The header
+
+The requirement header shows the result, in In Review and in QA:
+
+- `AI QA before merge running… (backend ✓, frontend …)` while it runs.
+- `AI QA before merge: 3 findings (1 blocker)`, `AI QA before merge: passed`, or
+  `AI QA before merge: passed · 3 minor findings` (every run passed and no finding is a blocker) when it is
+  done.
+- `AI QA before merge failed: <reason>` for a run that could not finish.
 - `skipped <project>: not a git repository` for a repository it cannot check.
 
-Click the status to see each repository's run and to open its **Log**.
+Click the status to see each repository's run and to open its **Log**. A manual check in QA (see below)
+reads `AI QA …` without "before merge".
 
 ### Findings
 
@@ -289,18 +316,31 @@ Each finding is an **open review comment** on the repository's card. It is badge
 - **major**: a real bug or a likely failure.
 - **minor**: quality, naming, small gaps.
 
-Nothing is sent to the agents by itself. Edit, resolve or delete findings like any comment, and send
-the ones you keep with **Request changes** (see [From QA](#from-qa)).
+Nothing is sent to the agents by itself. Edit, resolve or delete findings like any comment, and send the
+ones you keep with **Request changes**. The requirement goes back to In Progress; when the agents finish
+again, it re-enters In Review and AI QA checks it again.
+
+### Before the merge
+
+While AI QA is still checking, or while blocker findings are open, every move to QA asks first:
+**Merge & move to QA**, the **State** select, and dragging the card to QA. The question is
+"AI QA is still checking this requirement. Merge anyway?" or "2 open AI QA blockers. Merge anyway?".
+**Merge anyway** merges as usual and stops the check; **Cancel** leaves the requirement In Review.
+
+With the **auto-merge** policy, the automatic merge waits for AI QA. It merges when AI QA has finished and
+no blocker is open; otherwise the requirement stays In Review and the header says why, for example
+`Auto-merge paused: 1 open AI QA blocker`.
 
 ### Run AI QA
 
-**Run AI QA**, in the header while the requirement is in QA, checks every repository again, for
-example after fixes were merged.
+**Run AI QA** (in the header) starts a check by hand. It is disabled while AI QA or a merge runs.
 
-- It checks the current tip of the branch the requirement merged into: its target branch, else the
-  repository's base branch.
-- It is disabled while AI QA runs.
-- Moving the requirement out of QA (Request changes, Done, Cancel) stops its AI QA runs.
+- **In In Review** it checks the merge preview again, for example after you resolved findings.
+- **In QA** it checks the merged code (the current tip of the branch the requirement merged into), for
+  example when develop moved after the preview. Nothing runs by itself in QA.
+
+Moving the requirement out of the stage a check is for (merge, Request changes, Done, Cancel) stops that
+check.
 
 ## Finish QA
 

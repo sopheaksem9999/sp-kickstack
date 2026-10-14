@@ -35,14 +35,16 @@ waiting for a person and rate limited; and for each CLI **Installed on PC** / **
 
 ### AI QA
 
-On **AI & Local Engines**, the **AI QA** card controls the agent that checks a requirement when it enters
-QA (see [AI QA](06-review-qa-and-merge.md#ai-qa)).
+On **AI & Local Engines**, the **AI QA** card controls the agent that checks a requirement before it is
+merged (see [AI QA](06-review-qa-and-merge.md#ai-qa)).
 
 | Setting | Default | Meaning |
 |---|---|---|
-| **Run automatically when a requirement enters QA** | on | Off: AI QA runs only when you click **Run AI QA**. |
+| **Run automatically when a requirement enters In Review** | on | Off: AI QA runs only when you click **Run AI QA**. |
 | **CLI** | **Local engine's CLI** | Which CLI runs QA. It must be installed and turned on. |
-| **Model and effort** | Engine default | The model and effort for QA runs. |
+| **Model** | **Auto (by size and risk)** | **Auto** picks a tier per repository from its change; **Fixed** uses one model and effort for every check. |
+| **Tiers** (Auto) | Claude Code: haiku · low / sonnet · medium / opus · high; Codex and AGY: the CLI's default model · low / medium / high | The model and effort of each tier, for the CLI that runs QA. |
+| **Light: up to** / **Deep: from** (Auto) | 150 / 1000 changed lines | Light also needs 8 files or fewer; deep also applies at 40+ files or a risky path. The light limit must be lower than the deep one. |
 | **Time limit per QA run** | 30 minutes | 5 to 240. A longer QA run is stopped and shows `AI QA failed`. |
 | **Maximum findings per QA run** | 30 | 1 to 200. Further findings are refused (`The QA run reached its limit of N findings`). |
 

@@ -65,11 +65,15 @@ messages appear as red toasts in the app; `<REQ-ID>`, `<id>` and similar parts a
 | A run shows `Finished without a result` | The agent ended without `xticket qa-result`. | Read its findings and log; run AI QA again if needed. |
 | `skipped <project>: not a git repository` | AI QA checks git repositories only. | Nothing to do. |
 | `AI QA is already running for <REQ-ID>` | **Run AI QA** was clicked while QA runs. | Wait for the runs to finish. |
-| `<REQ-ID> is <status>; AI QA runs while a requirement is in QA` | **Run AI QA** outside QA. | Move the requirement to QA first (**Merge & move to QA**). |
+| `<REQ-ID> is <status>; AI QA runs while a requirement is in review or in QA` | **Run AI QA** outside In Review and QA. | Wait until the agents finish (In Review). |
 | `No repository of <REQ-ID> is a git repository; AI QA needs one` | None of the requirement's repositories can be checked. | Nothing to do. |
-| `<REQ-ID> is no longer in QA; this finding was not saved` | A finding arrived after the requirement left QA. It is shown to the agent, or kept in `agent-outbox/<project>/failed/`. | Nothing to do; run AI QA again once the requirement is back in QA. |
+| `<REQ-ID> is no longer in review; this finding was not saved` (or `… in QA …`) | A finding arrived after the requirement left the stage its check was for. It is shown to the agent, or kept in `agent-outbox/<project>/failed/`. | Nothing to do; the next check covers it. |
 | `The QA run reached its limit of N findings` | The agent reported more findings than allowed. | Raise **Maximum findings per QA run** if you want more. |
 | `No QA run …` | `xticket comment` or `xticket qa-result` was used outside an AI QA run. | These commands are for AI QA agents only. |
+| `AI QA before merge failed: <project>: merging <branch> into <base> conflicts in …` | The task branches conflict with the target / base branch; the merge would conflict too. | Send the conflict back with **Request changes** (rebase and resolve), then let AI QA check again. |
+| `A merge of <REQ-ID> is running; wait for it to finish` | **Run AI QA** during a merge. | Wait for the merge. |
+| `Auto-merge paused: AI QA is still checking` | The auto-merge policy waits for AI QA. | Wait; it merges when AI QA finishes without open blockers. |
+| `Auto-merge paused: N open AI QA blocker(s)` | AI QA found blockers. | Send them back with **Request changes**, or resolve them and merge by hand. |
 
 ## Messages about the connection
 

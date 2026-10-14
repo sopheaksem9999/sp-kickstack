@@ -52578,9 +52578,10 @@ var MergeGateService = class {
     this.reactor.recordEvent("merge_started", reqId, void 0, { reqId, trigger });
     return { done: this.run(reqId) };
   }
-  /** Auto-merge policy: start as soon as all work is in review; "not ready" is not an error. */
+  /** Auto-merge policy: start as soon as all work is in review and AI QA does not hold it; "not ready" is not an error. */
   autoStart(reqId) {
     if (this.branches.policyFor(reqId) !== "auto_merge" || !this.needsMerge(reqId)) return;
+    if (this.options.autoMergeHold?.(reqId)) return;
     try {
       void this.start(reqId, "auto").done;
     } catch {
@@ -52773,13 +52774,6 @@ Your branch \`${m.task.branch}\` had no new commits, so nothing changed.`
       projects: prepared.map((p) => p.project.name),
       warnings
     });
-    if (movedToQa) {
-      try {
-        this.options.onEnteredQa?.(reqId, Object.fromEntries(prepared.map((p) => [p.project.name, p.resultSha])));
-      } catch (err) {
-        console.warn(`[merge] ${reqId}: AI QA did not start: ${err?.message || err}`);
-      }
-    }
     this.db.prepare("UPDATE requirements SET merge_state = 'idle', merge_error = NULL WHERE id = ?").run(reqId);
   }
   async finishFailure(reqId, err, mergedProjects) {
@@ -54860,10 +54854,11 @@ function createApp(deps) {
     emit: (evt) => deps.broadcaster.broadcast(evt)
   });
   const mergeGate2 = deps.mergeGate || new MergeGateService(deps.db, deps.projectService, deps.requirementService, reactor2, {
-    settingsService: settingsService2
+    settingsService: settingsService2,
+    autoMergeHold: (reqId) => qaService2.autoMergeHold(reqId)
   });
   if (!deps.reactor) {
-    reactor2.setHooks({ onRequirementInReview: (id) => mergeGate2.autoStart(id) });
+    reactor2.setHooks({ onRequirementInReview: (id) => void qaService2.onEnteredReview(id).finally(() => mergeGate2.autoStart(id)) });
   }
   const getAdapter2 = deps.getAdapter ?? (() => {
     throw new HttpError(503, "Engine adapters are not configured on this server");
@@ -57345,7 +57340,9 @@ var localEngine = new AgentRunner({
   workspaceDir: WORKSPACE_DIR,
   bridgeUrl: `http://${HOST === "0.0.0.0" || HOST === "::" ? "127.0.0.1" : HOST}:${PORT}`,
   agentToken: process.env.AGENT_TOKEN || void 0,
-  onCommits: (taskId) => branchService.pushTaskBranch(taskId)
+  onCommits: (taskId) => branchService.pushTaskBranch(taskId),
+  // A finished AI QA round may release a held auto-merge.
+  onQaFinished: (reqId) => mergeGate.autoStart(reqId)
 });
 var engineThrottle = new EngineThrottle({
   onTrip: (project, until) => {
@@ -57382,9 +57379,10 @@ var qaService = new QaService({
 });
 var mergeGate = new MergeGateService(db, projectService, requirementService, reactor, {
   getAdapter,
-  releaseWorktree: (taskId) => localEngine.releaseWorktree(taskId)
+  releaseWorktree: (taskId) => localEngine.releaseWorktree(taskId),
+  autoMergeHold: (reqId) => qaService.autoMergeHold(reqId)
 });
-reactor.setHooks({ onRequirementInReview: (id) => mergeGate.autoStart(id) });
+reactor.setHooks({ onRequirementInReview: (id) => void qaService.onEnteredReview(id).finally(() => mergeGate.autoStart(id)) });
 mergeGate.resetInterrupted();
 var vcsSyncService = new VcsSyncService(
   db,

@@ -22,6 +22,7 @@ for it. This page is for whoever sets up projects and engines.
    | **Test Command (Optional)** | A shell command the merge gate runs before anything is pushed, for example `npm ci && npm test`. |
    | **Build Command (Optional)** | A shell command AI QA runs to check that the project builds, for example `npm ci && npm run build`. |
    | **Lint Command (Optional)** | A shell command AI QA runs to check the code style, for example `npm ci && npm run lint`. |
+   | **High-risk paths (Optional)** | Paths or patterns, one per line (for example `app/Http/Middleware/` or `database/**`). When a change touches one, AI QA uses its strongest model. |
 
 4. Click **Save Project**.
 
@@ -56,7 +57,6 @@ them. A failing command becomes a **blocker** finding. See [AI QA](06-review-qa-
 
 `projects.yaml` and the API (`POST /api/projects`) also accept:
 
-- `high_risk_paths`: a list of paths. It is stored, but nothing in the bridge acts on it yet.
 - `enabled`: `true` by default. Fan-out, tickets and the outbox scan skip a disabled project.
 - `done_means`: `merged` (default) or `pr_opened`. Stored; nothing in the bridge acts on it yet.
 

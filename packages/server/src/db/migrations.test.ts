@@ -49,7 +49,7 @@ describe('Database migrations', () => {
   it('brings a fresh database to the latest version with the new columns', () => {
     const db = initDatabase(':memory:');
     expect(db.pragma('user_version', { simple: true })).toBe(LATEST_VERSION);
-    expect(LATEST_VERSION).toBe(11);
+    expect(LATEST_VERSION).toBe(13);
     expect(columns(db, 'neuron_rules')).toEqual(
       expect.arrayContaining(['id', 'workspace_id', 'project', 'category', 'rule_text', 'confidence_score', 'trigger_count', 'is_active', 'source_run_id'])
     );
@@ -70,6 +70,19 @@ describe('Database migrations', () => {
     expect(columns(db, 'review_comments')).toEqual(expect.arrayContaining(['source', 'severity', 'qa_task_id']));
     expect(columns(db, 'bridge_tasks')).toEqual(expect.arrayContaining(['qa_passed', 'qa_summary']));
     expect(columns(db, 'projects')).toEqual(expect.arrayContaining(['build_command', 'lint_command']));
+    db.close();
+  });
+
+  it('adds the AI QA stage and tier columns and marks existing QA tasks as QA stage (migration 13)', () => {
+    const db = initDatabase(':memory:');
+    expect(columns(db, 'bridge_tasks')).toEqual(expect.arrayContaining(['qa_stage', 'qa_tier', 'qa_tier_reason']));
+    const now = new Date().toISOString();
+    db.prepare("INSERT INTO projects (name, repo_path, engine_type, created_at, updated_at) VALUES ('backend', '/r', 'manual', ?, ?)").run(now, now);
+    db.prepare("INSERT INTO requirements (id, seq, title, status, body_md, file_path, created_at, updated_at) VALUES ('REQ-001', 1, 'T', 'qa', 'b', 'f', ?, ?)").run(now, now);
+    db.prepare("INSERT INTO bridge_tasks (req_id, project, role, title, status, created_at, updated_at) VALUES ('REQ-001', 'backend', 'qa', 'AI QA', 'done', ?, ?)").run(now, now);
+    db.pragma('user_version = 12');
+    runMigrations(db);
+    expect(db.prepare("SELECT qa_stage FROM bridge_tasks WHERE role = 'qa'").get()).toEqual({ qa_stage: 'qa' });
     db.close();
   });
 

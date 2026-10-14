@@ -188,12 +188,16 @@ export class QaService {
       return {
         task, project: task.project, status: task.status, passed: task.qa_passed == null ? null : task.qa_passed === 1,
         summary: task.qa_summary ?? null, error: task.last_error ?? null, findings: mine,
+        tier: task.qa_tier ?? null, tierReason: task.qa_tier_reason ?? null,
       };
     });
     const skipped = round
       ? this.projectsOf(reqId).filter((p) => !isGitWorkTree(p.repo_path)).map((p) => ({ project: p.name, reason: 'not a git repository' }))
       : [];
-    return { reqId, round, running: tasks.some((t) => ACTIVE_STATUSES.includes(t.status)), runs, skipped, findings };
+    return {
+      reqId, round, running: tasks.some((t) => ACTIVE_STATUSES.includes(t.status)), runs, skipped, findings,
+      stage: tasks[0]?.qa_stage ?? (round ? 'qa' : null), previewInto: null, openBlockers: 0, autoMergeHold: null,
+    };
   }
 
   /** Enabled repositories with goal or ticket work in the requirement. */

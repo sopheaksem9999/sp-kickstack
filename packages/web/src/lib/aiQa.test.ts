@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { DEFAULT_QA_TIERS } from '@sp-kickstack/shared';
 import { aiQaDraftProblem, findingsText, qaBadge, qaCliStatus, qaRunText, qaStatusLine, runAiQaBlocked } from './aiQa';
 
 const run = (project: string, status: string, extra: Record<string, unknown> = {}) =>
@@ -82,7 +83,10 @@ describe('AI QA header', () => {
 });
 
 describe('AI QA settings', () => {
-  const draft = { runAutomatically: true, agentCli: 'default', model: null, effort: null, timeLimitMinutes: 30, maxFindings: 30 } as const;
+  const draft = {
+    runAutomatically: true, agentCli: 'default', model: null, effort: null, timeLimitMinutes: 30, maxFindings: 30,
+    modelMode: 'auto', tiers: DEFAULT_QA_TIERS, lightMaxLines: 150, deepMinLines: 1000,
+  } as const;
 
   it('checks a draft like the server', () => {
     expect(aiQaDraftProblem({ ...draft })).toBeNull();

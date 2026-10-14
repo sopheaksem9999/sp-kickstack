@@ -466,17 +466,41 @@ export const LocalEngineSettingsSchema = z.object({
 
 export const UpdateLocalEngineSettingsInputSchema = LocalEngineSettingsSchema.partial().strict();
 
+/** One AI QA tier: a model (null = the CLI's default model) and an effort. */
+export const QaProfileSchema = z.object({ model: AgentModelSchema.nullable(), effort: ReasoningEffortSchema.nullable() });
+const QaTierProfilesSchema = z.object({ light: QaProfileSchema, standard: QaProfileSchema, deep: QaProfileSchema });
+const QaTiersByCliSchema = z.object({ 'claude-cli': QaTierProfilesSchema, 'codex-cli': QaTierProfilesSchema, 'agy-cli': QaTierProfilesSchema });
+
+/** Model by size and risk: light / standard / deep per CLI. Codex and AGY keep their default model. */
+export const DEFAULT_QA_TIERS: z.infer<typeof QaTiersByCliSchema> = {
+  'claude-cli': { light: { model: 'haiku', effort: 'low' }, standard: { model: 'sonnet', effort: 'medium' }, deep: { model: 'opus', effort: 'high' } },
+  'codex-cli': { light: { model: null, effort: 'low' }, standard: { model: null, effort: 'medium' }, deep: { model: null, effort: 'high' } },
+  'agy-cli': { light: { model: null, effort: 'low' }, standard: { model: null, effort: 'medium' }, deep: { model: null, effort: 'high' } },
+};
+
 /** Settings → AI & Local Engines → AI QA. */
 export const AiQaSettingsSchema = z.object({
+  /** Start AI QA when a requirement enters In Review (before the merge). */
   runAutomatically: z.boolean().default(true),
   agentCli: z.enum(['default', 'claude-cli', 'agy-cli', 'codex-cli']).default('default'),
+  /** Fixed mode's model / effort (null = the engine's). */
   model: AgentModelSchema.nullable().default(null),
   effort: ReasoningEffortSchema.nullable().default(null),
   timeLimitMinutes: z.number().int().min(5).max(240).default(30),
   maxFindings: z.number().int().min(1).max(200).default(30),
+  modelMode: z.enum(['auto', 'fixed']).default('auto'),
+  tiers: QaTiersByCliSchema.default(() => JSON.parse(JSON.stringify(DEFAULT_QA_TIERS))),
+  lightMaxLines: z.number().int().min(10).max(5000).default(150),
+  deepMinLines: z.number().int().min(50).max(100000).default(1000),
 });
 
 export const UpdateAiQaSettingsInputSchema = AiQaSettingsSchema.partial().strict();
+
+/** The whole settings object as saved: the light limit must stay below the deep limit. */
+export const CheckedAiQaSettingsSchema = AiQaSettingsSchema.refine((s) => s.lightMaxLines < s.deepMinLines, {
+  message: 'lightMaxLines must be lower than deepMinLines',
+  path: ['lightMaxLines'],
+});
 
 export const QaSeveritySchema = z.enum(['blocker', 'major', 'minor']);
 

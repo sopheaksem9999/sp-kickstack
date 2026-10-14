@@ -1,11 +1,26 @@
 import { describe, it, expect } from 'vitest';
-import { AiQaSettingsSchema, ProjectSchema, QaFindingInputSchema, QaResultInputSchema, UpdateAiQaSettingsInputSchema } from './schemas.js';
+import { AiQaSettingsSchema, CheckedAiQaSettingsSchema, DEFAULT_QA_TIERS, ProjectSchema, QaFindingInputSchema, QaResultInputSchema, UpdateAiQaSettingsInputSchema } from './schemas.js';
 
 describe('AI QA schemas', () => {
   it('defaults the AI QA settings', () => {
     expect(AiQaSettingsSchema.parse({})).toEqual({
       runAutomatically: true, agentCli: 'default', model: null, effort: null, timeLimitMinutes: 30, maxFindings: 30,
+      modelMode: 'auto', tiers: DEFAULT_QA_TIERS, lightMaxLines: 150, deepMinLines: 1000,
     });
+    expect(DEFAULT_QA_TIERS['claude-cli']).toEqual({
+      light: { model: 'haiku', effort: 'low' }, standard: { model: 'sonnet', effort: 'medium' }, deep: { model: 'opus', effort: 'high' },
+    });
+    expect(DEFAULT_QA_TIERS['codex-cli'].deep).toEqual({ model: null, effort: 'high' });
+  });
+
+  it('reads a phase 1 value with the new defaults, and checks the line limits', () => {
+    expect(AiQaSettingsSchema.parse({ runAutomatically: false, timeLimitMinutes: 45 })).toMatchObject({ runAutomatically: false, modelMode: 'auto', lightMaxLines: 150 });
+    expect(() => UpdateAiQaSettingsInputSchema.parse({ lightMaxLines: 5 })).toThrow();
+    expect(() => UpdateAiQaSettingsInputSchema.parse({ deepMinLines: 10 })).toThrow();
+    expect(() => UpdateAiQaSettingsInputSchema.parse({ modelMode: 'smart' })).toThrow();
+    expect(() => CheckedAiQaSettingsSchema.parse({ lightMaxLines: 900, deepMinLines: 800 })).toThrow(/lightMaxLines must be lower than deepMinLines/);
+    const badTier = { ...DEFAULT_QA_TIERS, 'claude-cli': { ...DEFAULT_QA_TIERS['claude-cli'], light: { model: 'bad model', effort: 'low' } } };
+    expect(() => UpdateAiQaSettingsInputSchema.parse({ tiers: badTier })).toThrow();
   });
 
   it('refuses out-of-range limits, unknown CLIs, bad model ids and unknown fields', () => {

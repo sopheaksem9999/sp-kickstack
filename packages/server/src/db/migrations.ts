@@ -255,6 +255,16 @@ export const MIGRATIONS: Migration[] = [
       addColumn(db, 'projects', 'lint_command', 'TEXT');
     },
   },
+  {
+    version: 13,
+    name: 'AI QA in review: the stage and model tier of a QA task',
+    up: (db) => {
+      addColumn(db, 'bridge_tasks', 'qa_stage', 'TEXT');
+      addColumn(db, 'bridge_tasks', 'qa_tier', 'TEXT');
+      addColumn(db, 'bridge_tasks', 'qa_tier_reason', 'TEXT');
+      db.exec("UPDATE bridge_tasks SET qa_stage = 'qa' WHERE role = 'qa' AND qa_stage IS NULL");
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

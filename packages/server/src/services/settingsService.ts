@@ -8,6 +8,7 @@ import {
   IdeSettingsSchema,
   AiQaSettings,
   AiQaSettingsSchema,
+  CheckedAiQaSettingsSchema,
   UpdateAiQaSettingsInputSchema,
   LocalEngineSettings,
   LocalEngineSettingsSchema,
@@ -186,7 +187,7 @@ export class SettingsService {
   /** Partial update; unknown fields and out-of-range values are refused (400 through the API). */
   public updateAiQaSettings(updates: unknown): AiQaSettings {
     const patch = UpdateAiQaSettingsInputSchema.parse(updates ?? {});
-    const updated = AiQaSettingsSchema.parse({ ...this.getAiQaSettings(), ...patch });
+    const updated = CheckedAiQaSettingsSchema.parse({ ...this.getAiQaSettings(), ...patch });
     this.db
       .prepare(`
         INSERT INTO settings (key, value) VALUES ('ai_qa_settings', ?)

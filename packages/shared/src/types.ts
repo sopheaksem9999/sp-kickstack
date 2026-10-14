@@ -223,6 +223,11 @@ export interface BridgeTask {
   qa_passed?: number | null;
   /** role 'qa': the agent's summary, or "Finished without a result". */
   qa_summary?: string | null;
+  /** role 'qa': checked in In Review (a merge preview) or in QA (the merged code). */
+  qa_stage?: QaStage | null;
+  /** role 'qa': the model tier chosen by size and risk (null in Fixed mode), and why. */
+  qa_tier?: QaTier | null;
+  qa_tier_reason?: string | null;
   /** Engine dispatch attempts so far. The retry sweep adds one for each automatic try; only Retry and Request changes set it back to 1. */
   attempts?: number;
   created_at: string;
@@ -377,9 +382,21 @@ export interface LocalEngineSettings {
   worktreeRoot: string;
 }
 
+export type QaStage = 'review' | 'qa';
+export type QaTier = 'light' | 'standard' | 'deep';
+export interface QaProfile {
+  model: string | null;
+  effort: ReasoningEffort | null;
+}
+export interface QaTierProfiles {
+  light: QaProfile;
+  standard: QaProfile;
+  deep: QaProfile;
+}
+
 /** Settings → AI & Local Engines → AI QA. */
 export interface AiQaSettings {
-  /** Start AI QA when the merge gate moves a requirement to QA. */
+  /** Start AI QA when a requirement enters In Review (before the merge). */
   runAutomatically: boolean;
   /** 'default' = the Local AI CLI engine's CLI. */
   agentCli: 'default' | AgentCliId;
@@ -390,6 +407,13 @@ export interface AiQaSettings {
   timeLimitMinutes: number;
   /** Findings saved per QA run at most (1-200). */
   maxFindings: number;
+  /** 'auto' = the model by size and risk; 'fixed' = `model` / `effort` above. */
+  modelMode: 'auto' | 'fixed';
+  tiers: Record<AgentCliId, QaTierProfiles>;
+  /** Light tier: at most this many changed lines (and 8 files). */
+  lightMaxLines: number;
+  /** Deep tier: from this many changed lines (or 40 files, or a risky path). */
+  deepMinLines: number;
 }
 
 export interface LocalEngineCliStatus {
@@ -637,6 +661,8 @@ export interface QaRunView {
   summary: string | null;
   error: string | null;
   findings: number;
+  tier: QaTier | null;
+  tierReason: string | null;
 }
 
 /** The requirement header's AI QA status: the latest QA round. */
@@ -648,6 +674,14 @@ export interface RequirementQa {
   runs: QaRunView[];
   skipped: Array<{ project: string; reason: string }>;
   findings: { total: number; blocker: number; major: number; minor: number };
+  /** The latest round's stage; null when AI QA never ran. */
+  stage: QaStage | null;
+  /** Review rounds: the branch the preview merged into. */
+  previewInto: string | null;
+  /** Open AI QA blocker findings from review rounds. */
+  openBlockers: number;
+  /** Why an automatic merge waits (auto-merge policy, in review), or null. */
+  autoMergeHold: string | null;
 }
 
 /** "Improve with AI": the rewritten comment, and the file/line it names (null = keep the reviewer's). */

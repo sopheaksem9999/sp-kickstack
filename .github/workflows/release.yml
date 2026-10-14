@@ -1,0 +1,168 @@
+name: Release Desktop App
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'package.json'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name (leave blank to auto-detect from package.json)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Prepare Version & Tag
+    runs-on: ubuntu-22.04
+    outputs:
+      should_release: ${{ steps.check_tag.outputs.should_release }}
+      tag_name: ${{ steps.check_tag.outputs.tag_name }}
+      version: ${{ steps.check_tag.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check version and tag
+        id: check_tag
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          
+          if [ -n "${{ inputs.tag_name }}" ]; then
+            TAG="${{ inputs.tag_name }}"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="v${VERSION}"
+          fi
+          
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
+          
+          # Check if tag exists on remote
+          EXISTS=$(git ls-remote --tags origin "refs/tags/${TAG}" | wc -l)
+          
+          if [ "$EXISTS" -gt 0 ] && [ "${{ github.ref_type }}" != "tag" ] && [ -z "${{ inputs.tag_name }}" ]; then
+            echo "Tag ${TAG} already exists on remote. Skipping release build."
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            
+            # If tag does not exist yet, create and push it automatically
+            if [ "$EXISTS" -eq 0 ]; then
+              echo "Creating and pushing tag ${TAG}..."
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git tag -a "${TAG}" -m "Release ${TAG}"
+              git push origin "${TAG}"
+            fi
+          fi
+
+  release:
+    name: Build & Upload Desktop Bundles
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest'
+            args: ''
+          - platform: 'ubuntu-22.04'
+            args: ''
+          - platform: 'windows-latest'
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: 'npm'
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './packages/desktop/src-tauri -> target'
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libfuse2
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build all workspaces
+        run: npm run build
+
+      - name: Bundle desktop embedded server
+        run: npm run desktop:bundle-server
+
+      - name: Build and bundle Tauri Desktop App
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: packages/desktop
+          tagName: ${{ needs.prepare.outputs.tag_name }}
+          releaseName: 'SP Kickstack ${{ needs.prepare.outputs.tag_name }}'
+          releaseBody: |
+            ## SP Kickstack Desktop App ${{ needs.prepare.outputs.tag_name }}
+
+            ### Downloads & Installers
+            - **macOS (Apple Silicon)**: `.dmg` installer
+            - **Windows (x64)**: `.exe` setup & `.msi` package
+            - **Linux (x64)**: `.AppImage` & `.deb` package
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+
+  publish:
+    name: Publish Release
+    needs: [prepare, release]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Publish draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+        run: |
+          echo "Publishing release for ${TAG_NAME}..."
+          gh release edit "${TAG_NAME}" --draft=false

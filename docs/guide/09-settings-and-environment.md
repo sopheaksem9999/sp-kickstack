@@ -10,6 +10,7 @@ Open **Settings** in the sidebar.
 | Tab | What it is for |
 |---|---|
 | **AI & Local Engines** | Which AI drafts requirements and answers in the AI chats (**Auto (Recommended)**, **Claude Code CLI**, **Antigravity CLI (agy)**, **Codex CLI**, **Local Ollama**, **Built-in Heuristic**), and the model for each. Save with **Save AI Configuration**. This does not affect the agents that do the work: their engines decide that, unless you choose a model and effort for a workspace, a requirement or a task (see [03](03-requirements-and-fan-out.md#choose-the-agent-model-and-effort)). The **Local AI CLI engine** card on this tab controls the agents of Local AI CLI repositories (see below). |
+| **AI Chat** | MCP servers and skills for the AI chats (AI Chat page and the browser sidebar), one list for the whole system, and the chat time limit. See [AI Chat: MCP servers and skills](#ai-chat-mcp-servers-and-skills). |
 | **Git & Branch Rules** | The default base branch and the default merge policy. See below. |
 | **Notifications** | Slack, Telegram and webhook channels, event switches and the link address. See [Notifications](07-notifications.md). |
 | **Embedded IDE (VS Code)** | A local code-server or OpenVSCode server for browsing project code: **Local Port** (8443 by default), **Custom Binary Path (Optional)**, **External or Existing IDE URL (Optional)**, **Start Server** / **Stop Server**, **Save IDE Configuration**. |
@@ -76,6 +77,28 @@ curl -X PUT http://127.0.0.1:4100/api/settings/branch-merge \
   -H 'Content-Type: application/json' \
   -d '{"auto_delete_branch": true}'
 ```
+
+### AI Chat: MCP servers and skills
+
+Every AI Chat message can use the MCP servers and skills listed here.
+
+- **MCP servers**: **Add server** (a command such as `npx -y @atlassian/mcp-server`, or an `http` URL), or
+  **Paste .mcp.json** (Claude's `{ "mcpServers": { … } }` format; names that exist are skipped). Environment
+  variables and headers are secrets: once saved they show as `•••• set` and are never shown again; type a
+  new value to replace one. **Test** starts the server and shows `Connected · N tools` or `Failed: <reason>`.
+  The AI can use any tool of an enabled server without asking: only enable servers you are happy for it to use.
+- **Claude Code** gets only the enabled servers listed here (not the ones in your own `~/.claude`), for one
+  message at a time.
+- **AGY** does not let a chat call MCP tools when no person is there to approve them (AGY 1.3.4 refuses the
+  `mcp` permission in print mode), so AGY chats get the skills but no MCP servers, and nothing is added to
+  AGY's own MCP list; leftover `sp-` entries are removed. The AGY box shows AGY's own list for reference, and
+  **Update AGY's list** runs that clean-up again. Your other AGY servers are never changed.
+- **Skills**: **New skill** (name, when to use, instructions) or **Import folder** (every `SKILL.md` below
+  it, e.g. `~/.claude/skills`, becomes an editable copy; **Re-import** reads the file again). **Always** skills
+  are added to every chat message; **On request** skills are picked by typing `/name` in the chat.
+- **Chat time limit**: how long one chat message may take (default 120 s).
+
+A reply that used tools shows `🔧 Tools used: jira.search_issues ×2, …` under it.
 
 ## Environment variables
 

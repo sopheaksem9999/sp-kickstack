@@ -75,6 +75,16 @@ messages appear as red toasts in the app; `<REQ-ID>`, `<id>` and similar parts a
 | `Auto-merge paused: AI QA is still checking` | The auto-merge policy waits for AI QA. | Wait; it merges when AI QA finishes without open blockers. |
 | `Auto-merge paused: N open AI QA blocker(s)` | AI QA found blockers. | Send them back with **Request changes**, or resolve them and merge by hand. |
 
+## Messages about AI Chat
+
+| Message | Meaning | What to do |
+|---|---|---|
+| `Failed: <reason>` (Settings → AI Chat) | The MCP server did not start or answer. | Check the command or URL and the secrets; run the command in a terminal to see its error. |
+| `The AI did not answer within N s` | A chat message took longer than the chat time limit. | Try again, or raise **Chat time limit** in Settings → AI Chat. |
+| `No SKILL.md found under <folder>` | Import found no skill files. | Pick the folder that contains the skill folders (e.g. `~/.claude/skills`). |
+| `Not a .mcp.json file: <reason>` | The pasted text is not JSON in Claude's `.mcp.json` format. | Paste the whole file. |
+| `AGY not detected` | AGY is not installed or not found. | Install AGY or set its path in Settings → AI & Local Engines. |
+
 ## Messages about the connection
 
 | Message | Meaning | What to do |

@@ -18,6 +18,10 @@ export interface ParsedOutput {
   error?: string;
   /** LLM token usage and cost */
   usage?: TokenUsage;
+  /** Tool names the CLI called in this event (raw, e.g. mcp__jira__search_issues). */
+  tools?: string[];
+  /** The final answer text (on the closing event). */
+  reply?: string;
 }
 
 export interface OutputParser {
@@ -117,11 +121,15 @@ export function claudeParser(): OutputParser {
           if (typeof e.message?.usage?.input_tokens === 'number') accumulatedIn += e.message.usage.input_tokens;
           if (typeof e.message?.usage?.output_tokens === 'number') accumulatedOut += e.message.usage.output_tokens;
           const out: string[] = [];
+          const tools: string[] = [];
           for (const part of e.message?.content ?? []) {
             if (part?.type === 'text' && typeof part.text === 'string') out.push(...lines(part.text));
-            else if (part?.type === 'tool_use') out.push(describeTool(String(part.name ?? 'tool'), part.input));
+            else if (part?.type === 'tool_use') {
+              tools.push(String(part.name ?? 'tool'));
+              out.push(describeTool(String(part.name ?? 'tool'), part.input));
+            }
           }
-          return { logs: out };
+          return { logs: out, ...(tools.length ? { tools } : {}) };
         }
         case 'user': {
           const out: string[] = [];
@@ -149,7 +157,7 @@ export function claudeParser(): OutputParser {
                 }
               : undefined
           );
-          if (!e.is_error) return { logs: [summary], ...(usage ? { usage } : {}) };
+          if (!e.is_error) return { logs: [summary], ...(usage ? { usage } : {}), ...(typeof e.result === 'string' ? { reply: e.result } : {}) };
           const text = typeof e.result === 'string' && e.result ? e.result : `Claude Code reported an error (${e.subtype ?? 'unknown'})`;
           const failed = failure(text);
           if (e.api_error_status === 429 && !failed.rateLimit) failed.rateLimit = { resetAt: resetFromText(text) };
@@ -166,13 +174,21 @@ export function claudeParser(): OutputParser {
 /** AGY `-p <prompt> --output-format stream-json`: text arrives in deltas per step, tools as steps. */
 export function agyParser(): OutputParser {
   const text = new Map<number, string>();
+  const answer = new Map<number, string>();
   const seenTools = new Set<number>();
+  let lastTool = -1;
   const flushStep = (index: number): string[] => {
     const buffered = text.get(index);
     text.delete(index);
     return buffered ? lines(buffered) : [];
   };
   const flushAll = () => [...text.keys()].flatMap(flushStep);
+  /** The answer: text of the answer steps after the last tool step (all of them when none follow). */
+  const reply = () => {
+    const steps = [...answer.entries()].sort(([a], [b]) => a - b);
+    const after = steps.filter(([index]) => index > lastTool);
+    return (after.length ? after : steps).map(([, t]) => t.trim()).filter(Boolean).join('\n\n');
+  };
   return {
     push(line) {
       const e = parseJson(line);
@@ -182,12 +198,17 @@ export function agyParser(): OutputParser {
         const step = e.step_update ?? {};
         const index = Number(step.step_index);
         if (step.step_type === 'agent_response') {
-          if (typeof step.text_delta === 'string') text.set(index, (text.get(index) ?? '') + step.text_delta);
+          if (typeof step.text_delta === 'string') {
+            text.set(index, (text.get(index) ?? '') + step.text_delta);
+            answer.set(index, (answer.get(index) ?? '') + step.text_delta);
+          }
           return step.state === 'DONE' ? { logs: flushStep(index) } : NONE;
         }
         if (step.step_type === 'tool' && !seenTools.has(index)) {
           seenTools.add(index);
-          return { logs: [describeTool(String(step.tool_name ?? step.tool_info?.name ?? 'tool'), step.tool_info?.parameters)] };
+          lastTool = Math.max(lastTool, index);
+          const name = String(step.tool_name ?? step.tool_info?.name ?? 'tool');
+          return { logs: [describeTool(name, step.tool_info?.parameters)], tools: [name] };
         }
         return NONE;
       }
@@ -197,7 +218,10 @@ export function agyParser(): OutputParser {
         const status = result.status === undefined ? 'SUCCESS' : String(result.status);
         const summary = `Finished: ${status.toLowerCase()}${typeof result.duration_seconds === 'number' ? ` · ${Math.round(result.duration_seconds)} s` : ''}`;
         const usage = extractUsage(result.usage ?? result.tokens ?? result.token_usage, result.cost_usd ?? result.cost ?? result.total_cost_usd);
-        if (status === 'SUCCESS') return { logs: [...pending, summary], ...(usage ? { usage } : {}) };
+        if (status === 'SUCCESS') {
+          const answerText = reply();
+          return { logs: [...pending, summary], ...(usage ? { usage } : {}), ...(answerText ? { reply: answerText } : {}) };
+        }
         const failed = failure(String(result.error ?? result.message ?? result.response ?? `AGY finished with status ${status}`));
         return { ...failed, logs: [...pending, summary, ...failed.logs], ...(usage ? { usage } : {}) };
       }

@@ -21,6 +21,7 @@ describe('Claude Code stream-json', () => {
       .toEqual({
         logs: ['Finished: success · 3 turns · 12 s · $0.40'],
         usage: { input_tokens: null, output_tokens: null, total_tokens: null, cost_usd: 0.4 },
+        reply: 'OK',
       });
     expect(p.push('plain text line').logs).toEqual(['plain text line']);
   });

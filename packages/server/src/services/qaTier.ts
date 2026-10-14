@@ -23,7 +23,7 @@ export const BUILTIN_RISK_PATTERNS = [
 const LIGHT_MAX_FILES = 8;
 const DEEP_MIN_FILES = 40;
 
-const normalize = (p: string) => p.trim().replace(/\\/g, '/').replace(/^\.\//, '');
+const normalize = (p: string) => p.trim().replace(/\\/g, '/').replace(/^\.?\//, '');
 
 /** A glob as a case-insensitive regex: `**` any number of folders, `*` within one path segment, a trailing `/` everything under it. */
 function globRegex(pattern: string): RegExp {
@@ -51,7 +51,10 @@ function globRegex(pattern: string): RegExp {
 
 export function matchesRiskPattern(file: string, pattern: string): boolean {
   if (!pattern.trim()) return false;
-  return globRegex(pattern).test(normalize(file));
+  const path = normalize(file);
+  if (globRegex(pattern).test(path)) return true;
+  // A plain path without wildcards also names everything under it (a folder written without a trailing /).
+  return !pattern.includes('*') && globRegex(`${normalize(pattern).replace(/\/+$/, '')}/`).test(path);
 }
 
 const count = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;

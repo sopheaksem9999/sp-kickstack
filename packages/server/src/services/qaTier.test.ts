@@ -45,6 +45,13 @@ describe('matchesRiskPattern', () => {
     }
   });
 
+  it('matches a folder written without a trailing slash or with a leading slash', () => {
+    expect(matchesRiskPattern('app/Http/Middleware/CompanyMiddleware.php', 'app/Http/Middleware')).toBe(true);
+    expect(matchesRiskPattern('app/Http/Middleware/CompanyMiddleware.php', '/app/Http/Middleware/')).toBe(true);
+    expect(matchesRiskPattern('app/Http/Middleware.php', 'app/Http/Middleware')).toBe(false);
+    expect(matchesRiskPattern('app/Models/User.php', '/app/Models/User.php')).toBe(true);
+  });
+
   it('matches paths written with ./, backslashes or other case', () => {
     expect(matchesRiskPattern('APP\\Http\\Middleware\\Company.php', './app/http/middleware/')).toBe(true);
     expect(matchesRiskPattern('app/Models/User.php', 'app/models/user.php')).toBe(true);

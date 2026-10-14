@@ -212,6 +212,16 @@ describe('AI QA: in review (merge preview)', () => {
     expect(s.qa.status(s.h.req.id).round).toBe(1);
   });
 
+  it('reports the round as running while its previews are still being built', async () => {
+    const s = setup();
+    unmergedGoal(s.h, 'src/rides.ts', 'export const rides = [];\n');
+    s.toReview();
+    const first = s.qa.start(s.h.req.id, 'manual');
+    expect(s.qa.status(s.h.req.id)).toMatchObject({ round: 1, running: true, stage: 'review' });
+    await first;
+    expect(s.qa.status(s.h.req.id)).toMatchObject({ round: 1, running: true, stage: 'review', runs: [{ project: 'backend' }] });
+  });
+
   it('starts on entering review only when Run automatically is on', async () => {
     const s = setup();
     unmergedGoal(s.h, 'src/rides.ts', 'export const rides = [];\n');

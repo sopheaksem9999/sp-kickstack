@@ -6,7 +6,7 @@ import type { AiQaSettings, QaTier } from '@sp-kickstack/shared';
 import { fetchAiQaSettings, saveAiQaSettings } from '../lib/aiQaApi.js';
 import { fetchLocalEngineStatus } from '../lib/localEngineApi.js';
 import { AGENT_CLI_CHOICES } from '../lib/localEngineText.js';
-import { TIER_LABEL, aiQaDraftProblem, qaCliStatus, qaTierCli, tierWhen } from '../lib/aiQa.js';
+import { TIER_LABEL, aiQaDraftProblem, qaCliStatus, qaModelSuggestions, qaTierCli, tierWhen } from '../lib/aiQa.js';
 import { AgentProfileFields } from './AgentProfilePicker.js';
 
 const input =
@@ -145,6 +145,7 @@ export function AiQaSettingsSection() {
             <AgentProfileFields
               value={{ model: draft.model, effort: draft.effort }}
               onChange={(v) => set({ model: v.model, effort: v.effort })}
+              suggestions={tierCli ? qaModelSuggestions(tierCli) : undefined}
               defaultChipLabel="Engine default"
               defaultTitle="Use the Local AI CLI engine's model and effort"
             />
@@ -158,6 +159,7 @@ export function AiQaSettingsSection() {
                   <AgentProfileFields
                     value={draft.tiers[tierCli][tier]}
                     onChange={(v) => setTier(tier, v)}
+                    suggestions={qaModelSuggestions(tierCli)}
                     defaultChipLabel="CLI default"
                     defaultTitle="The CLI's own default"
                   />

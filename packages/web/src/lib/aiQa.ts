@@ -1,6 +1,7 @@
 import type { AgentCliId, AiQaSettings, LocalEngineStatus, QaRunView, QaSeverity, QaTier, RequirementQa, RequirementStatus, ReviewComment } from '@sp-kickstack/shared';
 import { isValidModel } from './agentProfile.js';
 import { installBadge, limitBadge } from './localEngineText.js';
+import { modelSuggestionsFor } from './runSettings.js';
 
 export type QaTone = 'running' | 'passed' | 'findings' | 'failed';
 
@@ -39,7 +40,11 @@ export function qaStatusLine(qa: RequirementQa | null | undefined): { text: stri
   const passed = qa.stage === 'review' ? 'AI QA before merge: passed' : 'AI QA passed';
   const skipped = qa.skipped.map((s) => `skipped ${s.project}: ${s.reason}`).join(' · ');
   const line = (text: string, tone: QaTone) => ({ text: skipped ? `${text} · ${skipped}` : text, tone });
-  if (qa.running) return line(`${prefix} running… (${qa.runs.map((r) => `${r.project} ${RUN_MARK[r.status] ?? '…'}`).join(', ')})`, 'running');
+  if (qa.running) {
+    // A round whose previews are still being built has no runs yet.
+    if (qa.runs.length === 0) return line(`${prefix} starting…`, 'running');
+    return line(`${prefix} running… (${qa.runs.map((r) => `${r.project} ${RUN_MARK[r.status] ?? '…'}`).join(', ')})`, 'running');
+  }
   const findings = findingsText(qa.findings);
   const broken = qa.runs.find((r) => r.status === 'failed' || r.status === 'cancelled');
   if (broken) {
@@ -116,6 +121,11 @@ export function aiQaDraftProblem(draft: AiQaSettings): string | null {
   const models = [draft.model, ...Object.values(draft.tiers).flatMap((t) => [t.light.model, t.standard.model, t.deep.model])];
   if (models.some((m) => m !== null && !isValidModel(m))) return 'Model ids use letters, digits and . _ : / - (up to 80 characters), e.g. opus';
   return null;
+}
+
+/** Model chips for AI QA: the names the CLI that runs it understands (Codex: none, AGY: its own). */
+export function qaModelSuggestions(cli: AgentCliId): string[] {
+  return modelSuggestionsFor(cli);
 }
 
 /** The CLI whose tiers the card edits: the one chosen for AI QA, else the Local AI CLI engine's. */

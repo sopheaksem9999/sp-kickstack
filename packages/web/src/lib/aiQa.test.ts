@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_QA_TIERS } from '@sp-kickstack/shared';
-import { aiQaDraftProblem, findingsText, mergeWarning, qaBadge, qaCliStatus, qaRoundTitle, qaRunText, qaRunTitle, qaStatusLine, qaTierCli, riskPathsFromText, riskPathsToText, runAiQaBlocked, tierWhen } from './aiQa';
+import { aiQaDraftProblem, findingsText, mergeWarning, qaBadge, qaCliStatus, qaModelSuggestions, qaRoundTitle, qaRunText, qaRunTitle, qaStatusLine, qaTierCli, riskPathsFromText, riskPathsToText, runAiQaBlocked, tierWhen } from './aiQa';
 
 const run = (project: string, status: string, extra: Record<string, unknown> = {}) =>
   ({ task: { id: 1 }, project, status, passed: null, summary: null, error: null, findings: 0, ...extra }) as any;
@@ -169,5 +169,17 @@ describe('AI QA model by size and risk', () => {
       'app/Http/Middleware/', 'database/**', 'config/auth.php',
     ]);
     expect(riskPathsToText(['a/', 'b/**'])).toBe('a/\nb/**');
+  });
+});
+
+describe('AI QA review fixes', () => {
+  it('says the round is starting while its previews are built', () => {
+    expect(qaStatusLine(qa([], { running: true, stage: 'review' }))).toEqual({ text: 'AI QA before merge starting…', tone: 'running' });
+    expect(mergeWarning(qa([], { running: true, stage: 'review' }))).toBe('AI QA is still checking this requirement. Merge anyway?');
+  });
+
+  it("offers each tier the models of the CLI that runs it", () => {
+    expect(qaModelSuggestions('claude-cli')).toContain('opus');
+    expect(qaModelSuggestions('codex-cli')).not.toContain('opus');
   });
 });

@@ -63,8 +63,8 @@ export class QaService {
   private branches: BranchService;
   private taskChanges: TaskChangesService;
   private runs: RunStore;
-  /** Requirements whose round is being prepared (previews are built before the QA tasks exist). */
-  private starting = new Set<string>();
+  /** Rounds being prepared (previews are built before their QA tasks exist): the header already shows them as running. */
+  private starting = new Map<string, { stage: QaStage; round: number }>();
 
   constructor(private opts: QaServiceOptions) {
     this.db = opts.db;
@@ -88,13 +88,13 @@ export class QaService {
     const repos = projects.filter((p) => isGitWorkTree(p.repo_path));
     if (repos.length === 0) throw conflict(`No repository of ${reqId} is a git repository; AI QA needs one`);
 
-    this.starting.add(reqId);
+    const round = this.lastRound(reqId) + 1;
+    this.starting.set(reqId, { stage, round });
     try {
       const settings = this.settings.getAiQaSettings();
       const engine = this.opts.engine.status();
       const cliProblem = this.cliProblem(settings, engine);
       const cli: AgentCliId | null = settings.agentCli === 'default' ? engine.cli : settings.agentCli;
-      const round = this.lastRound(reqId) + 1;
       const unmerged = stage === 'review' ? unmergedWorkByProject(this.db, reqId) : new Map<string, BridgeTask[]>();
       for (const project of repos) {
         const base = this.branches.baseBranchFor(project, reqId);
@@ -223,7 +223,8 @@ export class QaService {
   public status(reqId: string): RequirementQa {
     const req = this.opts.requirementService.getRequirement(reqId);
     if (!req) throw new HttpError(404, `Requirement ${reqId} not found`);
-    const round = this.lastRound(reqId);
+    const preparing = this.starting.get(reqId);
+    const round = preparing?.round ?? this.lastRound(reqId);
     const tasks = round
       ? (this.db.prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND role = 'qa' AND revision = ? ORDER BY project, id").all(reqId, round) as BridgeTask[])
       : [];
@@ -247,11 +248,11 @@ export class QaService {
     const skipped = round
       ? this.projectsOf(reqId).filter((p) => !isGitWorkTree(p.repo_path)).map((p) => ({ project: p.name, reason: 'not a git repository' }))
       : [];
-    const stage: QaStage | null = tasks.length ? (tasks[0].qa_stage ?? 'qa') : null;
+    const stage: QaStage | null = preparing?.stage ?? (tasks.length ? (tasks[0].qa_stage ?? 'qa') : null);
     const first = tasks.length ? this.opts.projectService.getProject(tasks[0].project) : null;
     const holds = req.status === 'in_review' && this.branches.policyFor(reqId) === 'auto_merge';
     return {
-      reqId, round, running: tasks.some((t) => ACTIVE_STATUSES.includes(t.status)), runs, skipped, findings, stage,
+      reqId, round, running: Boolean(preparing) || tasks.some((t) => ACTIVE_STATUSES.includes(t.status)), runs, skipped, findings, stage,
       previewInto: stage === 'review' && first ? this.branches.baseBranchFor(first, reqId) : null,
       openBlockers: this.openReviewBlockers(reqId),
       autoMergeHold: holds ? this.autoMergeHold(reqId) : null,

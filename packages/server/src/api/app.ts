@@ -144,10 +144,11 @@ export function createApp(deps: AppDependencies): Express {
     deps.mergeGate ||
     new MergeGateService(deps.db, deps.projectService, deps.requirementService, reactor, {
       settingsService,
+      autoMergeHold: (reqId) => qaService.autoMergeHold(reqId),
     });
   if (!deps.reactor) {
-    // createApp built the reactor, so it also wires the auto-merge policy to it.
-    reactor.setHooks({ onRequirementInReview: (id) => mergeGate.autoStart(id) });
+    // createApp built the reactor, so it also wires AI QA in review and the auto-merge policy to it.
+    reactor.setHooks({ onRequirementInReview: (id) => void qaService.onEnteredReview(id).finally(() => mergeGate.autoStart(id)) });
   }
 
   const getAdapter: AdapterFactory =

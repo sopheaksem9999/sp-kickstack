@@ -28,8 +28,8 @@ export interface MergeGateOptions {
   gitTimeoutMs?: number;
   /** Where temporary merge worktrees are created (default: the OS temp dir). */
   tmpRoot?: string;
-  /** The requirement entered QA: each merged repository's result commit (AI QA checks it). */
-  onEnteredQa?: (reqId: string, commits: Record<string, string>) => void;
+  /** Why an automatic merge must wait (AI QA still checking, or open blockers); null lets it start. */
+  autoMergeHold?: (reqId: string) => string | null;
 }
 
 /** Temp folder prefix that can never contain a path separator, whatever the names are. */
@@ -126,9 +126,10 @@ export class MergeGateService {
     return { done: this.run(reqId) };
   }
 
-  /** Auto-merge policy: start as soon as all work is in review; "not ready" is not an error. */
+  /** Auto-merge policy: start as soon as all work is in review and AI QA does not hold it; "not ready" is not an error. */
   public autoStart(reqId: string): void {
     if (this.branches.policyFor(reqId) !== 'auto_merge' || !this.needsMerge(reqId)) return;
+    if (this.options.autoMergeHold?.(reqId)) return; // re-checked when AI QA finishes (AgentRunner onQaFinished)
     try {
       void this.start(reqId, 'auto').done;
     } catch {
@@ -355,13 +356,6 @@ export class MergeGateService {
       projects: prepared.map((p) => p.project.name),
       warnings,
     });
-    if (movedToQa) {
-      try {
-        this.options.onEnteredQa?.(reqId, Object.fromEntries(prepared.map((p) => [p.project.name, p.resultSha])));
-      } catch (err: any) {
-        console.warn(`[merge] ${reqId}: AI QA did not start: ${err?.message || err}`);
-      }
-    }
     // Last: "not running" must mean every side effect above has happened.
     this.db.prepare("UPDATE requirements SET merge_state = 'idle', merge_error = NULL WHERE id = ?").run(reqId);
   }

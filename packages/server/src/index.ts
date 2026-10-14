@@ -57,6 +57,8 @@ const localEngine = new AgentRunner({
   bridgeUrl: `http://${HOST === '0.0.0.0' || HOST === '::' ? '127.0.0.1' : HOST}:${PORT}`,
   agentToken: process.env.AGENT_TOKEN || undefined,
   onCommits: (taskId) => branchService.pushTaskBranch(taskId),
+  // A finished AI QA round may release a held auto-merge.
+  onQaFinished: (reqId) => mergeGate.autoStart(reqId),
 });
 
 // Per-engine rate-limit handling: circuit breaker + start limit around every adapter call.
@@ -92,9 +94,11 @@ const qaService = new QaService({
 const mergeGate = new MergeGateService(db, projectService, requirementService, reactor, {
   getAdapter,
   releaseWorktree: (taskId) => localEngine.releaseWorktree(taskId),
+  autoMergeHold: (reqId) => qaService.autoMergeHold(reqId),
 });
-// Auto-merge policy: start the merge gate when all of a requirement's work is in review.
-reactor.setHooks({ onRequirementInReview: (id) => mergeGate.autoStart(id) });
+// Entering review: AI QA starts (Settings → AI QA → Run automatically), then the auto-merge policy merges
+// once AI QA no longer holds it (finished without open blockers).
+reactor.setHooks({ onRequirementInReview: (id) => void qaService.onEnteredReview(id).finally(() => mergeGate.autoStart(id)) });
 mergeGate.resetInterrupted();
 const vcsSyncService = new VcsSyncService(
   db,

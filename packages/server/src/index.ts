@@ -92,8 +92,6 @@ const qaService = new QaService({
 const mergeGate = new MergeGateService(db, projectService, requirementService, reactor, {
   getAdapter,
   releaseWorktree: (taskId) => localEngine.releaseWorktree(taskId),
-  // Entering QA after a merge starts AI QA (Settings → AI & Local Engines → AI QA → Run automatically).
-  onEnteredQa: (reqId, commits) => qaService.onEnteredQa(reqId, commits),
 });
 // Auto-merge policy: start the merge gate when all of a requirement's work is in review.
 reactor.setHooks({ onRequirementInReview: (id) => mergeGate.autoStart(id) });

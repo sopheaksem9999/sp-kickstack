@@ -57,6 +57,12 @@ describe('buildQaPrompt', () => {
     expect(prompt).toContain('No test, build or lint command is set for this repository');
   });
 
+  it('names the merge preview for review rounds', () => {
+    const prompt = buildQaPrompt(input({ stage: 'review', previewInto: 'develop' }));
+    expect(prompt).toContain("a temporary merge of the requirement's branches into `develop`, not merged yet");
+    expect(prompt).not.toContain('the code after the requirement was merged');
+  });
+
   it('lists at most 200 changed files and says how many more', () => {
     const files = Array.from({ length: 230 }, (_, i) => `src/file-${String(i).padStart(3, '0')}.ts`);
     const prompt = buildQaPrompt(input({ changedFiles: files }));

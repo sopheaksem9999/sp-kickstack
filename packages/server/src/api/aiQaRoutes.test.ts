@@ -46,6 +46,14 @@ describe('AI QA routes', () => {
     expect((await testRequest(app, 'GET', '/api/requirements/REQ-999/qa')).status).toBe(404);
   });
 
+  it('Run AI QA in review starts a review round (202)', async () => {
+    const h = makeE2E();
+    const app = appFor(h);
+    inQa(h);
+    h.db.prepare("UPDATE requirements SET status = 'in_review' WHERE id = ?").run(h.req.id);
+    expect(await testRequest(app, 'POST', `/api/requirements/${h.req.id}/qa`)).toMatchObject({ status: 202, body: { stage: 'review', running: true } });
+  });
+
   it('answers 503 when the server runs no Local AI CLI engine', async () => {
     const h = makeE2E();
     inQa(h);

@@ -1,7 +1,7 @@
-// AI QA: one QA run per git repository of a requirement in QA. The agent checks the merged code in a
-// temporary checkout and reports findings (open review comments marked AI QA) and a result; a person
-// decides what to send back.
-import type { AiQaSettings, BridgeTask, LocalEngineStatus, Project, QaRunView, QaSeverity, RequirementQa } from '@sp-kickstack/shared';
+// AI QA: one QA run per git repository of a requirement in review (on a merge preview) or in QA (on the
+// merged code). The agent checks the code in a temporary checkout and reports findings (open review
+// comments marked AI QA) and a result; a person decides what to send back.
+import type { AgentCliId, AiQaSettings, BridgeTask, LocalEngineStatus, Project, QaRunView, QaSeverity, QaStage, RequirementQa } from '@sp-kickstack/shared';
 import { QaFindingInputSchema, QaResultInputSchema } from '@sp-kickstack/shared';
 import type { AppDatabase } from '../db/index.js';
 import type { ProjectService } from './projectService.js';
@@ -10,6 +10,9 @@ import { SettingsService } from './settingsService.js';
 import { BranchService } from './branchService.js';
 import { TaskChangesService } from './taskChanges.js';
 import { isSafeRelativePath } from './reviewAssist.js';
+import { buildMergePreview } from './mergePreview.js';
+import { unmergedWorkByProject } from './unmergedWork.js';
+import { BUILTIN_RISK_PATTERNS, classifyQaTier, qaProfileFor, type QaChangedFile } from './qaTier.js';
 import { RunStore } from '../localEngine/runStore.js';
 import { buildQaPrompt } from '../localEngine/qaPrompt.js';
 import { diffSummary, isGitWorkTree, resolveCommit } from '../lib/gitRepo.js';
@@ -33,14 +36,26 @@ export interface QaServiceOptions {
   /** Absent when this server runs no Local AI CLI engine: AI QA cannot start (503). */
   engine?: QaEngine;
   emit?: QaEmit;
+  /** Where merge previews are built (default: the OS temp dir). */
+  tmpRoot?: string;
 }
 
 const ACTIVE_STATUSES = ['pending', 'queued', 'running', 'rate_limited'];
+/** The requirement status a round of each stage checks. */
+const STAGE_STATUS: Record<QaStage, string> = { review: 'in_review', qa: 'qa' };
+const STAGE_WORDS: Record<QaStage, string> = { review: 'in review', qa: 'in QA' };
 
 /** Same finding = same QA run, file, line and title (case and spacing ignored). */
 const titleKey = (title: string) => title.toLowerCase().replace(/\s+/g, ' ').trim();
 /** A saved finding's title: the bold first line of its comment. */
 const savedTitle = (body: string) => /^\*\*(.+?)\*\*/.exec(body)?.[1] ?? body.split('\n')[0];
+
+interface CommitToCheck {
+  commit: string | null;
+  from: string | null;
+  files: QaChangedFile[];
+  error?: string;
+}
 
 export class QaService {
   private db: AppDatabase;
@@ -48,6 +63,8 @@ export class QaService {
   private branches: BranchService;
   private taskChanges: TaskChangesService;
   private runs: RunStore;
+  /** Requirements whose round is being prepared (previews are built before the QA tasks exist). */
+  private starting = new Set<string>();
 
   constructor(private opts: QaServiceOptions) {
     this.db = opts.db;
@@ -57,66 +74,101 @@ export class QaService {
     this.runs = new RunStore(opts.db);
   }
 
-  /** Start AI QA for every git repository of a requirement in QA. `commits`: the merged result per repository (else the branch tip). */
-  public start(reqId: string, trigger: 'auto' | 'manual', commits: Record<string, string> = {}): RequirementQa {
+  /** Start AI QA for every git repository of a requirement in review (merge preview) or in QA (merged code). */
+  public async start(reqId: string, trigger: 'auto' | 'manual'): Promise<RequirementQa> {
     const req = this.opts.requirementService.getRequirement(reqId);
     if (!req) throw new HttpError(404, `Requirement ${reqId} not found`);
-    if (req.status !== 'qa') throw conflict(`${reqId} is ${req.status}; AI QA runs while a requirement is in QA`);
+    const stage: QaStage | null = req.status === 'in_review' ? 'review' : req.status === 'qa' ? 'qa' : null;
+    if (!stage) throw conflict(`${reqId} is ${req.status}; AI QA runs while a requirement is in review or in QA`);
+    if (req.merge_state === 'running') throw conflict(`A merge of ${reqId} is running; wait for it to finish`);
     if (!this.opts.engine) throw new HttpError(503, 'The Local AI CLI engine is not running in this server');
-    if (this.activeTasks(reqId).length > 0) throw conflict(`AI QA is already running for ${reqId}`);
+    if (this.starting.has(reqId) || this.activeTasks(reqId).length > 0) throw conflict(`AI QA is already running for ${reqId}`);
     const projects = this.projectsOf(reqId);
     if (projects.length === 0) throw conflict(`${reqId} has no repository work to check`);
     const repos = projects.filter((p) => isGitWorkTree(p.repo_path));
     if (repos.length === 0) throw conflict(`No repository of ${reqId} is a git repository; AI QA needs one`);
 
-    const settings = this.settings.getAiQaSettings();
-    const cliProblem = this.cliProblem(settings, this.opts.engine.status());
-    const round = this.lastRound(reqId) + 1;
-    for (const project of repos) {
-      const base = this.branches.baseBranchFor(project, reqId);
-      const commit =
-        commits[project.name] ?? resolveCommit(project.repo_path, `refs/heads/${base}`) ?? resolveCommit(project.repo_path, `refs/remotes/origin/${base}`);
-      const taskId = this.insertTask(reqId, project.name, round, commit);
-      if (!commit) {
-        this.failTask(taskId, `${project.name}: branch ${base} was not found, so there is no commit to check`);
-        continue;
+    this.starting.add(reqId);
+    try {
+      const settings = this.settings.getAiQaSettings();
+      const engine = this.opts.engine.status();
+      const cliProblem = this.cliProblem(settings, engine);
+      const cli: AgentCliId | null = settings.agentCli === 'default' ? engine.cli : settings.agentCli;
+      const round = this.lastRound(reqId) + 1;
+      const unmerged = stage === 'review' ? unmergedWorkByProject(this.db, reqId) : new Map<string, BridgeTask[]>();
+      for (const project of repos) {
+        const base = this.branches.baseBranchFor(project, reqId);
+        const check = await this.commitToCheck(project, reqId, stage, base, unmerged.get(project.name) ?? []);
+        const taskId = this.insertTask(reqId, project.name, round, check.commit, stage);
+        if (check.error) {
+          this.failTask(taskId, check.error);
+          continue;
+        }
+        if (!check.commit) {
+          this.failTask(taskId, `${project.name}: branch ${base} was not found, so there is no commit to check`);
+          continue;
+        }
+        if (cliProblem) {
+          this.failTask(taskId, cliProblem);
+          continue;
+        }
+        const choice =
+          settings.modelMode === 'auto'
+            ? classifyQaTier(check.files, [...(project.high_risk_paths ?? []), ...BUILTIN_RISK_PATTERNS], settings)
+            : null;
+        const profile = qaProfileFor(settings, cli, choice?.tier ?? null);
+        this.db.prepare('UPDATE bridge_tasks SET qa_tier = ?, qa_tier_reason = ? WHERE id = ?').run(choice?.tier ?? null, choice?.reason ?? null, taskId);
+        const bodyMd = buildQaPrompt({
+          reqId, title: req.title, bodyMd: req.body_md, project: project.name, commit: check.commit, from: check.from,
+          changedFiles: check.files.map((f) => f.path),
+          commands: { test: project.test_command, build: project.build_command, lint: project.lint_command },
+          maxFindings: settings.maxFindings, stage, previewInto: stage === 'review' ? base : null,
+        });
+        this.runs.create({
+          bridgeTaskId: taskId, project: project.name, title: `AI QA · ${reqId}`, bodyMd, model: profile.model, effort: profile.effort,
+          preferredCli: settings.agentCli === 'default' ? null : settings.agentCli,
+        });
+        const why = choice ? ` · ${choice.tier}: ${choice.reason}` : '';
+        const uses = `${profile.model ?? 'the CLI default model'} · ${profile.effort ?? 'the default effort'}`;
+        this.log(taskId, `AI QA queued (${trigger === 'auto' ? 'the requirement entered review' : 'Run AI QA'}) for ${check.commit.slice(0, 7)}${why} → ${uses}`);
       }
-      if (cliProblem) {
-        this.failTask(taskId, cliProblem);
-        continue;
-      }
-      const changes = this.changesOf(project, reqId);
-      const bodyMd = buildQaPrompt({
-        reqId, title: req.title, bodyMd: req.body_md, project: project.name, commit, from: changes.from, changedFiles: changes.files,
-        commands: { test: project.test_command, build: project.build_command, lint: project.lint_command },
-        maxFindings: settings.maxFindings,
-      });
-      this.runs.create({
-        bridgeTaskId: taskId, project: project.name, title: `AI QA · ${reqId}`, bodyMd, model: settings.model, effort: settings.effort,
-        preferredCli: settings.agentCli === 'default' ? null : settings.agentCli,
-      });
-      this.log(taskId, `AI QA queued (${trigger === 'auto' ? 'the requirement entered QA' : 'Run AI QA'}) for ${commit.slice(0, 7)}`);
+      this.opts.emit?.({ type: 'qa_started', req_id: reqId, payload: { reqId, round, stage, trigger, projects: repos.map((p) => p.name) } });
+      this.opts.engine.nudge();
+    } finally {
+      this.starting.delete(reqId);
     }
-    this.opts.emit?.({ type: 'qa_started', req_id: reqId, payload: { reqId, round, trigger, projects: repos.map((p) => p.name) } });
-    this.opts.engine.nudge();
     return this.status(reqId);
   }
 
-  /** The merge gate moved the requirement to QA: start AI QA when Settings → AI QA → Run automatically is on. Never throws. */
-  public onEnteredQa(reqId: string, commits: Record<string, string>): void {
+  /** The requirement entered review: start AI QA when Settings → AI QA → Run automatically is on. Never throws. */
+  public async onEnteredReview(reqId: string): Promise<void> {
     if (!this.settings.getAiQaSettings().runAutomatically) return;
     try {
-      this.start(reqId, 'auto', commits);
+      await this.start(reqId, 'auto');
     } catch (err: any) {
       console.warn(`[ai-qa] ${reqId}: AI QA did not start: ${err?.message || err}`);
     }
+  }
+
+  /** Why an automatic merge must wait for AI QA, or null. */
+  public autoMergeHold(reqId: string): string | null {
+    const marks = ACTIVE_STATUSES.map(() => '?').join(', ');
+    const active = (
+      this.db
+        .prepare(`SELECT COUNT(*) AS n FROM bridge_tasks WHERE req_id = ? AND role = 'qa' AND qa_stage = 'review' AND status IN (${marks})`)
+        .get(reqId, ...ACTIVE_STATUSES) as { n: number }
+    ).n;
+    if (active > 0 || this.starting.has(reqId)) return 'AI QA is still checking';
+    const blockers = this.openReviewBlockers(reqId);
+    if (blockers > 0) return `${blockers} open AI QA blocker${blockers === 1 ? '' : 's'}`;
+    return null;
   }
 
   /** `xticket comment`: an open review comment marked AI QA on the repository's card. */
   public addFinding(input: unknown, project: string, runId: string | undefined): { commentId: number; duplicate: boolean } {
     const finding = QaFindingInputSchema.parse(input);
     const qa = this.qaTaskOf(project, runId);
-    this.requireQa(qa.req_id, 'finding');
+    this.requireStage(qa, 'finding');
     if (finding.line !== undefined && !finding.file_path) throw badRequest('--line needs --file');
     if (finding.file_path && !isSafeRelativePath(finding.file_path)) {
       throw badRequest('The file path must be relative to the repository (no leading / and no ..)');
@@ -158,7 +210,7 @@ export class QaService {
   public recordResult(input: unknown, project: string, runId: string | undefined): { ok: true; passed: boolean; summary: string } {
     const result = QaResultInputSchema.parse(input);
     const qa = this.qaTaskOf(project, runId);
-    this.requireQa(qa.req_id, 'result');
+    this.requireStage(qa, 'result');
     this.db
       .prepare('UPDATE bridge_tasks SET qa_passed = ?, qa_summary = ?, updated_at = ? WHERE id = ?')
       .run(result.passed ? 1 : 0, result.summary, new Date().toISOString(), qa.id);
@@ -169,7 +221,8 @@ export class QaService {
 
   /** The requirement header: the latest QA round, per repository. */
   public status(reqId: string): RequirementQa {
-    if (!this.opts.requirementService.getRequirement(reqId)) throw new HttpError(404, `Requirement ${reqId} not found`);
+    const req = this.opts.requirementService.getRequirement(reqId);
+    if (!req) throw new HttpError(404, `Requirement ${reqId} not found`);
     const round = this.lastRound(reqId);
     const tasks = round
       ? (this.db.prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND role = 'qa' AND revision = ? ORDER BY project, id").all(reqId, round) as BridgeTask[])
@@ -194,10 +247,39 @@ export class QaService {
     const skipped = round
       ? this.projectsOf(reqId).filter((p) => !isGitWorkTree(p.repo_path)).map((p) => ({ project: p.name, reason: 'not a git repository' }))
       : [];
+    const stage: QaStage | null = tasks.length ? (tasks[0].qa_stage ?? 'qa') : null;
+    const first = tasks.length ? this.opts.projectService.getProject(tasks[0].project) : null;
+    const holds = req.status === 'in_review' && this.branches.policyFor(reqId) === 'auto_merge';
     return {
-      reqId, round, running: tasks.some((t) => ACTIVE_STATUSES.includes(t.status)), runs, skipped, findings,
-      stage: tasks[0]?.qa_stage ?? (round ? 'qa' : null), previewInto: null, openBlockers: 0, autoMergeHold: null,
+      reqId, round, running: tasks.some((t) => ACTIVE_STATUSES.includes(t.status)), runs, skipped, findings, stage,
+      previewInto: stage === 'review' && first ? this.branches.baseBranchFor(first, reqId) : null,
+      openBlockers: this.openReviewBlockers(reqId),
+      autoMergeHold: holds ? this.autoMergeHold(reqId) : null,
     };
+  }
+
+  /** In review: the merge preview of the repository's unmerged branches; in QA (or with nothing unmerged): the branch tip. */
+  private async commitToCheck(project: Project, reqId: string, stage: QaStage, base: string, unmerged: BridgeTask[]): Promise<CommitToCheck> {
+    if (stage === 'review' && unmerged.length > 0) {
+      const preview = await buildMergePreview(project.repo_path, base, project.name, reqId, unmerged, { tmpRoot: this.opts.tmpRoot });
+      if (!preview.ok) return { commit: null, from: null, files: [], error: preview.error };
+      return { commit: preview.sha, from: preview.from, files: diffSummary(project.repo_path, preview.from, preview.sha) };
+    }
+    const commit = resolveCommit(project.repo_path, `refs/heads/${base}`) ?? resolveCommit(project.repo_path, `refs/remotes/origin/${base}`);
+    const changes = this.changesOf(project, reqId);
+    return { commit, from: changes.from, files: changes.files };
+  }
+
+  /** Open AI QA blocker findings from review rounds of the requirement. */
+  private openReviewBlockers(reqId: string): number {
+    return (
+      this.db
+        .prepare(`
+          SELECT COUNT(*) AS n FROM review_comments c JOIN bridge_tasks q ON q.id = c.qa_task_id
+          WHERE c.req_id = ? AND c.source = 'ai-qa' AND c.severity = 'blocker' AND c.state = 'open' AND q.qa_stage = 'review'
+        `)
+        .get(reqId) as { n: number }
+    ).n;
   }
 
   /** Enabled repositories with goal or ticket work in the requirement. */
@@ -219,15 +301,15 @@ export class QaService {
     return (this.db.prepare("SELECT MAX(revision) AS r FROM bridge_tasks WHERE req_id = ? AND role = 'qa'").get(reqId) as { r: number | null }).r ?? 0;
   }
 
-  private insertTask(reqId: string, project: string, round: number, commit: string | null): number {
+  private insertTask(reqId: string, project: string, round: number, commit: string | null, stage: QaStage): number {
     const at = new Date().toISOString();
     return Number(
       this.db
         .prepare(`
-          INSERT INTO bridge_tasks (req_id, project, role, title, status, base_sha, revision, created_at, updated_at)
-          VALUES (?, ?, 'qa', ?, 'queued', ?, ?, ?, ?)
+          INSERT INTO bridge_tasks (req_id, project, role, title, status, base_sha, revision, qa_stage, created_at, updated_at)
+          VALUES (?, ?, 'qa', ?, 'queued', ?, ?, ?, ?, ?)
         `)
-        .run(reqId, project, `AI QA · ${project}`, commit, round, at, at).lastInsertRowid
+        .run(reqId, project, `AI QA · ${project}`, commit, round, stage, at, at).lastInsertRowid
     );
   }
 
@@ -247,28 +329,32 @@ export class QaService {
   }
 
   /** Files the requirement changed in the repository: from its merge commits (branches may be deleted), else from its unmerged branches. */
-  private changesOf(project: Project, reqId: string): { files: string[]; from: string | null } {
+  private changesOf(project: Project, reqId: string): { files: QaChangedFile[]; from: string | null } {
     const tasks = this.db
       .prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND project = ? AND role IN ('goal', 'ticket') AND status <> 'cancelled' ORDER BY id")
       .all(reqId, project.name) as BridgeTask[];
-    const files = new Set<string>();
+    const files = new Map<string, QaChangedFile>();
+    const add = (f: QaChangedFile) => {
+      const known = files.get(f.path);
+      files.set(f.path, known ? { ...known, additions: known.additions + f.additions, deletions: known.deletions + f.deletions } : { ...f });
+    };
     let from: string | null = null;
     for (const t of tasks) {
       if (t.merge_sha) {
         const parent = resolveCommit(project.repo_path, `${t.merge_sha}^1`);
         if (!parent) continue;
         from ??= parent;
-        for (const f of diffSummary(project.repo_path, parent, t.merge_sha)) files.add(f.path);
+        for (const f of diffSummary(project.repo_path, parent, t.merge_sha)) add(f);
       } else if (t.branch) {
         try {
-          for (const f of this.taskChanges.changes(t.id).files) files.add(f.path);
+          for (const f of this.taskChanges.changes(t.id).files) add(f);
         } catch {
           // The branch is gone: nothing to list for it.
         }
         from ??= t.base_sha ?? null;
       }
     }
-    return { files: [...files].sort(), from };
+    return { files: [...files.values()].sort((a, b) => a.path.localeCompare(b.path)), from };
   }
 
   /** The QA task an agent reports for: its run id (XTICKET_TASK) in its repository. */
@@ -285,9 +371,11 @@ export class QaService {
     return row;
   }
 
-  private requireQa(reqId: string, what: 'finding' | 'result') {
-    const status = this.opts.requirementService.getRequirement(reqId)?.status;
-    if (status !== 'qa') throw conflict(`${reqId} is no longer in QA; this ${what} was not saved`);
+  /** Reports are saved while the requirement is still in the stage its round checks. */
+  private requireStage(qa: BridgeTask, what: 'finding' | 'result') {
+    const stage: QaStage = qa.qa_stage ?? 'qa';
+    const status = this.opts.requirementService.getRequirement(qa.req_id)?.status;
+    if (status !== STAGE_STATUS[stage]) throw conflict(`${qa.req_id} is no longer ${STAGE_WORDS[stage]}; this ${what} was not saved`);
   }
 
   /** The repository's card: its goal, else its first ticket. */

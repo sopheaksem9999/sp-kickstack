@@ -143,7 +143,6 @@ export function createApp(deps: AppDependencies): Express {
     deps.mergeGate ||
     new MergeGateService(deps.db, deps.projectService, deps.requirementService, reactor, {
       settingsService,
-      onEnteredQa: (reqId, commits) => qaService.onEnteredQa(reqId, commits),
     });
   if (!deps.reactor) {
     // createApp built the reactor, so it also wires the auto-merge policy to it.

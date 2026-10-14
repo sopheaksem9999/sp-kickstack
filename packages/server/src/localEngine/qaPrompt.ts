@@ -1,4 +1,5 @@
 // The prompt of an AI QA run: what to check in this repository, and how to report it with xticket.
+import type { QaStage } from '@sp-kickstack/shared';
 import { oneLine, wrapUntrusted } from '../lib/promptSafety.js';
 
 export interface QaPromptInput {
@@ -14,6 +15,10 @@ export interface QaPromptInput {
   changedFiles: string[];
   commands: { test?: string | null; build?: string | null; lint?: string | null };
   maxFindings: number;
+  /** 'review': the checkout is a merge preview (default 'qa': the merged code). */
+  stage?: QaStage;
+  /** Review rounds: the branch the preview merged into. */
+  previewInto?: string | null;
 }
 
 /** Changed files listed at most; the rest are counted. */
@@ -37,6 +42,10 @@ export function acceptanceCriteria(bodyMd: string): string[] {
 export function buildQaPrompt(input: QaPromptInput): string {
   const criteria = acceptanceCriteria(input.bodyMd);
   const commit = input.commit.slice(0, 12);
+  const what =
+    input.stage === 'review'
+      ? `a temporary merge of the requirement's branches into \`${input.previewInto ?? 'its base branch'}\`, not merged yet`
+      : 'the code after the requirement was merged';
   const range = input.from ? `${input.from.slice(0, 12)}..${commit}` : null;
   const files = input.changedFiles.slice(0, MAX_FILES_LISTED);
   const more = input.changedFiles.length - files.length;
@@ -48,7 +57,7 @@ export function buildQaPrompt(input: QaPromptInput): string {
     `# AI QA of ${input.reqId} in ${input.project}`,
     '',
     `You are the QA reviewer of requirement ${input.reqId} ("${oneLine(input.title)}") in the repository **${input.project}**. ` +
-      `Your working directory is a temporary checkout of commit \`${commit}\`: the code after the requirement was merged. ` +
+      `Your working directory is a temporary checkout of commit \`${commit}\`: ${what}. ` +
       'Check it and report what you find. You do not fix anything.',
     '',
     '## The requirement',

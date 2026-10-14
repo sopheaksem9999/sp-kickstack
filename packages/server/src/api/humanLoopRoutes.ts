@@ -73,9 +73,9 @@ export function registerHumanLoopRoutes(app: Express, deps: HumanLoopRouteDeps) 
   });
 
   // "Run AI QA": every git repository of the requirement, at the tip of the branch it merged into.
-  app.post('/api/requirements/:id/qa', (req, res, next) => {
+  app.post('/api/requirements/:id/qa', async (req, res, next) => {
     try {
-      res.status(202).json(deps.qaService.start(req.params.id, 'manual'));
+      res.status(202).json(await deps.qaService.start(req.params.id, 'manual'));
     } catch (err) {
       next(err);
     }

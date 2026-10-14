@@ -48,8 +48,8 @@ export interface LocalHarness {
   req: Requirement;
   addTask(): HarnessTask;
   queueRun(bodyMd: string, task?: HarnessTask, using?: AgentRunner): { run: LocalRun; task: HarnessTask };
-  /** An AI QA task of `req` (moved to QA) checking `sha` (default: develop's tip), with its run queued. */
-  queueQaRun(bodyMd: string, sha?: string): { run: LocalRun; taskId: number };
+  /** An AI QA task of `req` checking `sha` (default: develop's tip), with its run queued; the requirement moves to the stage's status. */
+  queueQaRun(bodyMd: string, sha?: string, stage?: 'review' | 'qa'): { run: LocalRun; taskId: number };
   logs(taskId: number): Array<{ stream: string; message: string }>;
   logText(taskId: number): string;
   prompts(runId: string): string[];
@@ -116,16 +116,17 @@ export function makeLocalHarness(opts: LocalHarnessOptions = {}): LocalHarness {
     db.prepare('UPDATE bridge_tasks SET engine_task_id = ? WHERE id = ?').run(run.id, task.id);
     return { run, task };
   };
-  const queueQaRun = (bodyMd: string, sha: string = resolveCommit(repo, 'refs/heads/develop')!) => {
-    db.prepare("UPDATE requirements SET status = 'qa' WHERE id = ?").run(req.id);
+  const queueQaRun = (bodyMd: string, sha: string = resolveCommit(repo, 'refs/heads/develop')!, stage: 'review' | 'qa' = 'qa') => {
+    db.prepare('UPDATE requirements SET status = ? WHERE id = ?').run(stage === 'review' ? 'in_review' : 'qa', req.id);
     const now = new Date().toISOString();
     const taskId = Number(
-      db.prepare("INSERT INTO bridge_tasks (req_id, project, role, title, status, base_sha, created_at, updated_at) VALUES (?, 'backend', 'qa', 'AI QA · backend', 'queued', ?, ?, ?)")
-        .run(req.id, sha, now, now).lastInsertRowid
+      db.prepare("INSERT INTO bridge_tasks (req_id, project, role, title, status, base_sha, qa_stage, created_at, updated_at) VALUES (?, 'backend', 'qa', 'AI QA · backend', 'queued', ?, ?, ?, ?)")
+        .run(req.id, sha, stage, now, now).lastInsertRowid
     );
     const run = runner.runs.create({ bridgeTaskId: taskId, project: 'backend', title: `AI QA · ${req.id}`, bodyMd });
     return { run, taskId };
   };
+
 
 
   const logs = (taskId: number) =>

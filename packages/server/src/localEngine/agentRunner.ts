@@ -44,6 +44,8 @@ export interface AgentRunnerOptions {
   homeDir?: string;
   /** A run added commits to its task branch (the bridge pushes it). */
   onCommits?: (taskId: number) => void;
+  /** An AI QA task finished (done, failed or cancelled): the merge gate re-checks its auto-merge hold. */
+  onQaFinished?: (reqId: string) => void;
 }
 
 /** Log lines kept per run in task_logs; the raw output file keeps everything. */
@@ -627,19 +629,19 @@ export class AgentRunner {
     }
   }
 
-  /** AI QA checks a requirement in QA: its runs stop once the requirement leaves QA (Request changes, done, cancelled) or the QA task is cancelled. */
+  /** AI QA runs stop once the requirement leaves the stage they check (review: in_review, qa: qa), or their task is cancelled. */
   private stopQaOutsideQa() {
     const rows = this.opts.db
       .prepare(`
-        SELECT r.id AS runId, t.id AS taskId, t.req_id AS reqId FROM local_runs r
+        SELECT r.id AS runId, t.id AS taskId, t.req_id AS reqId, COALESCE(t.qa_stage, 'qa') AS stage FROM local_runs r
         JOIN bridge_tasks t ON t.id = r.bridge_task_id
         JOIN requirements q ON q.id = t.req_id
         WHERE t.role = 'qa' AND r.status IN ('queued', 'running', 'rate_limited') AND r.cancel_requested_at IS NULL
-          AND (q.status <> 'qa' OR t.status = 'cancelled')
+          AND (q.status <> CASE COALESCE(t.qa_stage, 'qa') WHEN 'review' THEN 'in_review' ELSE 'qa' END OR t.status = 'cancelled')
       `)
-      .all() as Array<{ runId: string; taskId: number; reqId: string }>;
+      .all() as Array<{ runId: string; taskId: number; reqId: string; stage: string }>;
     for (const row of rows) {
-      this.log(row.taskId, 'system', `■ ${row.reqId} is no longer in QA; AI QA stops`);
+      this.log(row.taskId, 'system', `■ ${row.reqId} is no longer ${row.stage === 'review' ? 'in review' : 'in QA'}; AI QA stops`);
       void this.cancel(row.runId).catch((err) => console.warn(`[local-engine] run ${row.runId}: ${err?.message || err}`));
     }
   }
@@ -649,9 +651,13 @@ export class AgentRunner {
     const run = this.runs.get(runId);
     if (!run) return;
     const status = toEngineTask(run).status;
-    this.opts.db
-      .prepare("UPDATE bridge_tasks SET status = ?, last_error = ?, updated_at = ? WHERE id = ? AND role = 'qa' AND status <> 'cancelled'")
-      .run(status, status === 'failed' ? run.error : null, new Date().toISOString(), run.bridge_task_id);
+    const changed = this.opts.db
+      .prepare("UPDATE bridge_tasks SET status = ?, last_error = ?, updated_at = ? WHERE id = ? AND role = 'qa' AND status <> 'cancelled' AND status <> ?")
+      .run(status, status === 'failed' ? run.error : null, new Date().toISOString(), run.bridge_task_id, status).changes;
+    if (changed === 1 && (status === 'done' || status === 'failed' || status === 'cancelled')) {
+      const reqId = this.task(run.bridge_task_id)?.req_id;
+      if (reqId) this.opts.onQaFinished?.(reqId);
+    }
   }
 
   /** Remove an AI QA checkout; whatever the agent left in it is thrown away. Never throws: it must not stop a run's finish or the engine. */

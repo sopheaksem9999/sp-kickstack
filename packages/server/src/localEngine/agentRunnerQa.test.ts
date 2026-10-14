@@ -112,4 +112,34 @@ describe('AgentRunner: AI QA runs', () => {
       fs.chmodSync(path.join(checkout, 'locked'), 0o755);
     }
   });
+  it('stops a review run when the requirement is merged to QA', async () => {
+    const h = makeLocalHarness();
+    const { run, taskId } = h.queueQaRun('FAKE: sleep 5000', undefined, 'review');
+    await h.runner.tick();
+    await waitFor(() => qaTask(h, taskId).status === 'running');
+
+    h.db.prepare("UPDATE requirements SET status = 'qa' WHERE id = ?").run(h.req.id);
+    await h.settle();
+
+    expect(h.run(run.id).status).toBe('cancelled');
+    expect(qaTask(h, taskId).status).toBe('cancelled');
+    expect(h.logText(taskId)).toContain(`■ ${h.req.id} is no longer in review; AI QA stops`);
+  });
+
+  it('keeps a review run while the requirement stays in review', async () => {
+    const h = makeLocalHarness();
+    const { run, taskId } = h.queueQaRun('FAKE: say checked', undefined, 'review');
+    await h.settle();
+    expect(h.run(run.id).status).toBe('done');
+    expect(qaTask(h, taskId)).toMatchObject({ status: 'done', qa_stage: 'review' });
+  });
+
+  it('tells the merge gate once when a QA task finishes', async () => {
+    const h = makeLocalHarness();
+    const calls: string[] = [];
+    const runner = h.newRunner({ onQaFinished: (reqId) => calls.push(reqId) });
+    h.queueQaRun('FAKE: say checked', undefined, 'review');
+    await h.settle(runner);
+    expect(calls).toEqual([h.req.id]);
+  });
 });

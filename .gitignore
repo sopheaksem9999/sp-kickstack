@@ -69,3 +69,6 @@ packages/server/workspace/
 target/
 src-tauri/target/
 **/src-tauri/target/
+**/src-tauri/resources/bin/
+**/src-tauri/resources/server/node_modules/
+

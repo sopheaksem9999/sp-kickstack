@@ -19,7 +19,126 @@ fn is_backend_alive(port: u16) -> bool {
     TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_ok()
 }
 
-fn find_node_binary() -> Option<PathBuf> {
+fn find_node_binary(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let node_name = if cfg!(windows) { "node.exe" } else { "node" };
+
+    // 1. Packaged standalone node binary inside application bundle resources
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let candidates = [
+            resource_dir.join("resources").join("bin").join(node_name),
+            resource_dir.join("bin").join(node_name),
+            resource_dir.join("resources").join("server").join("bin").join(node_name),
+        ];
+        for c in candidates {
+            if c.exists() {
+                return Some(c);
+            }
+        }
+    }
+
+    if let Ok(current_exe) = std::env::current_exe() {
+        if let Some(exe_dir) = current_exe.parent() {
+            let candidates = [
+                exe_dir.join("..").join("Resources").join("resources").join("bin").join(node_name),
+                exe_dir.join("..").join("Resources").join("bin").join(node_name),
+                exe_dir.join("resources").join("bin").join(node_name),
+                exe_dir.join("bin").join(node_name),
+            ];
+            for c in candidates {
+                if c.exists() {
+                    return Some(c);
+                }
+            }
+        }
+    }
+
+    // 2. Development directory
+    if let Ok(cwd) = std::env::current_dir() {
+        let candidates = [
+            cwd.join("packages").join("desktop").join("src-tauri").join("resources").join("bin").join(node_name),
+            cwd.join("resources").join("bin").join(node_name),
+            cwd.join("..").join("..").join("packages").join("desktop").join("src-tauri").join("resources").join("bin").join(node_name),
+        ];
+        for c in candidates {
+            if c.exists() {
+                return Some(c);
+            }
+        }
+    }
+
+    // 3. Check NVM with strong preference for Node 22 (matching better-sqlite3 ABI)
+    if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+        let home_path = PathBuf::from(home);
+
+        let nvm_versions = home_path.join(".nvm").join("versions").join("node");
+        if nvm_versions.is_dir() {
+            if let Ok(entries) = std::fs::read_dir(&nvm_versions) {
+                let mut v22_nodes = Vec::new();
+                let mut other_nodes = Vec::new();
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    let node_bin = path.join("bin").join("node");
+                    if node_bin.exists() {
+                        if name.starts_with("v22.") {
+                            v22_nodes.push(node_bin);
+                        } else {
+                            other_nodes.push(node_bin);
+                        }
+                    }
+                }
+                v22_nodes.sort();
+                if let Some(n22) = v22_nodes.into_iter().rev().next() {
+                    return Some(n22);
+                }
+                other_nodes.sort();
+                if let Some(any_node) = other_nodes.into_iter().rev().next() {
+                    return Some(any_node);
+                }
+            }
+        }
+
+        // FNM
+        let fnm_paths = [
+            home_path.join(".local").join("share").join("fnm").join("current").join("bin").join("node"),
+            home_path.join(".fnm").join("current").join("bin").join("node"),
+        ];
+        for p in fnm_paths {
+            if p.exists() {
+                return Some(p);
+            }
+        }
+
+        // Volta
+        let volta_node = home_path.join(".volta").join("bin").join("node");
+        if volta_node.exists() {
+            return Some(volta_node);
+        }
+
+        // asdf
+        let asdf_node = home_path.join(".asdf").join("shims").join("node");
+        if asdf_node.exists() {
+            return Some(asdf_node);
+        }
+    }
+
+    // 4. Fixed system locations
+    let fixed_paths = [
+        "/opt/homebrew/bin/node",
+        "/usr/local/bin/node",
+        "/usr/bin/node",
+        "/snap/bin/node",
+        "C:\\Program Files\\nodejs\\node.exe",
+        "C:\\Program Files (x86)\\nodejs\\node.exe",
+    ];
+    for p in fixed_paths {
+        let pb = PathBuf::from(p);
+        if pb.exists() {
+            return Some(pb);
+        }
+    }
+
+    // 5. System PATH lookup
     #[cfg(not(windows))]
     {
         if let Ok(output) = std::process::Command::new("which").arg("node").output() {
@@ -52,66 +171,6 @@ fn find_node_binary() -> Option<PathBuf> {
                     }
                 }
             }
-        }
-    }
-
-    let fixed_paths = [
-        "/opt/homebrew/bin/node",
-        "/usr/local/bin/node",
-        "/usr/bin/node",
-        "/snap/bin/node",
-        "C:\\Program Files\\nodejs\\node.exe",
-        "C:\\Program Files (x86)\\nodejs\\node.exe",
-    ];
-    for p in fixed_paths {
-        let pb = PathBuf::from(p);
-        if pb.exists() {
-            return Some(pb);
-        }
-    }
-
-    if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
-        let home_path = PathBuf::from(home);
-
-        // NVM
-        let nvm_versions = home_path.join(".nvm").join("versions").join("node");
-        if nvm_versions.is_dir() {
-            if let Ok(entries) = std::fs::read_dir(&nvm_versions) {
-                let mut valid_nodes = Vec::new();
-                for entry in entries.flatten() {
-                    let node_bin = entry.path().join("bin").join("node");
-                    if node_bin.exists() {
-                        valid_nodes.push(node_bin);
-                    }
-                }
-                valid_nodes.sort();
-                if let Some(latest) = valid_nodes.into_iter().rev().next() {
-                    return Some(latest);
-                }
-            }
-        }
-
-        // FNM
-        let fnm_paths = [
-            home_path.join(".local").join("share").join("fnm").join("current").join("bin").join("node"),
-            home_path.join(".fnm").join("current").join("bin").join("node"),
-        ];
-        for p in fnm_paths {
-            if p.exists() {
-                return Some(p);
-            }
-        }
-
-        // Volta
-        let volta_node = home_path.join(".volta").join("bin").join("node");
-        if volta_node.exists() {
-            return Some(volta_node);
-        }
-
-        // asdf
-        let asdf_node = home_path.join(".asdf").join("shims").join("node");
-        if asdf_node.exists() {
-            return Some(asdf_node);
         }
     }
 
@@ -207,7 +266,7 @@ fn main() {
             if is_backend_alive(4100) {
                 println!("⚡ Backend server already alive on 127.0.0.1:4100");
             } else {
-                let node_bin = find_node_binary().unwrap_or_else(|| PathBuf::from("node"));
+                let node_bin = find_node_binary(app.handle()).unwrap_or_else(|| PathBuf::from("node"));
                 let server_entry = find_server_entry(app.handle());
                 let workspace_dir = resolve_workspace_dir(app.handle());
 
@@ -218,13 +277,27 @@ fn main() {
 
                     let mut cmd = std::process::Command::new(&node_bin);
                     cmd.arg(&entry);
+                    if let Some(entry_dir) = entry.parent() {
+                        cmd.current_dir(entry_dir);
+                    }
                     cmd.env("PORT", "4100");
                     cmd.env("HOST", "127.0.0.1");
                     cmd.env("WORKSPACE_DIR", &workspace_dir);
 
-                    if let Ok(path_env) = std::env::var("PATH") {
-                        cmd.env("PATH", path_env);
+                    let mut full_path = std::env::var("PATH").unwrap_or_default();
+                    #[cfg(not(windows))]
+                    {
+                        let extra = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+                        if full_path.is_empty() {
+                            full_path = extra.to_string();
+                        } else {
+                            full_path = format!("{}:{}", extra, full_path);
+                        }
+                        if let Ok(home) = std::env::var("HOME") {
+                            full_path = format!("{}/.local/bin:{}/bin:{}", home, home, full_path);
+                        }
                     }
+                    cmd.env("PATH", full_path);
 
                     match cmd.spawn() {
                         Ok(child) => {

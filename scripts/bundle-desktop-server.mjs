@@ -81,4 +81,22 @@ fs.writeFileSync(
   JSON.stringify({ name: 'sp-kickstack-desktop-server', type: 'module', main: 'index.mjs' }, null, 2)
 );
 
+// 4. Bundle standalone Node binary into resources/bin for full self-contained standalone desktop distribution
+const binDir = path.join(rootDir, 'packages', 'desktop', 'src-tauri', 'resources', 'bin');
+fs.mkdirSync(binDir, { recursive: true });
+
+const nodeTargetName = process.platform === 'win32' ? 'node.exe' : 'node';
+const destNode = path.join(binDir, nodeTargetName);
+
+try {
+  fs.copyFileSync(process.execPath, destNode);
+  if (process.platform !== 'win32') {
+    fs.chmodSync(destNode, 0o755);
+  }
+  console.log(`✅ Bundled standalone Node binary (${process.version}) to resources/bin/${nodeTargetName}`);
+} catch (err) {
+  console.warn(`⚠️ Warning: Could not copy standalone Node binary: ${err.message}`);
+}
+
 console.log('🚀 Desktop standalone server bundle complete!');
+

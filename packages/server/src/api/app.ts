@@ -38,6 +38,7 @@ import {
   IdeSettingsSchema,
   StartIdeInputSchema,
   CreateNeuronRuleInputSchema,
+  APP_VERSION,
 } from '@sp-kickstack/shared';
 import { BrowserService } from '../services/browserService.js';
 import { ClefService } from '../services/clefService.js';
@@ -223,7 +224,7 @@ export function createApp(deps: AppDependencies): Express {
 
   // Health
   app.get('/api/health', (_req, res) => {
-    res.json({ ok: true, version: '0.2.0', demo_mode: Boolean(deps.demoMode) });
+    res.json({ ok: true, version: APP_VERSION, demo_mode: Boolean(deps.demoMode) });
   });
 
   // Workspaces
@@ -871,16 +872,22 @@ export function createApp(deps: AppDependencies): Express {
       appendLog('system', `[VCS] Pushing feature branch and opening pull request to develop.`);
 
       const prUrl = `https://github.com/my-org/${task.project}/pull/${Math.floor(Math.random() * 80 + 20)}`;
+      const inTokens = 18450;
+      const outTokens = 1220;
+      const totalTokens = inTokens + outTokens;
+      const costUsd = 0.07;
+
       deps.db
-        .prepare('UPDATE bridge_tasks SET status = ?, pr_url = ?, updated_at = ? WHERE id = ?')
-        .run('in_review', prUrl, new Date().toISOString(), taskId);
+        .prepare('UPDATE bridge_tasks SET status = ?, pr_url = ?, input_tokens = ?, output_tokens = ?, total_tokens = ?, cost_usd = ?, updated_at = ? WHERE id = ?')
+        .run('in_review', prUrl, inTokens, outTokens, totalTokens, costUsd, new Date().toISOString(), taskId);
 
       appendLog('stdout', `[PR Ready] Pull request opened: ${prUrl}`);
+      appendLog('stdout', `Finished: done · ${totalTokens.toLocaleString()} tokens (${inTokens.toLocaleString()} in / ${outTokens.toLocaleString()} out) · $${costUsd.toFixed(2)}`);
       appendLog('system', `[Done] Task transitioned to IN_REVIEW.`);
 
       deps.broadcaster.broadcast({
         type: 'task_status_changed',
-        payload: { taskId, status: 'in_review', pr_url: prUrl },
+        payload: { taskId, status: 'in_review', pr_url: prUrl, input_tokens: inTokens, output_tokens: outTokens, total_tokens: totalTokens, cost_usd: costUsd },
       });
 
       const updatedTask = deps.db.prepare('SELECT * FROM bridge_tasks WHERE id = ?').get(taskId) as any;

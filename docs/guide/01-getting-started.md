@@ -6,11 +6,10 @@ your first requirement.
 ## What you need
 
 - **Node.js 22.19.0.** The repository pins it in `.nvmrc` and in `package.json` (`engines`).
-  With nvm, run `nvm use` in the repository folder. Other Node versions (for example Node 24)
+  With nvm, run `nvm use` in the repository folder. Other Node versions
   can fail to load the database driver (`better-sqlite3`), both for the server and for tests.
 - **npm** (comes with Node) and **git**.
-- For agents: an engine for each project (Stoneforge), or use **Manual** projects where people do
-  the work. See [Projects and engines](02-projects-and-engines.md).
+- **For agents**: Local AI CLIs installed on your computer ([Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview), [Google AGY](https://github.com/google-gemini), [OpenAI Codex](https://github.com/openai), [Ollama](https://ollama.ai/)), or use **Manual** projects where human developers do the work, or an external HTTP engine (Stoneforge). See [Projects and engines](02-projects-and-engines.md).
 
 ## Install and start
 
@@ -27,8 +26,15 @@ your first requirement.
    npm install
    ```
 
-4. Start the server and the web app together:
+4. Build the workspaces:
 
+   ```bash
+   npm run build
+   ```
+
+5. Choose your mode:
+
+   **Option A: Web Development Stack (Server + Web Client)**
    ```bash
    npm run dev
    ```
@@ -40,9 +46,13 @@ your first requirement.
    | server | `http://127.0.0.1:4100` | The bridge API (`PORT` 4100 and `HOST` 127.0.0.1 by default) |
    | web | `http://localhost:4101` | The web app. It forwards `/api` calls to `http://127.0.0.1:4100` |
 
-5. Open `http://localhost:4101` in your browser.
+   Open `http://localhost:4101` in your browser. (You can also start them separately: `npm run dev:server` and `npm run dev:web`.)
 
-You can also start the parts on their own: `npm run dev:server` and `npm run dev:web`.
+   **Option B: Native Desktop App (Tauri v2)**
+   ```bash
+   npm run desktop:bundle-server
+   npm run desktop:dev
+   ```
 
 ### What happens next
 

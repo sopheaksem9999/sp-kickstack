@@ -274,25 +274,28 @@ describe('Merge gate', () => {
     expect(reqRow(req.id)).toMatchObject({ status: 'qa', merge_state: 'idle' });
   });
 
-  it('hands each merged commit to AI QA once the requirement is in QA, and nothing when the merge fails', async () => {
+  it('auto-merge waits while AI QA holds it, then merges', async () => {
     h = makeGitHarness();
-    const calls: Array<{ reqId: string; commits: Record<string, string> }> = [];
+    let hold: string | null = 'AI QA is still checking';
     const gate = new MergeGateService(h.db, h.projectService, h.requirementService, h.reactor, {
       getAdapter: (name: string) => h.adapters[name] ?? h.adapters.backend,
       testTimeoutMs: 20_000,
       tmpRoot: path.join(h.ws, 'tmp'),
-      onEnteredQa: (reqId, commits) => calls.push({ reqId, commits }),
+      autoMergeHold: () => hold,
     });
     const { req } = await readyForGate();
-    expect((await gate.start(req.id, 'manual').done).ok).toBe(true);
-    expect(calls).toEqual([
-      { reqId: req.id, commits: { backend: headOf(h.backendRepo.repo, 'develop'), mobile: headOf(h.mobileRepo.repo, 'develop') } },
-    ]);
+    h.requirementService.updateRequirementMergePolicy(req.id, 'auto_merge');
 
-    const failing = await readyForGate(['backend']);
-    h.projectService.updateProject('backend', { test_command: 'exit 3' });
-    expect((await gate.start(failing.req.id, 'manual').done).ok).toBe(false);
-    expect(calls).toHaveLength(1);
+    gate.autoStart(req.id);
+    expect(reqRow(req.id).status).toBe('in_review');
+    expect(reqRow(req.id).merge_state ?? 'idle').toBe('idle');
+
+    hold = null;
+    gate.autoStart(req.id);
+    for (let i = 0; i < 400 && !(reqRow(req.id).status === 'qa' && reqRow(req.id).merge_state === 'idle'); i++) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(reqRow(req.id)).toMatchObject({ status: 'qa', merge_state: 'idle' });
   });
 
   it('changes nothing anywhere when one project conflicts, and tells that task to rebase', async () => {

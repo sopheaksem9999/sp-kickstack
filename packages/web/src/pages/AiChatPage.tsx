@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Sparkles,
@@ -36,6 +36,9 @@ import {
   Upload,
   Globe,
   AlertCircle,
+  AlertTriangle,
+  Zap,
+  Gauge,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
@@ -51,6 +54,7 @@ import {
   fetchSettings,
   fetchAssets,
   fetchRequirements,
+  fetchAiProviders,
 } from '../lib/api.js';
 import {
   AiChatSession,
@@ -179,10 +183,8 @@ export function AiChatPage() {
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [isSynthesizingTicket, setIsSynthesizingTicket] = useState(false);
 
-  // Radix popovers open states
+  // Radix engine popover open state (matches in-app browser AI chat)
   const [isEngineOpen, setIsEngineOpen] = useState(false);
-  const [isModelOpen, setIsModelOpen] = useState(false);
-  const [isEffortOpen, setIsEffortOpen] = useState(false);
 
   // Multi-chat parallel in-progress state: session ID -> boolean
   const [inProgressSessions, setInProgressSessions] = useState<Record<string, boolean>>({});
@@ -195,6 +197,13 @@ export function AiChatPage() {
   const { data: appSettings } = useQuery({
     queryKey: ['settings'],
     queryFn: fetchSettings,
+    staleTime: 30000,
+  });
+
+  // 1b. Fetch AI Provider Engine Statuses (detect if local CLIs are installed)
+  const { data: aiProviders = [] } = useQuery({
+    queryKey: ['ai-providers'],
+    queryFn: fetchAiProviders,
     staleTime: 30000,
   });
 
@@ -218,6 +227,18 @@ export function AiChatPage() {
   const [selectedProvider, setSelectedProvider] = useState<string>('auto');
   const [selectedModel, setSelectedModel] = useState<string>('default');
   const [selectedEffort, setSelectedEffort] = useState<ReasoningEffort>('medium');
+
+  const currentProviderStatus = useMemo(() => {
+    return aiProviders.find((p) => p.id === selectedProvider);
+  }, [aiProviders, selectedProvider]);
+
+  const isSelectedProviderInstalled = useMemo(() => {
+    if (selectedProvider === 'heuristic') return true;
+    if (selectedProvider === 'auto') {
+      return aiProviders.some((p) => p.installed && p.available);
+    }
+    return Boolean(currentProviderStatus?.installed && currentProviderStatus?.available);
+  }, [selectedProvider, currentProviderStatus, aiProviders]);
 
   // 2. Fetch Projects for the workspace
   const { data: projects = [] } = useQuery({
@@ -430,6 +451,12 @@ export function AiChatPage() {
   useEffect(() => {
     if (chatScrollRef.current) {
       chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+      const frame = requestAnimationFrame(() => {
+        if (chatScrollRef.current) {
+          chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+        }
+      });
+      return () => cancelAnimationFrame(frame);
     }
   }, [activeSession?.messages, isActiveSessionRunning]);
 
@@ -451,6 +478,10 @@ export function AiChatPage() {
       queryClient.setQueryData<AiChatSession[]>(
         ['ai-chat-sessions', activeWorkspaceId],
         (old = []) => [newSession, ...old]
+      );
+      queryClient.setQueryData<AiChatSession>(
+        ['ai-chat-session', newSession.id],
+        newSession
       );
       handleSelectSession(newSession.id);
       setSelectedProvider(newSession.provider || configuredDefaultProvider);
@@ -938,6 +969,38 @@ export function AiChatPage() {
     setShowMentionMenu(false);
     setShowHashSlashMenu(false);
 
+    // Optimistically render user message immediately in chat transcript
+    const optimisticMessage: AiChatMessage = {
+      id: `temp-${Date.now()}`,
+      role: 'user',
+      content: contentToSend || '(Attached files)',
+      attachments: sendingFiles.length > 0 ? sendingFiles : undefined,
+      timestamp: new Date().toISOString(),
+    };
+
+    queryClient.setQueryData<AiChatSession>(
+      ['ai-chat-session', targetSessionId],
+      (prev) => {
+        if (!prev) {
+          return {
+            id: targetSessionId,
+            workspace_id: activeWorkspaceId,
+            title: rawContent.slice(0, 32) || 'Architecture Discussion',
+            provider: (sendingProvider as any) || 'auto',
+            model: sendingModel,
+            effort: sendingEffort,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            messages: [optimisticMessage],
+          };
+        }
+        return {
+          ...prev,
+          messages: [...(prev.messages || []), optimisticMessage],
+        };
+      }
+    );
+
     // Set parallel in-progress indicator for this specific session
     setInProgressSessions((prev) => ({ ...prev, [targetSessionId]: true }));
 
@@ -950,7 +1013,7 @@ export function AiChatPage() {
         effort: sendingEffort,
       });
 
-      // Update session in query cache
+      // Update session in query cache (server transcript seamlessly replaces optimistic message)
       queryClient.setQueryData(['ai-chat-session', targetSessionId], response.session);
       queryClient.invalidateQueries({ queryKey: ['ai-chat-sessions', activeWorkspaceId] });
       queryClient.invalidateQueries({ queryKey: ['requirements'] });
@@ -961,7 +1024,19 @@ export function AiChatPage() {
       }
     } catch (err: any) {
       toast.error(err.message || 'Failed to send message to local AI');
+      // Rollback optimistic message so the failed prompt isn't stuck as a ghost message
+      queryClient.setQueryData<AiChatSession>(
+        ['ai-chat-session', targetSessionId],
+        (prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            messages: (prev.messages || []).filter((m) => m.id !== optimisticMessage.id),
+          };
+        }
+      );
       if (activeSessionId === targetSessionId) {
+        setChatInput(rawContent);
         setAttachedFiles(sendingFiles);
       }
     } finally {
@@ -1009,6 +1084,14 @@ export function AiChatPage() {
     }
     return selectedModel;
   }, [availableModels, selectedModel]);
+
+  const currentProviderShortName = useMemo(() => {
+    return (currentProviderName || 'Auto').replace(/\s*\(.*\)/, '').trim().split(' ')[0];
+  }, [currentProviderName]);
+
+  const currentModelShortName = useMemo(() => {
+    return (currentModelName || 'Default').replace(/^Default.*$/i, 'Default').replace(/\s*\(.*\)/, '').trim().split(' ')[0];
+  }, [currentModelName]);
 
   return (
     <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-slate-50 dark:bg-[#14151a]">
@@ -1218,10 +1301,20 @@ export function AiChatPage() {
                   </button>
                 )}
 
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-semibold flex items-center gap-1 shrink-0">
-                  <Terminal className="w-2.5 h-2.5" />
-                  <span>0 API Keys · Local PC AI</span>
-                </span>
+                {isSelectedProviderInstalled ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-semibold flex items-center gap-1 shrink-0">
+                    <Terminal className="w-2.5 h-2.5" />
+                    <span>0 API Keys · Local PC AI</span>
+                  </span>
+                ) : (
+                  <span
+                    className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 font-semibold flex items-center gap-1 shrink-0"
+                    title="Selected engine CLI is not installed or detected in PATH. Operating in Offline Heuristic mode."
+                  >
+                    <AlertTriangle className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
+                    <span>CLI Not Detected (Offline Mode)</span>
+                  </span>
+                )}
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 flex-wrap">
                 <span>Workspace: <strong className="text-slate-700 dark:text-slate-300 font-medium">{activeWorkspace?.name || activeWorkspaceId}</strong></span>
@@ -1256,154 +1349,157 @@ export function AiChatPage() {
                 </button>
               )}
 
-              {/* 1. Radix Popover: Engine / Provider */}
+              {/* Engine / Model / Effort Config Popover (Matching In-App Browser AI Chat) */}
               <Popover open={isEngineOpen} onOpenChange={setIsEngineOpen}>
                 <PopoverTrigger asChild>
                   <button
                     type="button"
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-[#2d2f3d] bg-slate-50 dark:bg-[#20212b] hover:bg-slate-100 dark:hover:bg-[#262836] text-xs font-semibold text-slate-800 dark:text-slate-200 transition-all shadow-2xs"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-[#2d2f3d] bg-slate-50 dark:bg-[#14151e] hover:bg-slate-100 dark:hover:bg-[#20212d] text-slate-800 dark:text-slate-200 transition-colors shadow-2xs truncate"
+                    title="AI Engine, Model & Reasoning Effort Configuration"
                   >
-                    <Cpu className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                    <span className="truncate max-w-[130px]">{currentProviderName}</span>
-                    <ChevronDown className="w-3.5 h-3.5 text-slate-400 ml-0.5 shrink-0" />
+                    <Zap className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                    <span className="truncate max-w-[140px]">
+                      {currentProviderShortName} · {currentModelShortName}
+                    </span>
+                    <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
                   </button>
                 </PopoverTrigger>
-                <PopoverContent align="end" className="w-72 p-2 space-y-1">
-                  <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    Select AI Engine
-                  </div>
-                  {PROVIDER_OPTIONS.filter((p) => {
-                    if (p.id === 'auto') return true;
-                    const enabledList = appSettings?.ai_cli?.enabledEngines;
-                    if (!enabledList || enabledList.length === 0) return true;
-                    return enabledList.includes(p.id as any);
-                  }).map((p) => {
-                    const isSelected = selectedProvider === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => {
-                          handleProviderChange(p.id);
-                          setIsEngineOpen(false);
-                        }}
-                        className={`w-full flex items-start justify-between px-2.5 py-2 rounded-lg text-left text-xs transition-colors ${
-                          isSelected
-                            ? 'bg-purple-100 dark:bg-purple-950/80 text-purple-900 dark:text-purple-200 font-semibold'
-                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#252736]'
-                        }`}
-                      >
-                        <div className="min-w-0 pr-2">
-                          <div className="truncate">{p.name}</div>
-                          <div className="text-[10px] text-slate-400 font-normal">{p.desc}</div>
-                        </div>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0 mt-0.5" />}
-                      </button>
-                    );
-                  })}
-                </PopoverContent>
-              </Popover>
-
-              {/* 2. Radix Popover: Model */}
-              <Popover open={isModelOpen} onOpenChange={setIsModelOpen}>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-[#2d2f3d] bg-slate-50 dark:bg-[#20212b] hover:bg-slate-100 dark:hover:bg-[#262836] text-xs font-semibold text-slate-800 dark:text-slate-200 transition-all shadow-2xs"
-                  >
-                    <Layers className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
-                    <span className="truncate max-w-[120px] font-mono text-[11px]">{currentModelName}</span>
-                    <ChevronDown className="w-3.5 h-3.5 text-slate-400 ml-0.5 shrink-0" />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent align="end" className="w-80 p-2 space-y-1 max-h-[380px] overflow-y-auto">
-                  <div className="flex items-center justify-between px-2 py-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                      Select Model ({selectedProvider})
-                    </span>
-                    <span className="text-[10px] text-purple-500 dark:text-purple-400 font-medium">
-                      Settings Sync
-                    </span>
-                  </div>
-                  {availableModels.map((m) => {
-                    const isSelected = selectedModel === m.id;
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => {
-                          handleModelChange(m.id);
-                          setIsModelOpen(false);
-                        }}
-                        className={`w-full flex items-start justify-between px-2.5 py-2 rounded-lg text-left text-xs transition-colors ${
-                          isSelected
-                            ? 'bg-purple-100 dark:bg-purple-950/80 text-purple-900 dark:text-purple-200 font-semibold ring-1 ring-purple-500/40'
-                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#252736]'
-                        }`}
-                      >
-                        <div className="min-w-0 pr-2">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-semibold text-xs">{m.name}</span>
-                            {m.isConfigured && (
-                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-600 dark:text-purple-300 border border-purple-500/30 font-medium">
-                                Settings Default
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[10px] text-slate-400 font-mono mt-0.5">{m.id}</div>
-                          {m.desc && (
-                            <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-tight">
-                              {m.desc}
+                <PopoverContent align="end" className="w-80 p-2.5 space-y-3">
+                  {/* Section 1: AI Engine */}
+                  <div>
+                    <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 px-1">
+                      <Cpu className="w-3 h-3 text-purple-500" />
+                      <span>AI Engine</span>
+                    </div>
+                    <div className="space-y-0.5">
+                      {PROVIDER_OPTIONS.filter((p) => {
+                        if (p.id === 'auto') return true;
+                        const enabledList = appSettings?.ai_cli?.enabledEngines;
+                        if (!enabledList || enabledList.length === 0) return true;
+                        return enabledList.includes(p.id as any);
+                      }).map((opt) => {
+                        const isSelected = selectedProvider === opt.id;
+                        const status = aiProviders.find((prov) => prov.id === opt.id);
+                        const isInstalled =
+                          opt.id === 'heuristic' ||
+                          (opt.id === 'auto'
+                            ? aiProviders.some((prov) => prov.installed && prov.available)
+                            : Boolean(status?.installed && status?.available));
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              handleProviderChange(opt.id);
+                            }}
+                            className={`w-full flex items-start justify-between p-1.5 rounded-lg text-left text-xs transition-colors ${
+                              isSelected
+                                ? 'bg-purple-50 dark:bg-purple-950/50 text-purple-900 dark:text-purple-200 font-medium ring-1 ring-purple-500/30'
+                                : 'hover:bg-slate-100 dark:hover:bg-[#20212d] text-slate-700 dark:text-slate-300'
+                            }`}
+                          >
+                            <div className="min-w-0 pr-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="truncate">{opt.name}</span>
+                                {opt.id !== 'heuristic' && (
+                                  isInstalled ? (
+                                    <span className="text-[8px] px-1 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-mono font-medium shrink-0">
+                                      Installed
+                                    </span>
+                                  ) : (
+                                    <span className="text-[8px] px-1 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 font-mono font-medium shrink-0">
+                                      Not Detected
+                                    </span>
+                                  )
+                                )}
+                              </div>
+                              <div className="text-[10px] text-slate-400 font-normal">{opt.desc}</div>
                             </div>
-                          )}
-                        </div>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0 mt-0.5" />}
-                      </button>
-                    );
-                  })}
-                </PopoverContent>
-              </Popover>
-
-              {/* 3. Radix Popover: Effort */}
-              <Popover open={isEffortOpen} onOpenChange={setIsEffortOpen}>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-[#2d2f3d] bg-slate-50 dark:bg-[#20212b] hover:bg-slate-100 dark:hover:bg-[#262836] text-xs font-semibold text-slate-800 dark:text-slate-200 transition-all shadow-2xs"
-                  >
-                    <span className="text-slate-400 font-normal">Effort:</span>
-                    <span className="capitalize text-purple-600 dark:text-purple-400">{selectedEffort}</span>
-                    <ChevronDown className="w-3.5 h-3.5 text-slate-400 ml-0.5 shrink-0" />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent align="end" className="w-60 p-2 space-y-1">
-                  <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    Reasoning Effort
+                            {isSelected && (
+                              <Check className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0 mt-0.5" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                  {EFFORT_OPTIONS.map((eff) => {
-                    const isSelected = selectedEffort === eff.id;
-                    return (
-                      <button
-                        key={eff.id}
-                        type="button"
-                        onClick={() => {
-                          handleEffortChange(eff.id);
-                          setIsEffortOpen(false);
-                        }}
-                        className={`w-full flex items-start justify-between px-2.5 py-2 rounded-lg text-left text-xs transition-colors ${
-                          isSelected
-                            ? 'bg-purple-100 dark:bg-purple-950/80 text-purple-900 dark:text-purple-200 font-semibold'
-                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#252736]'
-                        }`}
-                      >
-                        <div className="min-w-0 pr-2">
-                          <div className="capitalize">{eff.name}</div>
-                          <div className="text-[10px] text-slate-400 font-normal">{eff.desc}</div>
-                        </div>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0 mt-0.5" />}
-                      </button>
-                    );
-                  })}
+
+                  {/* Section 2: Model Preset */}
+                  <div className="border-t border-slate-100 dark:border-[#2d2f3d] pt-2">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 px-1">
+                      <div className="flex items-center gap-1">
+                        <Layers className="w-3 h-3 text-indigo-500" />
+                        <span>Model Preset ({selectedProvider})</span>
+                      </div>
+                      <span className="text-[9px] text-purple-500 dark:text-purple-400 font-medium normal-case">
+                        Settings Sync
+                      </span>
+                    </div>
+                    <div className="max-h-36 overflow-y-auto space-y-0.5 pr-0.5">
+                      {availableModels.map((m) => {
+                        const isSelected = selectedModel === m.id;
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => {
+                              handleModelChange(m.id);
+                            }}
+                            className={`w-full flex items-start justify-between p-1.5 rounded-lg text-left text-xs transition-colors ${
+                              isSelected
+                                ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-900 dark:text-indigo-200 font-medium ring-1 ring-indigo-500/30'
+                                : 'hover:bg-slate-100 dark:hover:bg-[#20212d] text-slate-700 dark:text-slate-300'
+                            }`}
+                          >
+                            <div className="min-w-0 pr-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-[11px] truncate font-semibold">{m.name}</span>
+                                {m.isConfigured && (
+                                  <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-purple-500/20 text-purple-600 dark:text-purple-300 border border-purple-500/30">
+                                    Default
+                                  </span>
+                                )}
+                              </div>
+                              {m.desc && <div className="text-[9px] text-slate-400 leading-tight mt-0.5">{m.desc}</div>}
+                            </div>
+                            {isSelected && (
+                              <Check className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Section 3: Reasoning Effort */}
+                  <div className="border-t border-slate-100 dark:border-[#2d2f3d] pt-2">
+                    <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 px-1">
+                      <Gauge className="w-3 h-3 text-emerald-500" />
+                      <span>Reasoning Effort</span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-1">
+                      {EFFORT_OPTIONS.map((eff) => {
+                        const isSelected = selectedEffort === eff.id;
+                        return (
+                          <button
+                            key={eff.id}
+                            type="button"
+                            onClick={() => {
+                              handleEffortChange(eff.id);
+                            }}
+                            className={`py-1 text-center rounded-md text-[11px] font-medium transition-colors ${
+                              isSelected
+                                ? 'bg-indigo-600 text-white shadow-2xs font-semibold'
+                                : 'bg-slate-100 dark:bg-[#20212d] text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-[#282a39]'
+                            }`}
+                            title={eff.desc}
+                          >
+                            {eff.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </PopoverContent>
               </Popover>
             </div>
@@ -1430,6 +1526,28 @@ export function AiChatPage() {
             </div>
           </div>
         </header>
+
+        {/* Offline / Missing Engine CLI Notice Banner */}
+        {!isSelectedProviderInstalled && (
+          <div className="bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200/80 dark:border-amber-800/60 px-5 py-2.5 flex items-center justify-between gap-3 text-xs text-amber-900 dark:text-amber-200 shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <span className="font-medium truncate">
+                {selectedProvider === 'auto'
+                  ? 'No local AI CLI (Claude, Antigravity/Gemini, Codex, Ollama) was detected.'
+                  : `${currentProviderName} CLI is not installed or detected in your PATH.`}{' '}
+                Chat is operating in <strong className="font-semibold">Offline Heuristic Spec Mode</strong>.
+              </span>
+            </div>
+            <Link
+              to="/settings?tab=ai"
+              className="shrink-0 px-2.5 py-1 rounded-md bg-amber-200/60 dark:bg-amber-900/60 hover:bg-amber-300/60 dark:hover:bg-amber-800/60 font-semibold text-[11px] text-amber-900 dark:text-amber-100 transition-colors flex items-center gap-1"
+            >
+              <span>Configure in Settings</span>
+              <ExternalLink className="w-3 h-3" />
+            </Link>
+          </div>
+        )}
 
         {/* Chat Messages Stream */}
         <div
@@ -1758,8 +1876,8 @@ export function AiChatPage() {
           </div>
         )}
 
-        {/* Bottom Input Area with Mentions, Tickets Autocomplete & Paste Support */}
-        <div className="relative p-3 border-t border-slate-200 dark:border-[#23242e] bg-white dark:bg-[#1e1f2b] flex items-end gap-2">
+        {/* Bottom Input Area with Mentions, Tickets Autocomplete & Paste Support (Matching In-App Browser AI Chat) */}
+        <div className="relative p-2.5 border-t border-slate-200 dark:border-[#2d2f3d] bg-white dark:bg-[#1b1c26]">
           {/* Floating Mention Autocomplete Popup (@ Shared Assets) */}
           {showMentionMenu && (
             <div className="absolute bottom-full left-4 mb-2 w-80 max-h-60 overflow-y-auto rounded-xl border border-purple-200 dark:border-purple-800/60 bg-white dark:bg-[#1f202b] shadow-xl z-50 p-1.5">
@@ -1984,6 +2102,19 @@ export function AiChatPage() {
             </div>
           )}
 
+        <div className="relative">
+          <textarea
+            ref={textareaRef}
+            rows={2}
+            value={chatInput}
+            onChange={handleChatInputChange}
+            onKeyDown={handleInputKeyDown}
+            onPaste={handlePaste}
+            placeholder="Discuss architecture... Type # or / for projects & tickets, @ for assets (Enter to send)"
+            disabled={isActiveSessionRunning}
+            className="w-full resize-none p-2.5 pr-20 text-xs rounded-xl bg-slate-50 dark:bg-[#14151e] border border-slate-200 dark:border-[#2d2f3d] text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 transition-all"
+          />
+
           {/* Hidden File Input */}
           <input
             type="file"
@@ -1993,107 +2124,100 @@ export function AiChatPage() {
             className="hidden"
           />
 
-          {/* Paperclip upload button */}
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            title="Attach local file (Image, Spec, Code)"
-            className="p-2.5 rounded-xl border border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424] text-slate-500 hover:text-purple-600 dark:hover:text-purple-400 hover:border-purple-300 dark:hover:border-purple-700 transition-colors shrink-0"
-          >
-            <Paperclip className="w-4 h-4" />
-          </button>
+          <div className="absolute right-2 bottom-2.5 flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isActiveSessionRunning}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#222432] transition-colors"
+              title="Attach File"
+            >
+              <Paperclip className="w-3.5 h-3.5" />
+            </button>
 
-          {/* @ Shortcut button for Shared Assets */}
-          <button
-            type="button"
-            onClick={() => {
-              setShowMentionMenu((prev) => !prev);
-              setShowHashSlashMenu(false);
-              setMentionQuery('');
-              setMentionSelectedIndex(0);
-            }}
-            title="Shortcut @: Mention / select from Shared Workspace Assets"
-            className={`p-2.5 rounded-xl border transition-colors shrink-0 ${
-              showMentionMenu
-                ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400'
-                : 'border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424] text-slate-500 hover:text-purple-600 dark:hover:text-purple-400 hover:border-purple-300 dark:hover:border-purple-700'
-            }`}
-          >
-            <AtSign className="w-4 h-4" />
-          </button>
+            <button
+              type="button"
+              onClick={() => handleSendMessage()}
+              disabled={isActiveSessionRunning || (!chatInput.trim() && attachedFiles.length === 0)}
+              className="p-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-40 transition-colors shadow-2xs"
+              title="Send Message"
+            >
+              {isActiveSessionRunning ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Send className="w-3.5 h-3.5" />
+              )}
+            </button>
+          </div>
+        </div>
 
-          {/* # Shortcut button for Projects & Tickets */}
-          <button
-            type="button"
-            onClick={() => {
-              if (showHashSlashMenu && hashSlashTrigger === '#') {
+        <div className="flex items-center justify-between mt-2 text-[10px] text-slate-400 dark:text-slate-500">
+          <div className="flex items-center gap-2">
+            <span>Enter to send · Shift+Enter for newline</span>
+            <span className="text-slate-300 dark:text-slate-600">·</span>
+            <button
+              type="button"
+              onClick={() => {
+                setShowMentionMenu((prev) => !prev);
                 setShowHashSlashMenu(false);
-              } else {
+                setMentionQuery('');
+                setMentionSelectedIndex(0);
+              }}
+              className="hover:text-purple-600 dark:hover:text-purple-400 transition-colors font-medium flex items-center gap-0.5 cursor-pointer"
+              title="Mention shared workspace asset"
+            >
+              <AtSign className="w-3 h-3" />
+              <span>Assets</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
                 setShowHashSlashMenu(true);
                 setHashSlashTrigger('#');
+                setShowMentionMenu(false);
                 setHashSlashQuery('');
                 setHashSlashSelectedIndex(0);
-                setShowMentionMenu(false);
-              }
-            }}
-            title="Shortcut #: Mention workspace project or ticket (e.g. #backend, #REQ-001)"
-            className={`p-2.5 rounded-xl border transition-colors shrink-0 ${
-              showHashSlashMenu && hashSlashTrigger === '#'
-                ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400'
-                : 'border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424] text-slate-500 hover:text-purple-600 dark:hover:text-purple-400 hover:border-purple-300 dark:hover:border-purple-700'
-            }`}
-          >
-            <Hash className="w-4 h-4" />
-          </button>
-
-          {/* / Shortcut button for Projects & Commands */}
-          <button
-            type="button"
-            onClick={() => {
-              if (showHashSlashMenu && hashSlashTrigger === '/') {
-                setShowHashSlashMenu(false);
-              } else {
+              }}
+              className="hover:text-purple-600 dark:hover:text-purple-400 transition-colors font-medium flex items-center gap-0.5 cursor-pointer"
+              title="Mention workspace project or ticket"
+            >
+              <Hash className="w-3 h-3" />
+              <span>Projects/Tickets</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
                 setShowHashSlashMenu(true);
                 setHashSlashTrigger('/');
+                setShowMentionMenu(false);
                 setHashSlashQuery('');
                 setHashSlashSelectedIndex(0);
-                setShowMentionMenu(false);
-              }
-            }}
-            title="Shortcut /: Mention workspace project or command (e.g. #backend, /create)"
-            className={`p-2.5 rounded-xl border transition-colors shrink-0 flex items-center justify-center min-w-9 ${
-              showHashSlashMenu && hashSlashTrigger === '/'
-                ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400'
-                : 'border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424] text-slate-500 hover:text-purple-600 dark:hover:text-purple-400 hover:border-purple-300 dark:hover:border-purple-700'
-            }`}
-          >
-            <span className="font-mono text-xs font-bold leading-none">/</span>
-          </button>
+              }}
+              className="hover:text-purple-600 dark:hover:text-purple-400 transition-colors font-medium flex items-center gap-0.5 font-mono cursor-pointer"
+              title="Quick command (e.g. /create)"
+            >
+              <span>/</span>
+              <span>Commands</span>
+            </button>
+          </div>
 
-          <textarea
-            ref={textareaRef}
-            value={chatInput}
-            onChange={handleChatInputChange}
-            onKeyDown={handleInputKeyDown}
-            onPaste={handlePaste}
-            placeholder="Discuss architecture... Type # or / for projects & tickets, @ for assets (Enter to send)"
-            rows={2}
-            className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-[#303030] bg-slate-50 dark:bg-[#242424] text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] resize-none"
-          />
-
-          <button
-            type="button"
-            onClick={() => handleSendMessage()}
-            disabled={isActiveSessionRunning || (!chatInput.trim() && attachedFiles.length === 0)}
-            className="p-3.5 rounded-xl bg-gradient-to-r from-[#7b68ee] to-[#6366f1] text-white hover:from-[#6c5ce7] hover:to-[#4f46e5] disabled:opacity-40 transition-all shadow-md shadow-purple-500/20 active:scale-95 shrink-0"
-          >
-            {isActiveSessionRunning ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Send className="w-4 h-4" />
-            )}
-          </button>
+          {activeSession?.messages && activeSession.messages.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                if (activeSession) {
+                  setSessionToDelete(activeSession);
+                }
+              }}
+              className="flex items-center gap-1 hover:text-red-500 transition-colors cursor-pointer"
+              title="Delete or clear this session"
+            >
+              <Trash2 className="w-3 h-3" />
+              <span>Clear Chat</span>
+            </button>
+          )}
         </div>
+      </div>
       </main>
 
       {/* RIGHT: Collapsible Session Inspector Sidebar */}

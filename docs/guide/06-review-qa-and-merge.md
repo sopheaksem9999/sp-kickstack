@@ -155,8 +155,8 @@ About the model for the round:
   are IN REVIEW or COMPLETE have no **Retry**, so this dialog is where you clear their pins (for
   a failed task, **Clear pin** is in the **Retry** panel, see
   [08](08-rate-limits-and-retry.md#retry-with-a-different-model-or-effort)).
-- Whether Stoneforge honours the model and effort is **not confirmed**, and a Manual project
-  ignores them (see [02](02-projects-and-engines.md#model-and-effort-sent-to-the-engine)).
+- Local AI CLIs pass the pinned model and effort directly to the CLI command; Stoneforge receives
+  them in the request payload; Manual projects ignore them (see [02](02-projects-and-engines.md#model-and-effort-sent-to-the-engine)).
 
 Only the comments of the current round are in the new prompt; earlier rounds are not repeated.
 If an older point still matters, **Reopen** it before you press **Request changes**.

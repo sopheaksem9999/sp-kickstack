@@ -33,7 +33,14 @@ export interface AiDraftOptions {
 
 export type ProviderStatus = EngineProviderStatus;
 
-export function findCliBinary(name: string): string | null {
+const CLI_ALIASES: Record<string, string[]> = {
+  agy: ['agy', 'antigravity', 'gemini'],
+  claude: ['claude', 'claude-code'],
+  codex: ['codex', 'openai-codex'],
+  ollama: ['ollama'],
+};
+
+export function findCliBinary(name: string, customCandidates?: string[]): string | null {
   const home = process.env.HOME || '';
   const pathDirs = (process.env.PATH || '').split(':').filter(Boolean);
   const extraDirs = [
@@ -60,16 +67,19 @@ export function findCliBinary(name: string): string | null {
   }
 
   const allDirs = Array.from(new Set([...pathDirs, ...extraDirs]));
+  const candidates = Array.from(new Set([name, ...(customCandidates || []), ...(CLI_ALIASES[name] || [])]));
 
   for (const dir of allDirs) {
-    const candidate = path.join(dir, name);
-    try {
-      if (fs.existsSync(candidate)) {
-        fs.accessSync(candidate, fs.constants.X_OK);
-        fs.realpathSync(candidate);
-        return candidate;
-      }
-    } catch {}
+    for (const binName of candidates) {
+      const candidate = path.join(dir, binName);
+      try {
+        if (fs.existsSync(candidate)) {
+          fs.accessSync(candidate, fs.constants.X_OK);
+          fs.realpathSync(candidate);
+          return candidate;
+        }
+      } catch {}
+    }
   }
   return null;
 }
@@ -703,10 +713,13 @@ export class AiDraftService {
             effort: options.effort || cliSettings?.claude?.effort,
           };
           return await this.draftWithClaudeCli(trimmed, mergedOptions, claudeBin);
-        } catch (err) {
+        } catch (err: any) {
           const fallback = this.draftWithHeuristic(trimmed, options.knownProjects);
-          return { ...fallback, provider_used: 'heuristic (fallback from claude-cli)' };
+          return { ...fallback, provider_used: `heuristic (fallback — claude error: ${err.message || 'failed'})` };
         }
+      } else {
+        const fallback = this.draftWithHeuristic(trimmed, options.knownProjects);
+        return { ...fallback, provider_used: 'heuristic (claude CLI not detected)' };
       }
     }
 
@@ -721,10 +734,13 @@ export class AiDraftService {
             effort: options.effort || cliSettings?.agy?.effort,
           };
           return await this.draftWithAgyCli(trimmed, mergedOptions, agyBin);
-        } catch (err) {
+        } catch (err: any) {
           const fallback = this.draftWithHeuristic(trimmed, options.knownProjects);
-          return { ...fallback, provider_used: 'heuristic (fallback from agy-cli)' };
+          return { ...fallback, provider_used: `heuristic (fallback — agy error: ${err.message || 'failed'})` };
         }
+      } else {
+        const fallback = this.draftWithHeuristic(trimmed, options.knownProjects);
+        return { ...fallback, provider_used: 'heuristic (agy CLI not detected)' };
       }
     }
 
@@ -739,10 +755,13 @@ export class AiDraftService {
             effort: options.effort || cliSettings?.codex?.effort,
           };
           return await this.draftWithCodexCli(trimmed, mergedOptions, codexBin);
-        } catch (err) {
+        } catch (err: any) {
           const fallback = this.draftWithHeuristic(trimmed, options.knownProjects);
-          return { ...fallback, provider_used: 'heuristic (fallback from codex-cli)' };
+          return { ...fallback, provider_used: `heuristic (fallback — codex error: ${err.message || 'failed'})` };
         }
+      } else {
+        const fallback = this.draftWithHeuristic(trimmed, options.knownProjects);
+        return { ...fallback, provider_used: 'heuristic (codex CLI not detected)' };
       }
     }
 

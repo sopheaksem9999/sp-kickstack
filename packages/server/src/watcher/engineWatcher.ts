@@ -152,7 +152,10 @@ export class EngineWatcher {
     const prChanged = (engineTask.prUrl || null) !== (task.pr_url || null);
     const pausedUntil = engineTask.status === 'rate_limited' ? engineTask.resumeAt ?? null : null;
     const pauseChanged = pausedUntil !== (task.paused_until ?? null);
-    if (!statusChanged && !rawChanged && !prChanged && !pauseChanged) return false;
+    const tokensChanged =
+      (engineTask.totalTokens ?? null) !== (task.total_tokens ?? null) ||
+      (engineTask.costUsd ?? null) !== (task.cost_usd ?? null);
+    if (!statusChanged && !rawChanged && !prChanged && !pauseChanged && !tokensChanged) return false;
 
     const oldStatus = task.status;
     // Guarded on the status we read before awaiting the engine: if someone else
@@ -163,7 +166,12 @@ export class EngineWatcher {
     const updated = this.db
       .prepare(`
         UPDATE bridge_tasks
-        SET status = ?, engine_status_raw = ?, pr_url = COALESCE(?, pr_url), paused_until = ?, last_error = COALESCE(?, last_error), updated_at = ?
+        SET status = ?, engine_status_raw = ?, pr_url = COALESCE(?, pr_url), paused_until = ?, last_error = COALESCE(?, last_error),
+            input_tokens = COALESCE(?, input_tokens),
+            output_tokens = COALESCE(?, output_tokens),
+            total_tokens = COALESCE(?, total_tokens),
+            cost_usd = COALESCE(?, cost_usd),
+            updated_at = ?
         WHERE id = ? AND status = ?
       `)
       .run(
@@ -172,6 +180,10 @@ export class EngineWatcher {
         engineTask.prUrl || null,
         pausedUntil,
         problem,
+        engineTask.inputTokens ?? null,
+        engineTask.outputTokens ?? null,
+        engineTask.totalTokens ?? null,
+        engineTask.costUsd ?? null,
         new Date().toISOString(),
         task.id,
         oldStatus

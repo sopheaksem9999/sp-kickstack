@@ -73,6 +73,17 @@ describe('Database migrations', () => {
     db.close();
   });
 
+  it('adds token usage and cost columns (migration 12)', () => {
+    const db = initDatabase(':memory:');
+    expect(columns(db, 'bridge_tasks')).toEqual(
+      expect.arrayContaining(['input_tokens', 'output_tokens', 'total_tokens', 'cost_usd'])
+    );
+    expect(columns(db, 'local_runs')).toEqual(
+      expect.arrayContaining(['input_tokens', 'output_tokens', 'total_tokens', 'cost_usd'])
+    );
+    db.close();
+  });
+
   it('adds the AI QA stage and tier columns and marks existing QA tasks as QA stage (migration 13)', () => {
     const db = initDatabase(':memory:');
     expect(columns(db, 'bridge_tasks')).toEqual(expect.arrayContaining(['qa_stage', 'qa_tier', 'qa_tier_reason']));

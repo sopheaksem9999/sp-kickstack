@@ -48,6 +48,10 @@ export interface LocalRun {
   interruptions: number;
   hold_requested_at: string | null;
   cancel_requested_at: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
+  cost_usd: number | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -59,6 +63,7 @@ export type RunPatch = Partial<Omit<LocalRun, 'id' | 'bridge_task_id' | 'project
 const PATCHABLE = new Set<string>([
   'title', 'body_md', 'model', 'effort', 'cli', 'status', 'notes_md', 'continuation', 'worktree', 'start_sha', 'end_sha',
   'pid', 'pid_started_at', 'exit_code', 'error', 'resume_at', 'interruptions', 'hold_requested_at', 'cancel_requested_at',
+  'input_tokens', 'output_tokens', 'total_tokens', 'cost_usd',
   'started_at', 'finished_at',
 ]);
 

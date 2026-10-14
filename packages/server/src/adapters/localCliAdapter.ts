@@ -32,6 +32,10 @@ export function toEngineTask(run: LocalRun): EngineTask {
     title: run.title,
     status: STATUS[run.status],
     rawStatus: run.status,
+    inputTokens: run.input_tokens,
+    outputTokens: run.output_tokens,
+    totalTokens: run.total_tokens,
+    costUsd: run.cost_usd,
     ...(run.status === 'rate_limited' && run.resume_at ? { resumeAt: run.resume_at } : {}),
     ...(run.error ? { summary: run.error } : {}),
   };

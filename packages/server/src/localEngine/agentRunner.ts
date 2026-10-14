@@ -16,7 +16,7 @@ import { FINISHED_RUN_STATUSES, RunStore, type LocalRun, type RunPatch, type Run
 import { AgentWorktrees, defaultWorktreeRoot, folderName } from './worktrees.js';
 import { agentEnvironment } from './agentEnv.js';
 import { buildCommand, chooseCli, CLI_LABELS, cliBinary, cliEnabled, quotaResetAt as defaultQuotaResetAt, runEffort, runModel, type FindBinary, type CliChoice } from './cliProfiles.js';
-import { createParser, looksLikeRateLimit, resetFromText, type ParsedOutput } from './outputParsers.js';
+import { createParser, looksLikeRateLimit, resetFromText, type ParsedOutput, type TokenUsage } from './outputParsers.js';
 import { buildRunPrompt } from './prompt.js';
 import { findXticketScript, writeXticketLauncher } from './xticketLauncher.js';
 import { isSameProcess, killGroupLeftovers, spawnAgent, stopGroup, type AgentExit, type SpawnedAgent } from './processes.js';
@@ -77,6 +77,7 @@ interface OutputState {
   tail: string[];
   rateLimit: { resetAt: string | null } | null;
   cliError: string | null;
+  usage: TokenUsage | null;
 }
 
 type LogStream = 'stdout' | 'stderr' | 'system';
@@ -406,7 +407,7 @@ export class AgentRunner {
     const parser = createParser(cli);
     const raw = fs.createWriteStream(path.join(runDir, 'output.log'), { flags: 'a' });
     raw.on('error', (err) => console.warn(`[local-engine] run ${runId} output file: ${err.message}`));
-    const out: OutputState = { lines: 0, tail: [], rateLimit: null, cliError: null };
+    const out: OutputState = { lines: 0, tail: [], rateLimit: null, cliError: null, usage: null };
     /** Set once the run is settling: output that still arrives (a leftover process) is dropped. */
     let closed = false;
     const emit = (stream: LogStream, text: string) => {
@@ -424,6 +425,14 @@ export class AgentRunner {
       for (const line of parsed.logs) emit('stdout', line);
       if (parsed.rateLimit) out.rateLimit = parsed.rateLimit;
       if (parsed.error) out.cliError = parsed.error;
+      if (parsed.usage) {
+        out.usage = {
+          input_tokens: parsed.usage.input_tokens ?? out.usage?.input_tokens ?? null,
+          output_tokens: parsed.usage.output_tokens ?? out.usage?.output_tokens ?? null,
+          total_tokens: parsed.usage.total_tokens ?? out.usage?.total_tokens ?? null,
+          cost_usd: parsed.usage.cost_usd ?? out.usage?.cost_usd ?? null,
+        };
+      }
     };
     const readers: readline.Interface[] = [];
     if (agent.child.stdout) {
@@ -489,7 +498,41 @@ export class AgentRunner {
     if (qa) this.dropQaCheckout(taskId, repo, run.worktree);
     const endSha = !qa && task.branch ? resolveCommit(repo, `refs/heads/${task.branch}`) : null;
     if (endSha && endSha !== run.start_sha) this.opts.onCommits?.(taskId);
-    const base: RunPatch = { pid: null, exit_code: exit.code, end_sha: endSha, finished_at: this.iso() };
+    const base: RunPatch = {
+      pid: null,
+      exit_code: exit.code,
+      end_sha: endSha,
+      finished_at: this.iso(),
+      ...(out.usage
+        ? {
+            input_tokens: out.usage.input_tokens ?? null,
+            output_tokens: out.usage.output_tokens ?? null,
+            total_tokens: out.usage.total_tokens ?? null,
+            cost_usd: out.usage.cost_usd ?? null,
+          }
+        : {}),
+    };
+
+    if (out.usage) {
+      this.opts.db
+        .prepare(`
+          UPDATE bridge_tasks
+          SET input_tokens = COALESCE(?, input_tokens),
+              output_tokens = COALESCE(?, output_tokens),
+              total_tokens = COALESCE(?, total_tokens),
+              cost_usd = COALESCE(?, cost_usd),
+              updated_at = ?
+          WHERE id = ?
+        `)
+        .run(
+          out.usage.input_tokens ?? null,
+          out.usage.output_tokens ?? null,
+          out.usage.total_tokens ?? null,
+          out.usage.cost_usd ?? null,
+          this.iso(),
+          taskId
+        );
+    }
     const label = CLI_LABELS[cli];
 
     if (run.cancel_requested_at) {
@@ -501,11 +544,35 @@ export class AgentRunner {
     }
     if (run.status === 'queued') {
       // Released while it was still stopping, or stopped by a server shutdown: it starts again.
-      this.runs.update(runId, { pid: null, exit_code: exit.code, end_sha: endSha });
+      this.runs.update(runId, {
+        pid: null,
+        exit_code: exit.code,
+        end_sha: endSha,
+        ...(out.usage
+          ? {
+              input_tokens: out.usage.input_tokens ?? null,
+              output_tokens: out.usage.output_tokens ?? null,
+              total_tokens: out.usage.total_tokens ?? null,
+              cost_usd: out.usage.cost_usd ?? null,
+            }
+          : {}),
+      });
       return;
     }
     if (run.status === 'held') {
-      this.runs.update(runId, { pid: null, exit_code: exit.code, end_sha: endSha });
+      this.runs.update(runId, {
+        pid: null,
+        exit_code: exit.code,
+        end_sha: endSha,
+        ...(out.usage
+          ? {
+              input_tokens: out.usage.input_tokens ?? null,
+              output_tokens: out.usage.output_tokens ?? null,
+              total_tokens: out.usage.total_tokens ?? null,
+              cost_usd: out.usage.cost_usd ?? null,
+            }
+          : {}),
+      });
       this.log(taskId, 'system', '⏸ Paused until a person answers; the next run continues from the branch');
       return;
     }

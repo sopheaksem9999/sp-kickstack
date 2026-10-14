@@ -1,4 +1,5 @@
 import readline from 'node:readline';
+import { APP_VERSION } from '@sp-kickstack/shared';
 import { RequirementService } from '../services/requirementService.js';
 import { ProjectService } from '../services/projectService.js';
 import { TicketService } from '../services/ticketService.js';
@@ -27,7 +28,7 @@ export class McpServer {
           protocolVersion: '2024-11-05',
           serverInfo: {
             name: 'sp-kickstack-mcp',
-            version: '0.2.0',
+            version: APP_VERSION,
           },
           capabilities: {
             tools: {},

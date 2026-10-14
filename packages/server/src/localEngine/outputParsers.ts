@@ -2,6 +2,13 @@
 // errors and usage limits. Output of the commands the agent runs is never checked for limits.
 import type { AgentCliId } from '@sp-kickstack/shared';
 
+export interface TokenUsage {
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  total_tokens?: number | null;
+  cost_usd?: number | null;
+}
+
 export interface ParsedOutput {
   /** Readable lines for the task log (empty for noise such as hooks or token counts). */
   logs: string[];
@@ -9,6 +16,8 @@ export interface ParsedOutput {
   rateLimit?: { resetAt: string | null };
   /** The CLI's own error (not a failing command the agent ran). */
   error?: string;
+  /** LLM token usage and cost */
+  usage?: TokenUsage;
 }
 
 export interface OutputParser {
@@ -71,8 +80,20 @@ function failure(text: string): ParsedOutput {
   };
 }
 
+export function extractUsage(u: any, cost?: any): TokenUsage | undefined {
+  if (!u && cost == null) return undefined;
+  const inTokens = typeof u?.input_tokens === 'number' ? u.input_tokens : (typeof u?.prompt_tokens === 'number' ? u.prompt_tokens : null);
+  const outTokens = typeof u?.output_tokens === 'number' ? u.output_tokens : (typeof u?.completion_tokens === 'number' ? u.completion_tokens : null);
+  const totalTokens = typeof u?.total_tokens === 'number' ? u.total_tokens : ((inTokens != null || outTokens != null) ? (inTokens ?? 0) + (outTokens ?? 0) : null);
+  const costUsd = typeof cost === 'number' ? cost : (typeof u?.cost_usd === 'number' ? u.cost_usd : (typeof u?.total_cost_usd === 'number' ? u.total_cost_usd : null));
+  if (inTokens == null && outTokens == null && totalTokens == null && costUsd == null) return undefined;
+  return { input_tokens: inTokens, output_tokens: outTokens, total_tokens: totalTokens, cost_usd: costUsd };
+}
+
 /** Claude Code `-p --output-format stream-json --verbose`. */
 export function claudeParser(): OutputParser {
+  let accumulatedIn = 0;
+  let accumulatedOut = 0;
   return {
     push(line) {
       const e = parseJson(line);
@@ -93,6 +114,8 @@ export function claudeParser(): OutputParser {
           };
         }
         case 'assistant': {
+          if (typeof e.message?.usage?.input_tokens === 'number') accumulatedIn += e.message.usage.input_tokens;
+          if (typeof e.message?.usage?.output_tokens === 'number') accumulatedOut += e.message.usage.output_tokens;
           const out: string[] = [];
           for (const part of e.message?.content ?? []) {
             if (part?.type === 'text' && typeof part.text === 'string') out.push(...lines(part.text));
@@ -115,11 +138,22 @@ export function claudeParser(): OutputParser {
             (typeof e.num_turns === 'number' ? ` · ${e.num_turns} turns` : '') +
             (typeof e.duration_ms === 'number' ? ` · ${Math.round(e.duration_ms / 1000)} s` : '') +
             (typeof e.total_cost_usd === 'number' ? ` · $${e.total_cost_usd.toFixed(2)}` : '');
-          if (!e.is_error) return { logs: [summary] };
+          const resUsage = extractUsage(e.usage, e.total_cost_usd);
+          const usage = resUsage ?? (
+            accumulatedIn > 0 || accumulatedOut > 0 || typeof e.total_cost_usd === 'number'
+              ? {
+                  input_tokens: accumulatedIn > 0 ? accumulatedIn : null,
+                  output_tokens: accumulatedOut > 0 ? accumulatedOut : null,
+                  total_tokens: (accumulatedIn + accumulatedOut) > 0 ? (accumulatedIn + accumulatedOut) : null,
+                  cost_usd: typeof e.total_cost_usd === 'number' ? e.total_cost_usd : null,
+                }
+              : undefined
+          );
+          if (!e.is_error) return { logs: [summary], ...(usage ? { usage } : {}) };
           const text = typeof e.result === 'string' && e.result ? e.result : `Claude Code reported an error (${e.subtype ?? 'unknown'})`;
           const failed = failure(text);
           if (e.api_error_status === 429 && !failed.rateLimit) failed.rateLimit = { resetAt: resetFromText(text) };
-          return { ...failed, logs: [summary, ...failed.logs] };
+          return { ...failed, logs: [summary, ...failed.logs], ...(usage ? { usage } : {}) };
         }
         default:
           return NONE;
@@ -162,9 +196,10 @@ export function agyParser(): OutputParser {
         const pending = flushAll();
         const status = result.status === undefined ? 'SUCCESS' : String(result.status);
         const summary = `Finished: ${status.toLowerCase()}${typeof result.duration_seconds === 'number' ? ` · ${Math.round(result.duration_seconds)} s` : ''}`;
-        if (status === 'SUCCESS') return { logs: [...pending, summary] };
+        const usage = extractUsage(result.usage ?? result.tokens ?? result.token_usage, result.cost_usd ?? result.cost ?? result.total_cost_usd);
+        if (status === 'SUCCESS') return { logs: [...pending, summary], ...(usage ? { usage } : {}) };
         const failed = failure(String(result.error ?? result.message ?? result.response ?? `AGY finished with status ${status}`));
-        return { ...failed, logs: [...pending, summary, ...failed.logs] };
+        return { ...failed, logs: [...pending, summary, ...failed.logs], ...(usage ? { usage } : {}) };
       }
       if (e.event === 'error') return failure(String(e.error?.message ?? e.message ?? JSON.stringify(e)));
       return NONE;
@@ -191,8 +226,10 @@ export function codexParser(): OutputParser {
           if (item.type === 'command_execution' && typeof item.exit_code === 'number' && item.exit_code !== 0) return { logs: [`  ✗ exit ${item.exit_code}`] };
           if (item.type === 'error' && item.message) return { logs: [`  ✗ ${cut(String(item.message))}`] };
           return NONE;
-        case 'turn.completed':
-          return { logs: ['Finished'] };
+        case 'turn.completed': {
+          const usage = extractUsage(e.usage, e.cost ?? e.cost_usd);
+          return { logs: ['Finished'], ...(usage ? { usage } : {}) };
+        }
         case 'turn.failed':
           return failure(String(e.error?.message ?? 'Codex turn failed'));
         case 'error':

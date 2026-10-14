@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import path from 'node:path';
 import { execa } from 'execa';
 import { AppDatabase } from '../db/index.js';
 import { ProjectService } from './projectService.js';
@@ -1375,9 +1376,13 @@ Guidelines:
       if (claudeBin) {
         try {
           return await this.chatWithClaudeCli(req, systemPrompt, claudeBin, cliSettings, sessionId);
-        } catch {
-          // Fall back to heuristic / grounded browser assistant
+        } catch (err: any) {
+          const warningBanner = `> ⚠️ **Claude CLI Execution Failed**: \`${err?.message || 'Process error'}\`\n> *Operating in Offline Heuristic Mode. Verify your CLI authentication or model availability.*\n\n`;
+          return this.chatWithHeuristic(req, warningBanner);
         }
+      } else {
+        const warningBanner = `> ⚠️ **Claude Code CLI (\`claude\`) Not Detected**: The binary was not found in your \`$PATH\` or \`/opt/homebrew/bin/claude\`.\n> *Operating in Offline Heuristic Mode. Configure its custom path in **Settings → AI & Local Engines** to enable live Claude models.*\n\n`;
+        return this.chatWithHeuristic(req, warningBanner);
       }
     }
 
@@ -1387,9 +1392,13 @@ Guidelines:
       if (agyBin) {
         try {
           return await this.chatWithAgyCli(req, systemPrompt, agyBin, cliSettings, sessionId);
-        } catch {
-          // Fall back to heuristic / grounded browser assistant
+        } catch (err: any) {
+          const warningBanner = `> ⚠️ **Antigravity CLI Execution Failed**: \`${err?.message || 'Process error'}\`\n> *Operating in Offline Heuristic Mode. Check CLI permissions or authentication.*\n\n`;
+          return this.chatWithHeuristic(req, warningBanner);
         }
+      } else {
+        const warningBanner = `> ⚠️ **Antigravity CLI (\`agy\`) Not Detected**: The binary was not found in your \`$PATH\` or standard directories (\`agy\` / \`gemini\`).\n> *Operating in Offline Heuristic Mode. To use live Google Gemini models, install the CLI or configure its custom path in **Settings → AI & Local Engines**.*\n\n`;
+        return this.chatWithHeuristic(req, warningBanner);
       }
     }
 
@@ -1421,7 +1430,10 @@ Guidelines:
             };
           }
         }
-      } catch {}
+      } catch (err: any) {
+        const warningBanner = `> ⚠️ **Ollama Connection Failed**: \`${err?.message || 'Connection refused on port 11434'}\`\n> *Ensure Ollama is running locally (\`ollama serve\`). Falling back to Offline Heuristic Mode.*\n\n`;
+        return this.chatWithHeuristic(req, warningBanner);
+      }
     }
 
     // 6. Intelligent Grounded Browser Assistant & Heuristic Architect
@@ -1507,9 +1519,12 @@ Guidelines:
 
     const fullPrompt = `${systemPrompt}\n\n## Conversation History:\n${conversationTranscript}\n\nArchitect:`;
 
-    const args = ['-p', fullPrompt, '--output-format', 'text', '--dangerously-skip-permissions'];
-    if (model) args.push('--model', model);
-    if (effort) args.push('--effort', effort);
+    const isGeminiCli = path.basename(binPath).toLowerCase().startsWith('gemini');
+    const args: string[] = isGeminiCli
+      ? ['-p', fullPrompt]
+      : ['-p', fullPrompt, '--output-format', 'text', '--dangerously-skip-permissions'];
+    if (model && model !== 'default') args.push('--model', model);
+    if (effort && !isGeminiCli) args.push('--effort', effort);
 
     const result = await execa(binPath, args, {
       timeout: 35000,
@@ -1843,14 +1858,16 @@ ${headings.slice(0, 5).map((h) => `- ${h}`).join('\n') || '- None'}
     };
   }
 
-  private chatWithHeuristic(req: AiChatRequest): AiChatResponse {
+  private chatWithHeuristic(req: AiChatRequest, warningBanner: string = ''): AiChatResponse {
     const rawLastUser = [...req.messages].reverse().find((m) => m.role === 'user')?.content || '';
     const lastUserMessage =
       rawLastUser.startsWith('> Replying to ') && rawLastUser.includes('\n\n')
         ? rawLastUser.slice(rawLastUser.indexOf('\n\n') + 2).trim()
         : rawLastUser;
 
-    const projects = this.projectService.listProjects(req.workspace_id).map((p) => p.name);
+    const lower = lastUserMessage.toLowerCase();
+    const wsId = req.workspace_id || 'default';
+    const projects = this.projectService.listProjects(wsId).map((p) => p.name);
 
     if (rawLastUser.startsWith('You are the Principal Software Architect')) {
       const priorMessages = req.messages.filter(
@@ -1861,7 +1878,7 @@ ${headings.slice(0, 5).map((h) => `- ${h}`).join('\n') || '- None'}
         message: {
           id: `msg-${Date.now()}`,
           role: 'assistant',
-          content: `### Synthesized Architecture Specification\n\n\`\`\`json:spec\n${JSON.stringify(spec, null, 2)}\n\`\`\``,
+          content: `${warningBanner}### Synthesized Architecture Specification\n\n\`\`\`json:spec\n${JSON.stringify(spec, null, 2)}\n\`\`\``,
           timestamp: new Date().toISOString(),
           suggested_spec: spec,
         },
@@ -1872,15 +1889,16 @@ ${headings.slice(0, 5).map((h) => `- ${h}`).join('\n') || '- None'}
 
     const parsedWeb = this.parseWebpageContext(lastUserMessage);
     if (parsedWeb.hasContext) {
-      return this.handleWebpageChat(req, parsedWeb);
+      const webRes = this.handleWebpageChat(req, parsedWeb);
+      if (warningBanner) {
+        webRes.message.content = `${warningBanner}${webRes.message.content}`;
+      }
+      return webRes;
     }
-
 
     const attachmentTexts = req.messages.flatMap((m) => this.extractAttachmentTexts(m.attachments));
     const attachedMd = attachmentTexts.find((a) => a.name.match(/\.(md|markdown|txt)$/i)) || attachmentTexts[0];
     const affected = projects.length > 0
-
-
       ? projects.filter(
           (p) =>
             lastUserMessage.toLowerCase().includes(p.toLowerCase()) ||
@@ -1926,7 +1944,7 @@ ${headings.slice(0, 5).map((h) => `- ${h}`).join('\n') || '- None'}
         provider_used: 'Local Heuristic Spec Analyzer (Offline)',
       };
 
-      const replyContent = `### 📄 Architectural Review & Analysis: ${title}
+      const replyContent = `${warningBanner}### 📄 Architectural Review & Analysis: ${title}
 
 **Attached Specification**: \`${attachedMd.name}\` (${Math.round((attachedMd.content.length / 1024) * 10) / 10} KB)
 
@@ -1956,8 +1974,136 @@ ${criteria.map((c) => `- [ ] ${c}`).join('\n')}
       };
     }
 
-    const title = formatRequirementTitle(lastUserMessage, lastUserMessage);
+    // 1. Contextual Query: Remaining Tasks & Open Requirements
+    const isRemainingQuery =
+      /\b(?:remaning|remaining|open|left|pending|todo|backlog)\b/i.test(lower) &&
+      /\b(?:show|list|tell|what|check|all|tasks|reqs|requirements|tickets)\b/i.test(lower);
 
+    if (isRemainingQuery) {
+      let pendingReqs: any[] = [];
+      let pendingTasks: any[] = [];
+      try {
+        pendingReqs = this.db
+          .prepare(
+            `SELECT id, title, status, priority, affected_projects
+             FROM requirements
+             WHERE workspace_id = ? AND status NOT IN ('completed', 'cancelled')
+             ORDER BY seq ASC`
+          )
+          .all(wsId) as any[];
+
+        pendingTasks = this.db
+          .prepare(
+            `SELECT bt.id, bt.title, bt.status, bt.project, bt.role, r.id as req_id
+             FROM bridge_tasks bt
+             JOIN requirements r ON bt.req_id = r.id
+             WHERE r.workspace_id = ? AND bt.status NOT IN ('done', 'cancelled')
+             ORDER BY bt.id ASC`
+          )
+          .all(wsId) as any[];
+      } catch {}
+
+      let remainingMarkdown = `### 📋 Remaining Tasks & Open Requirements\n\n**Workspace:** \`${wsId}\`\n\n`;
+
+      if (pendingReqs.length === 0 && pendingTasks.length === 0) {
+        remainingMarkdown += `🎉 **All caught up!** There are currently no open or pending requirements in workspace \`${wsId}\`.\n\nAll requirements have been completed or cancelled. You can ask me to design a new feature or create a ticket at any time!`;
+      } else {
+        remainingMarkdown += `**Summary**: **${pendingReqs.length}** open requirement(s), **${pendingTasks.length}** pending task(s).\n\n`;
+
+        if (pendingReqs.length > 0) {
+          remainingMarkdown += `#### 📑 Open Requirements:\n`;
+          for (const r of pendingReqs) {
+            let projectsStr = '';
+            try {
+              const aff = JSON.parse(r.affected_projects);
+              if (Array.isArray(aff) && aff.length > 0) projectsStr = ` \`[${aff.join(', ')}]\``;
+            } catch {}
+            remainingMarkdown += `- [**#${r.id} - ${r.title}**](/requirements/${r.id}) — Status: \`${r.status}\` | Priority: \`${r.priority}\`${projectsStr}\n`;
+          }
+          remainingMarkdown += `\n`;
+        }
+
+        if (pendingTasks.length > 0) {
+          remainingMarkdown += `#### ⚙️ Active & Pending Tasks:\n`;
+          for (const t of pendingTasks.slice(0, 10)) {
+            remainingMarkdown += `- **Task #${t.id}**: "${t.title}" — \`${t.status}\` in \`${t.project}\` (for [#${t.req_id}](/requirements/${t.req_id}))\n`;
+          }
+          if (pendingTasks.length > 10) {
+            remainingMarkdown += `- *...and ${pendingTasks.length - 10} more tasks*\n`;
+          }
+          remainingMarkdown += `\n`;
+        }
+
+        remainingMarkdown += `💡 Click any **#REQ-xxx** link to view or manage the requirement, or tell me to edit or dispatch tasks!`;
+      }
+
+      return {
+        message: {
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: `${warningBanner}${remainingMarkdown}`,
+          timestamp: new Date().toISOString(),
+        },
+        provider_used: 'Local Heuristic Workspace Inspector',
+      };
+    }
+
+    // 2. Contextual Query: Technical Assessment & Verification Questions
+    const isVerificationOrQuestion =
+      lastUserMessage.trim().endsWith('?') ||
+      /\b(?:verify|check|is|does|are|can|how|why|where|explain|what is)\b/i.test(lower);
+
+    if (isVerificationOrQuestion && !/\b(?:create|draft|generate|dispatch|make|add\s+ticket)\b/i.test(lower)) {
+      let technicalAnswer = '';
+      if (lower.includes('soft-delete') || lower.includes('soft delete')) {
+        technicalAnswer = `### 🔍 Technical Assessment: Soft-Delete Configuration
+
+Regarding soft-delete configuration across the database tables:
+
+1. **Current Architectural Pattern**:
+   - In SP-Kickstack's primary database (\`bridge.db\`), cascade foreign key deletions are used for full workspace and requirement lifecycle purges.
+   - For entity tables where soft-deletion is required, the standard pattern is adding a nullable timestamp column:
+     \`\`\`sql
+     ALTER TABLE <table_name> ADD COLUMN deleted_at TIMESTAMP NULL;
+     CREATE INDEX idx_<table_name>_deleted_at ON <table_name>(deleted_at);
+     \`\`\`
+   - Application queries must filter with \`WHERE deleted_at IS NULL\`.
+
+2. **Verification in Your Repositories**:
+   - Check database migrations and schema definitions under your backend project (\`${projects.find((p) => p.includes('backend') || p.includes('server')) || 'backend'}\`).
+   - If your service models utilize ORMs or Knex/Prisma/TypeORM, verify that a soft-delete plugin or default scope (\`deletedAt: null\`) is configured.
+
+3. **Recommended Action**:
+   - If you would like to enforce soft-delete on specific tables, say:
+     > *"create requirement: add deleted_at soft delete column to backend tables"*
+   - I will draft the exact migration scripts, service updates, and test verifications!`;
+      } else {
+        technicalAnswer = `### 💡 Architectural Assessment & Guidance
+
+You asked: **"${lastUserMessage}"**
+
+**Workspace Stack (${wsId})**:
+- **Registered Projects**: ${projects.length > 0 ? projects.map((p) => `\`${p}\``).join(', ') : 'No projects registered'}
+- **Target Base Branch**: \`develop\`
+
+**Guidance & Next Steps**:
+1. Review your service contracts and test coverage across the registered projects.
+2. If this inquiry requires implementing code changes or database migrations, say:
+   - *"create requirement: [scope of change]"* or click **Create Requirement (/create)** to formulate a structured ticket.`;
+      }
+
+      return {
+        message: {
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: `${warningBanner}${technicalAnswer}`,
+          timestamp: new Date().toISOString(),
+        },
+        provider_used: 'Local Heuristic Technical Advisor',
+      };
+    }
+
+    const title = formatRequirementTitle(lastUserMessage, lastUserMessage);
 
     const spec: DraftRequirementResult = {
       title,
@@ -1975,7 +2121,7 @@ ${criteria.map((c) => `- [ ] ${c}`).join('\n')}
       provider_used: 'Local Heuristic Architect (Offline)',
     };
 
-    const replyContent = `### Architectural Assessment: ${spec.title}
+    const replyContent = `${warningBanner}### Architectural Assessment: ${spec.title}
 
 **Proposed Multi-Repo Scope:**
 - **Affected Projects**: \`${resolvedAffected.join(', ')}\`

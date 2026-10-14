@@ -1,6 +1,6 @@
 {
   "name": "sp-kickstack",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Cross-repo agent orchestration bridge",
   "engines": {
@@ -22,7 +22,9 @@
     "dev:web": "npm run --workspace=@sp-kickstack/web dev",
     "desktop:dev": "npm run --workspace=@sp-kickstack/desktop dev",
     "desktop:bundle-server": "node scripts/bundle-desktop-server.mjs",
-    "desktop:build": "npm run --workspace=@sp-kickstack/desktop build:desktop"
+    "desktop:build": "npm run --workspace=@sp-kickstack/desktop build:desktop",
+    "version:bump": "node scripts/bump-version.mjs",
+    "bump": "node scripts/bump-version.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

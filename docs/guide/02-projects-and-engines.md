@@ -187,7 +187,8 @@ The bridge decides what applies to a task each time it starts the task:
 
 | Engine | What it does with `model` and `effort` |
 |---|---|
-| **Stoneforge** | **Not confirmed.** The bridge sends them; whether your Stoneforge version reads and honours them is unknown. Only the bridge's built-in fake engine was tested, and it just stores them. |
+| **Local AI CLI** | **Directly Supported.** The bridge passes `--model <model>` and reasoning effort/thinking parameters to the chosen local CLI binary (`claude`, `agy`, `codex`, `ollama`). |
+| **Stoneforge** | **Passed in payload.** The bridge sends them in the JSON body (`model`, `effort`); whether your Stoneforge server reads and honours them depends on the remote version. |
 | **Manual** | Ignored. No agent runs, so the task records no model and its card shows none. |
 
 Because of this, the model on a task card is what the bridge **sent**, not proof of what the agent

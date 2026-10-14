@@ -10,6 +10,7 @@ import { SseBroadcaster } from '../sse/broadcaster.js';
 import { Notifier } from '../notify/notifier.js';
 import { FakeEngineServer } from '../adapters/fakeEngine.js';
 import { StoneforgeAdapter } from '../adapters/stoneforgeAdapter.js';
+import { APP_VERSION } from '@sp-kickstack/shared';
 import { createApp } from './app.js';
 import { testRequest } from './testHelper.js';
 import { Express } from 'express';
@@ -116,7 +117,7 @@ describe('Bridge REST API Integration Tests', () => {
     const res = await testRequest(app, 'GET', '/api/health');
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
-    expect(res.body.version).toBe('0.2.0');
+    expect(res.body.version).toBe(APP_VERSION);
   });
 
   it('GET /api/projects lists registered projects', async () => {

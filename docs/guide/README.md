@@ -74,8 +74,7 @@ explained in [Requirements and fan-out](03-requirements-and-fan-out.md#task-stat
 
 - **Requirement**: one piece of work you describe, with an id such as `REQ-007`.
 - **Project**: one repository registered in the bridge (sidebar **Repositories**).
-- **Engine**: the system that runs the agents for a project (Stoneforge), or **Manual** when
-  people do the work.
+- **Engine**: the system that runs the agents for a project — **Local AI CLI** (Claude Code, Google AGY, OpenAI Codex, Ollama), **Manual** (human developer workflow), or **Stoneforge** (HTTP engine).
 - **Task**: one unit of work the bridge tracks. A **goal** is the task fan-out creates for a
   project. A **ticket** is a task one agent files for another project.
 - **Link** (dependency): "task A waits for task B". Blocking tickets and questions create links.
@@ -84,8 +83,8 @@ explained in [Requirements and fan-out](03-requirements-and-fan-out.md#task-stat
 
 | Page | What it covers |
 |---|---|
-| [01 Getting started](01-getting-started.md) | Install, start, demo, first project, first requirement, where data lives |
-| [02 Projects and engines](02-projects-and-engines.md) | Register projects, Manual and Stoneforge engines, engine health, `projects.yaml` |
+| [01 Getting started](01-getting-started.md) | Install, start, desktop app, demo, first project, first requirement, where data lives |
+| [02 Projects and engines](02-projects-and-engines.md) | Register projects, Local AI CLI, Manual, and Stoneforge engines, engine health, `projects.yaml` |
 | [03 Requirements and fan-out](03-requirements-and-fan-out.md) | Write a requirement, Start Fan-Out, task statuses, the Agent Queue, moves you may make, Cancel, Mark Done |
 | [04 Agents, tickets and questions](04-agents-tickets-and-questions.md) | For whoever configures agents: `xticket create`, `xticket ask`, outbox, env vars |
 | [05 Answering questions and notes](05-answering-questions-and-notes.md) | Answer agent questions, Let the agent decide, send a Note |
@@ -95,10 +94,12 @@ explained in [Requirements and fan-out](03-requirements-and-fan-out.md#task-stat
 | [09 Settings and environment](09-settings-and-environment.md) | Every Settings tab and every environment variable |
 | [10 Troubleshooting](10-troubleshooting.md) | Common error messages and what to do |
 
-The sidebar also has **Agent Queue** (every agent task of the workspace in one list, see
-[03](03-requirements-and-fan-out.md#agent-queue)), **AI Architect Chat** (see [03](03-requirements-and-fan-out.md)),
-**Attachments Hub** (shared files whose names and notes are added to every agent prompt in the
-workspace) and **Telemetry & Sprints** (sprint and timing charts).
+The sidebar also features:
+- **Agent Queue**: Live overview of all active and pending agent tasks in the workspace.
+- **AI Architect Chat**: Interactive chat stream for conversational requirement drafting, code review, and 1-click `/create` ticket synthesis.
+- **In-App Browser**: Grounded web workspace feeding live URLs, DOM headings, text content, and screenshots directly into AI prompts.
+- **Attachments Hub**: Shared design tokens, API contracts, and schema assets available to agents across the workspace.
+- **Telemetry & Sprints**: Agile sprint management, velocity tracking, and timing metrics.
 
 ## More guides
 

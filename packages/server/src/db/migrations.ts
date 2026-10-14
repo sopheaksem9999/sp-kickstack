@@ -256,6 +256,20 @@ export const MIGRATIONS: Migration[] = [
     },
   },
   {
+    version: 12,
+    name: 'token usage and cost tracking on tasks and local runs',
+    up: (db) => {
+      addColumn(db, 'bridge_tasks', 'input_tokens', 'INTEGER');
+      addColumn(db, 'bridge_tasks', 'output_tokens', 'INTEGER');
+      addColumn(db, 'bridge_tasks', 'total_tokens', 'INTEGER');
+      addColumn(db, 'bridge_tasks', 'cost_usd', 'REAL');
+      addColumn(db, 'local_runs', 'input_tokens', 'INTEGER');
+      addColumn(db, 'local_runs', 'output_tokens', 'INTEGER');
+      addColumn(db, 'local_runs', 'total_tokens', 'INTEGER');
+      addColumn(db, 'local_runs', 'cost_usd', 'REAL');
+    },
+  },
+  {
     version: 13,
     name: 'AI QA in review: the stage and model tier of a QA task',
     up: (db) => {

@@ -18,8 +18,24 @@ describe('Claude Code stream-json', () => {
     expect(p.push(j({ type: 'user', message: { content: [{ type: 'tool_result', is_error: true, content: 'Exit code 1\nmore' }] } })).logs)
       .toEqual(['  ✗ Exit code 1']);
     expect(p.push(j({ type: 'result', subtype: 'success', is_error: false, result: 'OK', num_turns: 3, duration_ms: 12400, total_cost_usd: 0.4 })))
-      .toEqual({ logs: ['Finished: success · 3 turns · 12 s · $0.40'] });
+      .toEqual({
+        logs: ['Finished: success · 3 turns · 12 s · $0.40'],
+        usage: { input_tokens: null, output_tokens: null, total_tokens: null, cost_usd: 0.4 },
+      });
     expect(p.push('plain text line').logs).toEqual(['plain text line']);
+  });
+
+  it('accumulates tokens from assistant messages and extracts usage from result', () => {
+    const p = claudeParser();
+    p.push(j({ type: 'assistant', message: { usage: { input_tokens: 120, output_tokens: 30 } } }));
+    p.push(j({ type: 'assistant', message: { usage: { input_tokens: 80, output_tokens: 20 } } }));
+    const out = p.push(j({ type: 'result', subtype: 'success', total_cost_usd: 0.05, usage: { input_tokens: 200, output_tokens: 50 } }));
+    expect(out.usage).toEqual({
+      input_tokens: 200,
+      output_tokens: 50,
+      total_tokens: 250,
+      cost_usd: 0.05,
+    });
   });
 
   it('reports a rejected usage limit with its reset time', () => {
@@ -63,6 +79,17 @@ describe('AGY stream-json', () => {
     expect(out.error).toContain('RESOURCE_EXHAUSTED');
     expect(out.rateLimit).toEqual({ resetAt: null });
   });
+
+  it('extracts token usage and cost from AGY result', () => {
+    const p = agyParser();
+    const out = p.push(j({ event: 'result', result: { status: 'SUCCESS', usage: { input_tokens: 300, output_tokens: 150 }, cost_usd: 0.02 } }));
+    expect(out.usage).toEqual({
+      input_tokens: 300,
+      output_tokens: 150,
+      total_tokens: 450,
+      cost_usd: 0.02,
+    });
+  });
 });
 
 describe('Codex exec --json', () => {
@@ -73,6 +100,12 @@ describe('Codex exec --json', () => {
     expect(p.push(j({ type: 'item.completed', item: { type: 'command_execution', command: 'npm test', exit_code: 1 } })).logs).toEqual(['  ✗ exit 1']);
     expect(p.push(j({ type: 'item.completed', item: { type: 'file_change', changes: [{ path: 'src/a.ts', kind: 'update' }] } })).logs).toEqual(['→ update: src/a.ts']);
     expect(p.push(j({ type: 'item.completed', item: { type: 'agent_message', text: 'All done' } })).logs).toEqual(['All done']);
+    expect(p.push(j({ type: 'turn.completed', usage: { input_tokens: 500, output_tokens: 200 } })).usage).toEqual({
+      input_tokens: 500,
+      output_tokens: 200,
+      total_tokens: 700,
+      cost_usd: null,
+    });
   });
 
   it('reports a failed turn and a usage limit', () => {

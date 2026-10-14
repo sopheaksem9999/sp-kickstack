@@ -146,8 +146,8 @@ A model id that does not start with a letter or digit, or that has characters ot
 digits and `. _ : / -`, is not accepted: the panel shows a red hint, and what you typed is not
 used.
 
-Whether Stoneforge honours the model and effort is **not confirmed**, and a Manual project ignores
-them (see [02](02-projects-and-engines.md#model-and-effort-sent-to-the-engine)).
+Local AI CLIs apply the chosen model and effort directly to the command line; Stoneforge receives
+them in the request payload; Manual projects ignore them (see [02](02-projects-and-engines.md#model-and-effort-sent-to-the-engine)).
 
 ### When Retry is refused
 

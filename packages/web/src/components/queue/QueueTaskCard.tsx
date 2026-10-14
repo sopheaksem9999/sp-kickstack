@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, Clock, FolderGit2, GitBranch, Layers, RotateCcw, Terminal } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock, FolderGit2, GitBranch, Layers, RotateCcw, Terminal, Zap } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { QueueTask } from '@sp-kickstack/shared';
 import { StatusBadge } from '../StatusBadge.js';
@@ -68,6 +68,27 @@ export function QueueTaskCard({ task, retrying, markingDone, onOpenRequirement, 
             </span>
           )}
           <StatusBadge status={task.status} />
+          {(task.total_tokens != null || task.cost_usd != null) && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40"
+              title={
+                task.input_tokens != null || task.output_tokens != null
+                  ? `${task.input_tokens?.toLocaleString() ?? 0} prompt tokens · ${task.output_tokens?.toLocaleString() ?? 0} completion tokens`
+                  : undefined
+              }
+            >
+              <Zap className="w-3 h-3 text-emerald-500" />
+              <span>
+                {task.total_tokens != null
+                  ? task.total_tokens >= 1000
+                    ? `${(task.total_tokens / 1000).toFixed(1)}k tokens`
+                    : `${task.total_tokens} tokens`
+                  : ''}
+                {task.total_tokens != null && task.cost_usd != null && ' · '}
+                {task.cost_usd != null && `$${task.cost_usd.toFixed(2)}`}
+              </span>
+            </span>
+          )}
         </div>
 
         <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 break-words">{task.title}</h3>
@@ -78,6 +99,11 @@ export function QueueTaskCard({ task, retrying, markingDone, onOpenRequirement, 
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
           {task.engine_task_id && <span className="font-mono text-[10px]">Engine ID: {task.engine_task_id}</span>}
+          {(task.input_tokens != null || task.output_tokens != null) && (
+            <span className="font-mono text-[10px]">
+              Tokens: {task.input_tokens?.toLocaleString() ?? 0} in / {task.output_tokens?.toLocaleString() ?? 0} out
+            </span>
+          )}
           {!Number.isNaN(updated) && (
             <span className="inline-flex items-center gap-1" title={new Date(updated).toLocaleString()}>
               <Clock className="w-3 h-3" />

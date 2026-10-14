@@ -11,6 +11,7 @@ import {
   Check,
   Shield,
   Layers,
+  Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BridgeTask } from '@sp-kickstack/shared';
@@ -156,6 +157,25 @@ export function LiveTaskLogsDrawer({ task, isOpen, onClose }: LiveTaskLogsDrawer
               <span className="text-slate-400">Role:</span>
               <span className="font-mono text-purple-300">{currentTask.role}</span>
             </span>
+
+            {(currentTask.total_tokens != null || currentTask.cost_usd != null) && (
+              <span className="flex items-center gap-1.5 font-mono text-xs text-slate-300">
+                <Zap className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-slate-400">Tokens:</span>
+                <span className="font-semibold text-amber-300">
+                  {currentTask.total_tokens?.toLocaleString() ?? 0}
+                  {currentTask.input_tokens != null && currentTask.output_tokens != null
+                    ? ` (${currentTask.input_tokens.toLocaleString()} in / ${currentTask.output_tokens.toLocaleString()} out)`
+                    : ''}
+                </span>
+                {currentTask.cost_usd != null && (
+                  <>
+                    <span className="text-slate-500">·</span>
+                    <span className="text-emerald-400 font-semibold">${currentTask.cost_usd.toFixed(2)}</span>
+                  </>
+                )}
+              </span>
+            )}
           </div>
 
           {currentTask.pr_url && (

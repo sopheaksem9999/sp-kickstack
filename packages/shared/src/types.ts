@@ -230,6 +230,11 @@ export interface BridgeTask {
   qa_tier_reason?: string | null;
   /** Engine dispatch attempts so far. The retry sweep adds one for each automatic try; only Retry and Request changes set it back to 1. */
   attempts?: number;
+  /** LLM token usage metrics and estimated cost */
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  total_tokens?: number | null;
+  cost_usd?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -272,6 +277,10 @@ export interface EngineTask {
   summary?: string;
   /** When a rate-limited task is expected to resume (ISO time), if the engine says. */
   resumeAt?: string;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  totalTokens?: number | null;
+  costUsd?: number | null;
 }
 
 export interface SharedAsset {

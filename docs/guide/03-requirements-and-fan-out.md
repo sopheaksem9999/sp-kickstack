@@ -111,8 +111,8 @@ You can set it at any stage until the requirement is done or cancelled, includin
   is already running is not changed.
 - The bridge puts the model and effort into the request that creates the goal or ticket in the
   engine. A part with no value is left out. See [02](02-projects-and-engines.md#model-and-effort-sent-to-the-engine)
-  for what engines do with it: Manual projects ignore them, and whether Stoneforge honours them is
-  **not confirmed**.
+  for how engines handle it: Local AI CLIs pass them directly to the CLI tool, Manual projects ignore them,
+  and Stoneforge passes them in the HTTP payload.
 - The task card shows what was sent (see below).
 
 ## Run settings
@@ -200,8 +200,8 @@ a person pinned that model or effort on this task with **Retry** or **Request ch
 is `Pinned for this task by Retry or Request changes`. To remove the pin, see
 [Which setting wins](#which-setting-wins).
 
-- It shows what the **bridge sent** to the engine. It is not proof that the agent used it: whether
-  Stoneforge honours the model and effort is not confirmed (see
+- It shows what the **bridge sent** to the engine. For Local AI CLIs, you can verify the exact
+  arguments and flags in **Logs**; for Stoneforge, verify in the engine itself (see
   [02](02-projects-and-engines.md#model-and-effort-sent-to-the-engine)).
 - The model and effort are blank while a task has not been sent yet, and right after **Retry** or
   **Request changes** until the new run has been sent.
@@ -363,7 +363,7 @@ on the task branch is finished.
   **Manual**. A running agent is not changed; **Retry** (when the card offers it) or
   **Request changes** starts a new run that uses the choice.
 - **The card shows a model, but the agent seems to use another one**: the card shows what the
-  bridge sent. Check in the engine itself, because whether Stoneforge honours it is not confirmed.
+  bridge sent. For Local AI CLIs, check the execution command in the task's **Logs**; for Stoneforge, verify in the remote engine.
 - **The requirement stays In Progress although agents seem finished**: one task is not
   IN REVIEW or COMPLETE yet (it may be WAITING / HELD, NEEDS HUMAN or FAILED). Check each card.
 - More messages: [Troubleshooting](10-troubleshooting.md).

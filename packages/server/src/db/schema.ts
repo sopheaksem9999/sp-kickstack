@@ -100,6 +100,10 @@ CREATE TABLE IF NOT EXISTS bridge_tasks (
   pr_url          TEXT,
   last_error      TEXT,
   revision        INTEGER NOT NULL DEFAULT 1,
+  input_tokens    INTEGER,
+  output_tokens   INTEGER,
+  total_tokens    INTEGER,
+  cost_usd        REAL,
   created_at      TEXT NOT NULL,
   updated_at      TEXT NOT NULL
 );

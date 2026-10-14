@@ -54124,7 +54124,7 @@ var BUILTIN_RISK_PATTERNS = [
 ];
 var LIGHT_MAX_FILES = 8;
 var DEEP_MIN_FILES = 40;
-var normalize = (p) => p.trim().replace(/\\/g, "/").replace(/^\.\//, "");
+var normalize = (p) => p.trim().replace(/\\/g, "/").replace(/^\.?\//, "");
 function globRegex(pattern) {
   let p = normalize(pattern);
   if (p.endsWith("/")) p += "**";
@@ -54149,7 +54149,9 @@ function globRegex(pattern) {
 }
 function matchesRiskPattern(file, pattern) {
   if (!pattern.trim()) return false;
-  return globRegex(pattern).test(normalize(file));
+  const path28 = normalize(file);
+  if (globRegex(pattern).test(path28)) return true;
+  return !pattern.includes("*") && globRegex(`${normalize(pattern).replace(/\/+$/, "")}/`).test(path28);
 }
 var count2 = (n2, word) => `${n2} ${word}${n2 === 1 ? "" : "s"}`;
 function classifyQaTier(files, riskPatterns, limits) {
@@ -54376,8 +54378,8 @@ var QaService = class {
   branches;
   taskChanges;
   runs;
-  /** Requirements whose round is being prepared (previews are built before the QA tasks exist). */
-  starting = /* @__PURE__ */ new Set();
+  /** Rounds being prepared (previews are built before their QA tasks exist): the header already shows them as running. */
+  starting = /* @__PURE__ */ new Map();
   /** Start AI QA for every git repository of a requirement in review (merge preview) or in QA (merged code). */
   async start(reqId, trigger) {
     const req = this.opts.requirementService.getRequirement(reqId);
@@ -54391,13 +54393,13 @@ var QaService = class {
     if (projects.length === 0) throw conflict(`${reqId} has no repository work to check`);
     const repos = projects.filter((p) => isGitWorkTree(p.repo_path));
     if (repos.length === 0) throw conflict(`No repository of ${reqId} is a git repository; AI QA needs one`);
-    this.starting.add(reqId);
+    const round = this.lastRound(reqId) + 1;
+    this.starting.set(reqId, { stage, round });
     try {
       const settings = this.settings.getAiQaSettings();
       const engine = this.opts.engine.status();
       const cliProblem = this.cliProblem(settings, engine);
       const cli = settings.agentCli === "default" ? engine.cli : settings.agentCli;
-      const round = this.lastRound(reqId) + 1;
       const unmerged = stage === "review" ? unmergedWorkByProject(this.db, reqId) : /* @__PURE__ */ new Map();
       for (const project of repos) {
         const base = this.branches.baseBranchFor(project, reqId);
@@ -54516,7 +54518,8 @@ ${finding.body.trim()}` : `**${title}**`;
   status(reqId) {
     const req = this.opts.requirementService.getRequirement(reqId);
     if (!req) throw new HttpError(404, `Requirement ${reqId} not found`);
-    const round = this.lastRound(reqId);
+    const preparing = this.starting.get(reqId);
+    const round = preparing?.round ?? this.lastRound(reqId);
     const tasks = round ? this.db.prepare("SELECT * FROM bridge_tasks WHERE req_id = ? AND role = 'qa' AND revision = ? ORDER BY project, id").all(reqId, round) : [];
     const findings = { total: 0, blocker: 0, major: 0, minor: 0 };
     const runs = tasks.map((task) => {
@@ -54540,13 +54543,13 @@ ${finding.body.trim()}` : `**${title}**`;
       };
     });
     const skipped = round ? this.projectsOf(reqId).filter((p) => !isGitWorkTree(p.repo_path)).map((p) => ({ project: p.name, reason: "not a git repository" })) : [];
-    const stage = tasks.length ? tasks[0].qa_stage ?? "qa" : null;
+    const stage = preparing?.stage ?? (tasks.length ? tasks[0].qa_stage ?? "qa" : null);
     const first = tasks.length ? this.opts.projectService.getProject(tasks[0].project) : null;
     const holds = req.status === "in_review" && this.branches.policyFor(reqId) === "auto_merge";
     return {
       reqId,
       round,
-      running: tasks.some((t) => ACTIVE_STATUSES.includes(t.status)),
+      running: Boolean(preparing) || tasks.some((t) => ACTIVE_STATUSES.includes(t.status)),
       runs,
       skipped,
       findings,

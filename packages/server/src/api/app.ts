@@ -57,6 +57,8 @@ import { DEDUPE_NOTE } from '../db/migrations.js';
 import { QuestionService } from '../services/questionService.js';
 import { ReviewService } from '../services/reviewService.js';
 import { registerHumanLoopRoutes } from './humanLoopRoutes.js';
+import { registerAiChatToolsRoutes } from './aiChatToolsRoutes.js';
+import { AiChatToolsService } from '../aiChat/toolsService.js';
 import { QaService } from '../services/qaService.js';
 import { registerLocalEngineRoutes } from './localEngineRoutes.js';
 import { BranchService } from '../services/branchService.js';
@@ -77,6 +79,7 @@ export interface AppDependencies {
   settingsService?: SettingsService;
   aiDraftService?: AiDraftService;
   aiChatService?: AiChatService;
+  aiChatTools?: AiChatToolsService;
   ideService?: IdeService;
   terminalService?: TerminalService;
   fanOutService: FanOutService;
@@ -117,6 +120,7 @@ export function createApp(deps: AppDependencies): Express {
   const app = express();
 
   const settingsService = deps.settingsService || new SettingsService(deps.db);
+  const aiChatTools = deps.aiChatTools || new AiChatToolsService(settingsService);
   const branchService = deps.branchService || new BranchService(deps.db, deps.projectService, settingsService);
 
   const ideService =
@@ -952,6 +956,7 @@ export function createApp(deps: AppDependencies): Express {
   app.post('/api/agent/tickets', requireAgentToken, handleCreateTicket);
   registerHumanLoopRoutes(app, { questionService, qaService, reviewService, requirementService: deps.requirementService, settingsService, notificationService, broadcaster: deps.broadcaster, requireAgentToken });
   registerLocalEngineRoutes(app, { settingsService, broadcaster: deps.broadcaster, localEngine: deps.localEngine });
+  registerAiChatToolsRoutes(app, { tools: aiChatTools, broadcaster: deps.broadcaster });
 
   // VCS Webhooks Sync
   const hasValidGitHubSignature = (req: Request): boolean => {

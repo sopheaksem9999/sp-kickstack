@@ -66,6 +66,8 @@ import {
   Project,
 } from '@sp-kickstack/shared';
 import { MarkdownMessage, renderInlineMarkdown } from '../components/MarkdownMessage.js';
+import { fetchAiChatTools } from '../lib/aiChatToolsApi.js';
+import { skillSlashCommands, toolsUsedText } from '../lib/aiChatTools.js';
 import { RequirementDetailSheet } from '../components/RequirementDetailSheet.js';
 import { Popover, PopoverTrigger, PopoverContent } from '../components/ui/popover.js';
 import {
@@ -260,6 +262,8 @@ export function AiChatPage() {
   );
 
   // 4. Fetch Workspace Requirements for "#" ticket mentions
+  const { data: chatTools } = useQuery({ queryKey: ['ai-chat-tools'], queryFn: fetchAiChatTools, staleTime: 30_000 });
+
   const { data: allRequirements = [] } = useQuery({
     queryKey: ['requirements', activeWorkspaceId],
     queryFn: () => fetchRequirements(activeWorkspaceId),
@@ -298,6 +302,7 @@ export function AiChatPage() {
         title: 'Synthesize & Create Requirements',
         description: 'Auto-partition tasks from chat spec into workspace tickets',
       },
+      ...skillSlashCommands(chatTools?.skills ?? []),
     ];
     if (!hashSlashQuery) return commands;
     const q = hashSlashQuery.toLowerCase();
@@ -307,7 +312,7 @@ export function AiChatPage() {
         c.title.toLowerCase().includes(q) ||
         c.description.toLowerCase().includes(q)
     );
-  }, [hashSlashTrigger, hashSlashQuery]);
+  }, [hashSlashTrigger, hashSlashQuery, chatTools]);
 
   // Unified items list for keyboard navigation
   const activeMenuItems = useMemo<
@@ -1659,6 +1664,10 @@ export function AiChatPage() {
                               <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                               <span>No response text recorded for this message.</span>
                             </div>
+                          )}
+
+                          {toolsUsedText(msg.tools_used) && (
+                            <div className="mt-1.5 text-[10px] text-slate-500 dark:text-slate-400">🔧 Tools used: {toolsUsedText(msg.tools_used)}</div>
                           )}
 
                           {msg.suggested_spec && (

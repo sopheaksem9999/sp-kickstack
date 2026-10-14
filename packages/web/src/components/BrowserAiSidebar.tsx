@@ -53,7 +53,9 @@ import type {
   Requirement,
   SharedAsset,
   ChatAttachmentItem,
+  AiChatToolUse,
 } from '@sp-kickstack/shared';
+import { toolsUsedText } from '../lib/aiChatTools.js';
 
 interface Message {
   id: string;
@@ -61,6 +63,7 @@ interface Message {
   content: string;
   timestamp: Date;
   attachments?: ChatAttachmentItem[];
+  tools_used?: AiChatToolUse[];
 }
 
 interface BrowserAiSidebarProps {
@@ -793,6 +796,7 @@ export function BrowserAiSidebar({
           res.message?.content?.trim() ||
           'No response was returned by the AI assistant. Please check your AI engine settings in Workspace Settings.',
         timestamp: new Date(),
+        tools_used: res.message?.tools_used,
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
@@ -866,6 +870,7 @@ export function BrowserAiSidebar({
             content: m.content?.trim() || '*(No response recorded)*',
             timestamp: new Date(m.timestamp),
             attachments: m.attachments,
+            tools_used: m.tools_used,
           }))
         );
       } else {
@@ -1362,6 +1367,9 @@ ${parsed.api_hints ? `## API Hints\n\`${parsed.api_hints}\`\n` : ''}`;
                 </div>
               )}
               <MarkdownMessage content={msg.content?.trim() || '*(No response recorded)*'} />
+              {msg.role === 'assistant' && toolsUsedText(msg.tools_used) && (
+                <div className="mt-1.5 text-[10px] text-slate-500 dark:text-slate-400">🔧 Tools used: {toolsUsedText(msg.tools_used)}</div>
+              )}
 
               {/* Action buttons on Assistant responses */}
               {msg.role === 'assistant' && msg.id !== 'welcome' && (

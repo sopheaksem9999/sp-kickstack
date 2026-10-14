@@ -47,6 +47,7 @@ import {
   Zap,
   ShieldOff,
   Building2,
+  Plug,
 } from 'lucide-react';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { NotificationSettingsSection } from '../components/NotificationSettingsSection.js';
@@ -54,6 +55,7 @@ import { WorkspacesSettingsSection } from '../components/WorkspacesSettingsSecti
 import { branchPatternExamples, optionalBranchProblem } from '../lib/runSettings.js';
 import { LocalEngineSettingsSection } from '../components/LocalEngineSettingsSection.js';
 import { AiQaSettingsSection } from '../components/AiQaSettingsSection.js';
+import { AiChatToolsSettingsSection } from '../components/AiChatToolsSettingsSection.js';
 import { BranchMergePolicy, ReasoningEffort, EngineId, DecisionEngineId } from '@sp-kickstack/shared';
 import { RadixSelect } from '../components/ui/select.js';
 
@@ -920,8 +922,8 @@ export function AgyModeCard({
   );
 }
 
-export type SettingsTab = 'ai' | 'workspaces' | 'git' | 'ide' | 'appearance' | 'safety' | 'notifications';
-export const VALID_TABS: SettingsTab[] = ['ai', 'workspaces', 'git', 'ide', 'appearance', 'safety', 'notifications'];
+export type SettingsTab = 'ai' | 'ai-chat' | 'workspaces' | 'git' | 'ide' | 'appearance' | 'safety' | 'notifications';
+export const VALID_TABS: SettingsTab[] = ['ai', 'ai-chat', 'workspaces', 'git', 'ide', 'appearance', 'safety', 'notifications'];
 
 export function SettingsPage() {
   const { theme, setTheme } = useTheme();
@@ -1258,6 +1260,7 @@ export function SettingsPage() {
       icon: Bot,
       badge: '100% Local',
     },
+    { id: 'ai-chat', label: 'AI Chat', sublabel: 'MCP servers & skills', icon: Plug },
     {
       id: 'workspaces',
       label: 'Workspaces',
@@ -2417,6 +2420,8 @@ export function SettingsPage() {
           {/* ========================================================= */}
           {/* Workspaces Management */}
           {/* ========================================================= */}
+          {activeTab === 'ai-chat' && <AiChatToolsSettingsSection />}
+
           {activeTab === 'workspaces' && (
             <div className="animate-in fade-in-50 duration-150">
               <WorkspacesSettingsSection />

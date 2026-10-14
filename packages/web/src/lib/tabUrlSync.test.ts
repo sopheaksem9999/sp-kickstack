@@ -47,8 +47,8 @@ describe('Web UI Tab URL Synchronization Governance', () => {
   });
 
   describe('SettingsPage tabs', () => {
-    it('accepts all 7 settings tab IDs', () => {
-      expect(VALID_SETTINGS_TABS).toEqual(['ai', 'workspaces', 'git', 'ide', 'appearance', 'safety', 'notifications']);
+    it('accepts all 8 settings tab IDs', () => {
+      expect(VALID_SETTINGS_TABS).toEqual(['ai', 'ai-chat', 'workspaces', 'git', 'ide', 'appearance', 'safety', 'notifications']);
     });
 
     it('falls back to "ai" for missing or invalid tab parameters', () => {

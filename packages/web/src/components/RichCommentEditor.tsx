@@ -39,8 +39,10 @@ function readFile(file: File): Promise<PendingFile> {
 interface RichCommentEditorProps {
   value: string;
   onChange: (value: string) => void;
-  files: PendingFile[];
-  onFilesChange: Dispatch<SetStateAction<PendingFile[]>>;
+  files?: PendingFile[];
+  onFilesChange?: Dispatch<SetStateAction<PendingFile[]>>;
+  /** false: no paperclip and no file chips (e.g. skill instructions). */
+  allowFiles?: boolean;
   sources: MentionSources;
   ariaLabel: string;
   placeholder?: string;
@@ -48,7 +50,17 @@ interface RichCommentEditorProps {
 }
 
 /** Markdown comment box like the requirement form: Write / Preview, a formatting toolbar, # and @ pickers, attached files. */
-export function RichCommentEditor({ value, onChange, files, onFilesChange, sources, ariaLabel, placeholder, disabled }: RichCommentEditorProps) {
+export function RichCommentEditor({
+  value,
+  onChange,
+  files = [],
+  onFilesChange = () => undefined,
+  allowFiles = true,
+  sources,
+  ariaLabel,
+  placeholder,
+  disabled,
+}: RichCommentEditorProps) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const [tab, setTab] = useState('write');
@@ -96,10 +108,14 @@ export function RichCommentEditor({ value, onChange, files, onFilesChange, sourc
                 <Icon className="w-3.5 h-3.5" />
               </button>
             ))}
-            <span className="w-px h-4 mx-1 bg-slate-200 dark:bg-[#303030]" />
-            <button type="button" title="Attach files" aria-label="Attach files" disabled={disabled} onClick={() => fileInput.current?.click()} className={tool}>
-              <Paperclip className="w-3.5 h-3.5" />
-            </button>
+            {allowFiles && (
+              <>
+                <span className="w-px h-4 mx-1 bg-slate-200 dark:bg-[#303030]" />
+                <button type="button" title="Attach files" aria-label="Attach files" disabled={disabled} onClick={() => fileInput.current?.click()} className={tool}>
+                  <Paperclip className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
           </div>
         </div>
         <Tabs.Content value="write" className="pt-1.5">
@@ -123,8 +139,8 @@ export function RichCommentEditor({ value, onChange, files, onFilesChange, sourc
         </Tabs.Content>
       </Tabs.Root>
 
-      <input ref={fileInput} type="file" multiple accept={ACCEPT} className="hidden" onChange={addFiles} />
-      {files.length > 0 && (
+      {allowFiles && <input ref={fileInput} type="file" multiple accept={ACCEPT} className="hidden" onChange={addFiles} />}
+      {allowFiles && files.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {files.map((file, i) => (
             <span key={`${file.name}-${i}`} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-[#242424] text-[11px]">

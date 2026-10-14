@@ -24,7 +24,7 @@ describe('stream-json: tools used and the reply', () => {
 
   it('AGY: tool steps of a recorded turn (AGY refused the MCP call, so there is no answer)', () => {
     const { tools, reply } = read(agyParser(), fixture('agy-mcp-turn.jsonl'));
-    expect(tools).toEqual(['view_file', 'call_mcp_tool']);
+    expect(tools).toEqual(['view_file', 'sp-probe/echo']);
     expect(reply).toBeUndefined();
   });
 

@@ -207,7 +207,12 @@ export function agyParser(): OutputParser {
         if (step.step_type === 'tool' && !seenTools.has(index)) {
           seenTools.add(index);
           lastTool = Math.max(lastTool, index);
-          const name = String(step.tool_name ?? step.tool_info?.name ?? 'tool');
+          const params = step.tool_info?.parameters;
+          // An MCP call is the tool call_mcp_tool with the server and tool in its parameters.
+          const name =
+            step.tool_name === 'call_mcp_tool' && params?.ServerName && params?.ToolName
+              ? `${params.ServerName}/${params.ToolName}`
+              : String(step.tool_name ?? step.tool_info?.name ?? 'tool');
           return { logs: [describeTool(name, step.tool_info?.parameters)], tools: [name] };
         }
         return NONE;

@@ -1,4 +1,4 @@
-import type { AiQaSettings, LocalEngineStatus, QaRunView, QaSeverity, RequirementQa, RequirementStatus, ReviewComment } from '@sp-kickstack/shared';
+import type { AgentCliId, AiQaSettings, LocalEngineStatus, QaRunView, QaSeverity, QaTier, RequirementQa, RequirementStatus, ReviewComment } from '@sp-kickstack/shared';
 import { isValidModel } from './agentProfile.js';
 import { installBadge, limitBadge } from './localEngineText.js';
 
@@ -110,8 +110,35 @@ export function aiQaDraftProblem(draft: AiQaSettings): string | null {
     return 'Time limit must be a whole number of minutes from 5 to 240.';
   }
   if (!Number.isInteger(draft.maxFindings) || draft.maxFindings < 1 || draft.maxFindings > 200) return 'Maximum findings must be a whole number from 1 to 200.';
-  if (draft.model !== null && !isValidModel(draft.model)) return 'Model ids use letters, digits and . _ : / - (up to 80 characters), e.g. opus';
+  if (!Number.isInteger(draft.lightMaxLines) || draft.lightMaxLines < 10 || draft.lightMaxLines > 5000) return 'Light: changed lines must be a whole number from 10 to 5000.';
+  if (!Number.isInteger(draft.deepMinLines) || draft.deepMinLines < 50 || draft.deepMinLines > 100000) return 'Deep: changed lines must be a whole number from 50 to 100000.';
+  if (draft.lightMaxLines >= draft.deepMinLines) return 'The light limit must be lower than the deep limit.';
+  const models = [draft.model, ...Object.values(draft.tiers).flatMap((t) => [t.light.model, t.standard.model, t.deep.model])];
+  if (models.some((m) => m !== null && !isValidModel(m))) return 'Model ids use letters, digits and . _ : / - (up to 80 characters), e.g. opus';
   return null;
+}
+
+/** The CLI whose tiers the card edits: the one chosen for AI QA, else the Local AI CLI engine's. */
+export function qaTierCli(agentCli: AiQaSettings['agentCli'], status: LocalEngineStatus | undefined): AgentCliId | null {
+  return agentCli !== 'default' ? agentCli : (status?.cli ?? null);
+}
+
+export const TIER_LABEL: Record<QaTier, string> = { light: 'Light', standard: 'Standard', deep: 'Deep' };
+
+/** When a tier applies, in words. */
+export function tierWhen(tier: QaTier, s: Pick<AiQaSettings, 'lightMaxLines' | 'deepMinLines'>): string {
+  if (tier === 'light') return `Up to ${s.lightMaxLines} changed lines in up to 8 files`;
+  if (tier === 'deep') return `${s.deepMinLines}+ changed lines, 40+ files, or a risky path`;
+  return 'Anything between light and deep';
+}
+
+/** High-risk paths typed one per line or comma-separated; blanks and repeats dropped. */
+export function riskPathsFromText(text: string): string[] {
+  return [...new Set(text.split(/[\n,]/).map((p) => p.trim()).filter(Boolean))];
+}
+
+export function riskPathsToText(paths: string[]): string {
+  return paths.join('\n');
 }
 
 /** Which CLI runs AI QA, with its live badges (Installed on PC / Not Detected, HEALTHY / PAUSED). */

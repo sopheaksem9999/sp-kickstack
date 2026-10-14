@@ -2,11 +2,11 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Save, ShieldCheck } from 'lucide-react';
-import type { AiQaSettings } from '@sp-kickstack/shared';
+import type { AiQaSettings, QaTier } from '@sp-kickstack/shared';
 import { fetchAiQaSettings, saveAiQaSettings } from '../lib/aiQaApi.js';
 import { fetchLocalEngineStatus } from '../lib/localEngineApi.js';
 import { AGENT_CLI_CHOICES } from '../lib/localEngineText.js';
-import { aiQaDraftProblem, qaCliStatus } from '../lib/aiQa.js';
+import { TIER_LABEL, aiQaDraftProblem, qaCliStatus, qaTierCli, tierWhen } from '../lib/aiQa.js';
 import { AgentProfileFields } from './AgentProfilePicker.js';
 
 const input =
@@ -70,20 +70,25 @@ export function AiQaSettingsSection() {
   const dirty = JSON.stringify(draft) !== JSON.stringify(data);
   const set = (patch: Partial<AiQaSettings>) => setDraft({ ...draft, ...patch });
   const cli = qaCliStatus(draft.agentCli, status);
+  const tierCli = qaTierCli(draft.agentCli, status);
+  const setTier = (tier: QaTier, value: { model: string | null; effort: AiQaSettings['effort'] }) =>
+    tierCli && set({ tiers: { ...draft.tiers, [tierCli]: { ...draft.tiers[tierCli], [tier]: value } } });
 
   return (
     <Card>
       <div className="space-y-5">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">Run automatically when a requirement enters QA</p>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">Off: AI QA runs only when you click Run AI QA in the requirement header.</p>
+            <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">Run automatically when a requirement enters In Review</p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Before the merge, on a merge preview. In QA, Run AI QA re-checks the merged code by hand.
+            </p>
           </div>
           <button
             type="button"
             role="switch"
             aria-checked={draft.runAutomatically}
-            aria-label="Run AI QA automatically when a requirement enters QA"
+            aria-label="Run AI QA automatically when a requirement enters In Review"
             onClick={() => set({ runAutomatically: !draft.runAutomatically })}
             className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${draft.runAutomatically ? 'bg-[#7b68ee]' : 'bg-slate-300 dark:bg-[#3a3a3a]'}`}
           >
@@ -113,14 +118,71 @@ export function AiQaSettingsSection() {
           </div>
         </div>
 
-        <div>
-          <span className={fieldLabel}>Model and effort</span>
-          <AgentProfileFields
-            value={{ model: draft.model, effort: draft.effort }}
-            onChange={(v) => set({ model: v.model, effort: v.effort })}
-            defaultChipLabel="Engine default"
-            defaultTitle="Use the Local AI CLI engine's model and effort"
-          />
+        <div className="space-y-3">
+          <span className={fieldLabel} id="ai-qa-model">Model</span>
+          <div role="radiogroup" aria-labelledby="ai-qa-model" className="flex flex-wrap gap-1.5">
+            {([
+              ['auto', 'Auto (by size and risk)'],
+              ['fixed', 'Fixed'],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={draft.modelMode === value}
+                onClick={() => set({ modelMode: value })}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
+                  draft.modelMode === value
+                    ? 'border-[#7b68ee] bg-[#7b68ee]/10 text-[#7b68ee]'
+                    : 'border-slate-200 dark:border-[#2e303d] text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {draft.modelMode === 'fixed' ? (
+            <AgentProfileFields
+              value={{ model: draft.model, effort: draft.effort }}
+              onChange={(v) => set({ model: v.model, effort: v.effort })}
+              defaultChipLabel="Engine default"
+              defaultTitle="Use the Local AI CLI engine's model and effort"
+            />
+          ) : tierCli ? (
+            <div className="space-y-3">
+              {(['light', 'standard', 'deep'] as const).map((tier) => (
+                <div key={tier} className="rounded-xl border border-slate-200 dark:border-[#2e303d] p-3 space-y-2">
+                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                    {TIER_LABEL[tier]} <span className="font-normal text-slate-500">· {tierWhen(tier, draft)}</span>
+                  </p>
+                  <AgentProfileFields
+                    value={draft.tiers[tierCli][tier]}
+                    onChange={(v) => setTier(tier, v)}
+                    defaultChipLabel="CLI default"
+                    defaultTitle="The CLI's own default"
+                  />
+                </div>
+              ))}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block">
+                  <span className={fieldLabel}>Light: up to (changed lines)</span>
+                  <input type="number" min={10} max={5000} className={input} value={draft.lightMaxLines} onChange={(e) => set({ lightMaxLines: Number(e.target.value) })} />
+                </label>
+                <label className="block">
+                  <span className={fieldLabel}>Deep: from (changed lines)</span>
+                  <input type="number" min={50} max={100000} className={input} value={draft.deepMinLines} onChange={(e) => set({ deepMinLines: Number(e.target.value) })} />
+                </label>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Risky paths: each project's High-risk paths (Projects page), plus database migrations, auth and security code, payments,
+                CI and deploy files, and env or secret files.
+              </p>
+            </div>
+          ) : (
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Choose a CLI above, or turn on the Local AI CLI engine, to edit the tiers.
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_QA_TIERS } from '@sp-kickstack/shared';
-import { aiQaDraftProblem, findingsText, mergeWarning, qaBadge, qaCliStatus, qaRoundTitle, qaRunText, qaRunTitle, qaStatusLine, runAiQaBlocked } from './aiQa';
+import { aiQaDraftProblem, findingsText, mergeWarning, qaBadge, qaCliStatus, qaRoundTitle, qaRunText, qaRunTitle, qaStatusLine, qaTierCli, riskPathsFromText, riskPathsToText, runAiQaBlocked, tierWhen } from './aiQa';
 
 const run = (project: string, status: string, extra: Record<string, unknown> = {}) =>
   ({ task: { id: 1 }, project, status, passed: null, summary: null, error: null, findings: 0, ...extra }) as any;
@@ -137,5 +137,37 @@ describe('AI QA settings', () => {
     expect(qaCliStatus('default', { ...status, enabled: false })).toEqual({ text: 'The Local AI CLI engine is turned off: AI QA cannot run', good: false });
     expect(qaCliStatus('default', { ...status, cli: null, problem: 'No AI CLI is installed' })).toEqual({ text: 'No AI CLI is installed', good: false });
     expect(qaCliStatus('default', undefined)).toBeNull();
+  });
+});
+
+describe('AI QA model by size and risk', () => {
+  const draft = {
+    runAutomatically: true, agentCli: 'default', model: null, effort: null, timeLimitMinutes: 30, maxFindings: 30,
+    modelMode: 'auto', tiers: DEFAULT_QA_TIERS, lightMaxLines: 150, deepMinLines: 1000,
+  } as const;
+
+  it('checks the line limits and the tier models', () => {
+    expect(aiQaDraftProblem({ ...draft, lightMaxLines: 5 })).toBe('Light: changed lines must be a whole number from 10 to 5000.');
+    expect(aiQaDraftProblem({ ...draft, deepMinLines: 20 })).toBe('Deep: changed lines must be a whole number from 50 to 100000.');
+    expect(aiQaDraftProblem({ ...draft, lightMaxLines: 1000 })).toBe('The light limit must be lower than the deep limit.');
+    const badTier = { ...DEFAULT_QA_TIERS, 'codex-cli': { ...DEFAULT_QA_TIERS['codex-cli'], deep: { model: 'bad model', effort: 'high' as const } } };
+    expect(aiQaDraftProblem({ ...draft, tiers: badTier })).toBe('Model ids use letters, digits and . _ : / - (up to 80 characters), e.g. opus');
+  });
+
+  it('edits the tiers of the CLI that runs AI QA, and says when each tier applies', () => {
+    const status = { cli: 'claude-cli' } as any;
+    expect(qaTierCli('default', status)).toBe('claude-cli');
+    expect(qaTierCli('codex-cli', status)).toBe('codex-cli');
+    expect(qaTierCli('default', undefined)).toBeNull();
+    expect(tierWhen('light', draft)).toBe('Up to 150 changed lines in up to 8 files');
+    expect(tierWhen('standard', draft)).toBe('Anything between light and deep');
+    expect(tierWhen('deep', draft)).toBe('1000+ changed lines, 40+ files, or a risky path');
+  });
+
+  it('reads High-risk paths one per line or comma-separated', () => {
+    expect(riskPathsFromText(' app/Http/Middleware/\n\ndatabase/**, config/auth.php , app/Http/Middleware/ ')).toEqual([
+      'app/Http/Middleware/', 'database/**', 'config/auth.php',
+    ]);
+    expect(riskPathsToText(['a/', 'b/**'])).toBe('a/\nb/**');
   });
 });

@@ -14,6 +14,7 @@ import { Project, EngineType } from '@sp-kickstack/shared';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { DEFAULT_ENGINE_TYPE, ENGINE_TYPE_OPTIONS } from '../lib/localEngineText.js';
 import { PROJECT_KIND_OPTIONS } from '../lib/projectKinds.js';
+import { riskPathsFromText, riskPathsToText } from '../lib/aiQa.js';
 import { toast } from 'sonner';
 import {
   RefreshCw,
@@ -73,6 +74,7 @@ export function ProjectsPage() {
   const [testCommand, setTestCommand] = useState('');
   const [buildCommand, setBuildCommand] = useState('');
   const [lintCommand, setLintCommand] = useState('');
+  const [riskPaths, setRiskPaths] = useState('');
 
   // Open Details modal state
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -91,6 +93,7 @@ export function ProjectsPage() {
   const [editTestCommand, setEditTestCommand] = useState('');
   const [editBuildCommand, setEditBuildCommand] = useState('');
   const [editLintCommand, setEditLintCommand] = useState('');
+  const [editRiskPaths, setEditRiskPaths] = useState('');
 
   // Delete Project dialog state
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
@@ -167,6 +170,7 @@ export function ProjectsPage() {
     setEditTestCommand(proj.test_command || '');
     setEditBuildCommand(proj.build_command || '');
     setEditLintCommand(proj.lint_command || '');
+    setEditRiskPaths(riskPathsToText(proj.high_risk_paths ?? []));
   };
 
   const handleCopyPath = (path: string) => {
@@ -201,6 +205,7 @@ export function ProjectsPage() {
       setTestCommand('');
       setBuildCommand('');
       setLintCommand('');
+      setRiskPaths('');
       queryClient.invalidateQueries();
     },
     onError: (err: any) => toast.error(err.message || 'Failed to create project'),
@@ -264,6 +269,7 @@ export function ProjectsPage() {
       test_command: testCommand.trim() || undefined,
       build_command: buildCommand.trim() || undefined,
       lint_command: lintCommand.trim() || undefined,
+      high_risk_paths: riskPathsFromText(riskPaths),
       done_means: 'merged',
       enabled: true,
     });
@@ -287,6 +293,7 @@ export function ProjectsPage() {
         // null clears a command; undefined would keep the old one.
         build_command: editBuildCommand.trim() || null,
         lint_command: editLintCommand.trim() || null,
+        high_risk_paths: riskPathsFromText(editRiskPaths),
       },
     });
   };
@@ -897,6 +904,14 @@ export function ProjectsPage() {
                   </div>
                 ) : null
               )}
+              {(selectedProject.high_risk_paths ?? []).length > 0 && (
+                <div className="p-3 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-200 dark:border-[#2d2d2d] space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500">High-risk paths</span>
+                  {selectedProject.high_risk_paths.map((p) => (
+                    <p key={p} className="font-semibold text-slate-800 dark:text-slate-200 font-mono">{p}</p>
+                  ))}
+                </div>
+              )}
 
               <div className="flex items-center justify-between pt-2 text-[11px] text-slate-400">
                 <span>Created: {new Date(selectedProject.created_at).toLocaleDateString()}</span>
@@ -1159,6 +1174,20 @@ export function ProjectsPage() {
                 />
               </div>
 
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  High-risk paths (Optional)
+                </label>
+                <textarea
+                  rows={3}
+                  value={editRiskPaths}
+                  onChange={(e) => setEditRiskPaths(e.target.value)}
+                  placeholder={'app/Http/Middleware/\ndatabase/**'}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
+                />
+                <p className="mt-1 text-[11px] text-slate-500">One path or pattern per line. AI QA uses its strongest model when a change touches these paths.</p>
+              </div>
+
               <div className="pt-3 border-t border-slate-200 dark:border-[#2d2d2d] flex justify-end gap-2.5">
                 <button
                   type="button"
@@ -1381,6 +1410,20 @@ export function ProjectsPage() {
                   placeholder="npm ci && npm run lint"
                   className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
                 />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  High-risk paths (Optional)
+                </label>
+                <textarea
+                  rows={3}
+                  value={riskPaths}
+                  onChange={(e) => setRiskPaths(e.target.value)}
+                  placeholder={'app/Http/Middleware/\ndatabase/**'}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141414] border border-slate-300 dark:border-[#333333] text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:border-[#7b68ee]"
+                />
+                <p className="mt-1 text-[11px] text-slate-500">One path or pattern per line. AI QA uses its strongest model when a change touches these paths.</p>
               </div>
 
               <div className="pt-3 border-t border-slate-200 dark:border-[#2d2d2d] flex justify-end gap-2.5">

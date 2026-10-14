@@ -90,9 +90,8 @@ Every AI Chat message can use the MCP servers and skills listed here.
 - **Claude Code** gets only the enabled servers listed here (not the ones in your own `~/.claude`), for one
   message at a time.
 - **AGY** does not let a chat call MCP tools when no person is there to approve them (AGY 1.3.4 refuses the
-  `mcp` permission in print mode), so AGY chats get the skills but no MCP servers, and nothing is added to
-  AGY's own MCP list; leftover `sp-` entries are removed. The AGY box shows AGY's own list for reference, and
-  **Update AGY's list** runs that clean-up again. Your other AGY servers are never changed.
+  `mcp` permission in print mode), so AGY chats get the skills but no MCP servers, and AGY's own MCP list is
+  never changed. The AGY box shows that list for reference.
 - **Skills**: **New skill** (name, when to use, instructions) or **Import folder** (every `SKILL.md` below
   it, e.g. `~/.claude/skills`, becomes an editable copy; **Re-import** reads the file again). **Always** skills
   are added to every chat message; **On request** skills are picked by typing `/name` in the chat.

@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { AI_CHAT_SKILL_DESCRIPTION_MAX } from '@sp-kickstack/shared';
 
 const SKIP = new Set(['node_modules', '.git']);
 const MAX_DEPTH = 4;
@@ -22,22 +23,47 @@ export function parseSkillFile(text: string, folderName: string, sourcePath: str
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(text);
   const meta: Record<string, string> = {};
   if (match) {
-    for (const line of match[1].split(/\r?\n/)) {
-      const pair = /^([A-Za-z_][\w-]*):\s*(.*)$/.exec(line);
-      if (pair) meta[pair[1]] = pair[2].trim().replace(/^["']|["']$/g, '');
+    const lines = match[1].split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const pair = /^([A-Za-z_][\w-]*):\s*(.*)$/.exec(lines[i]);
+      if (!pair) continue;
+      const value = pair[2].trim();
+      if (/^[>|][+-]?$/.test(value)) {
+        // A YAML block (`>` folds lines into one, `|` keeps them): the indented lines that follow.
+        const block: string[] = [];
+        while (i + 1 < lines.length && (/^\s/.test(lines[i + 1]) || lines[i + 1].trim() === '')) block.push(lines[++i].trim());
+        meta[pair[1]] = value.startsWith('>') ? block.join(' ').replace(/ {2,}/g, '\n').trim() : block.join('\n').trim();
+      } else {
+        meta[pair[1]] = value.replace(/^["']|["']$/g, '');
+      }
     }
   }
-  return { name: skillSlug(meta.name || folderName), description: meta.description ?? '', body: (match ? match[2] : text).trim(), sourcePath };
+  return {
+    name: skillSlug(meta.name || folderName),
+    description: (meta.description ?? '').slice(0, AI_CHAT_SKILL_DESCRIPTION_MAX),
+    body: (match ? match[2] : text).trim(),
+    sourcePath,
+  };
 }
 
-/** Every SKILL.md below `folder` (at most 4 levels), sorted by path. */
+/** Every SKILL.md below `folder` (at most 4 levels, following symlinks once), sorted by path. */
 export function findSkillFiles(folder: string): string[] {
   const found: string[] = [];
+  const seen = new Set<string>();
   const walk = (dir: string, depth: number) => {
+    const real = fs.realpathSync(dir);
+    if (seen.has(real)) return;
+    seen.add(real);
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
-      if (entry.isDirectory() && !SKIP.has(entry.name) && depth < MAX_DEPTH) walk(full, depth + 1);
-      else if (entry.isFile() && entry.name === 'SKILL.md') found.push(full);
+      let stat: fs.Stats;
+      try {
+        stat = entry.isSymbolicLink() ? fs.statSync(full) : (entry as unknown as fs.Stats);
+      } catch {
+        continue; // a broken link
+      }
+      if (stat.isDirectory() && !SKIP.has(entry.name) && depth < MAX_DEPTH) walk(full, depth + 1);
+      else if (stat.isFile() && entry.name === 'SKILL.md') found.push(full);
     }
   };
   walk(folder, 0);

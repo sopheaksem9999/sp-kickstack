@@ -224,7 +224,7 @@ export function agyParser(): OutputParser {
         const summary = `Finished: ${status.toLowerCase()}${typeof result.duration_seconds === 'number' ? ` · ${Math.round(result.duration_seconds)} s` : ''}`;
         const usage = extractUsage(result.usage ?? result.tokens ?? result.token_usage, result.cost_usd ?? result.cost ?? result.total_cost_usd);
         if (status === 'SUCCESS') {
-          const answerText = reply();
+          const answerText = reply() || (typeof result.response === 'string' ? result.response.trim() : '');
           return { logs: [...pending, summary], ...(usage ? { usage } : {}), ...(answerText ? { reply: answerText } : {}) };
         }
         const failed = failure(String(result.error ?? result.message ?? result.response ?? `AGY finished with status ${status}`));

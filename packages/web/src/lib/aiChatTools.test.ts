@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { AiChatToolsView } from '@sp-kickstack/shared';
 import {
-  importSummary, secretRows, secretsFromRows, serverBadge, serverProblem, serverSummary, skillProblem, skillSlashCommands, toUpdate, toolsUsedText,
+  importSummary, isChatCommand, secretRows, secretsFromRows, serverBadge, serverProblem, serverSummary, skillProblem, skillSlashCommands, toUpdate, toolsUsedText,
 } from './aiChatTools';
 
 const view: AiChatToolsView = {
@@ -33,6 +33,16 @@ describe('AI Chat tools helpers', () => {
     expect(skillProblem('API', [])).toBe('Skill names use lowercase letters, digits and - (up to 40)');
     expect(skillProblem('create', [])).toBe('/create is a chat command; choose another name');
     expect(skillProblem('house', ['house'])).toBe('A skill named house already exists');
+  });
+
+  it('matches chat commands as whole words and keeps their names away from skills', () => {
+    expect(isChatCommand('/create', 'create')).toBe(true);
+    expect(isChatCommand('  /Create split by module', 'create')).toBe(true);
+    expect(isChatCommand('/create-migration add a table', 'create')).toBe(false);
+    expect(isChatCommand('/clear-writing tidy this', 'clear')).toBe(false);
+    expect(skillProblem('clear', [])).toBe('/clear is a chat command; choose another name');
+    expect(skillProblem('docx', [], 'x'.repeat(1025))).toBe('When to use is at most 1024 characters');
+    expect(skillProblem('docx', [], 'x'.repeat(1024))).toBeNull();
   });
 
   it('turns secrets into editable rows and back, keeping untouched ones as { set: true }', () => {

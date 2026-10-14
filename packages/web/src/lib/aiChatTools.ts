@@ -1,4 +1,4 @@
-import { AI_CHAT_RESERVED_SKILLS, AI_CHAT_SERVER_NAME, AI_CHAT_SKILL_NAME } from '@sp-kickstack/shared';
+import { AI_CHAT_RESERVED_SKILLS, AI_CHAT_SERVER_NAME, AI_CHAT_SKILL_DESCRIPTION_MAX, AI_CHAT_SKILL_NAME } from '@sp-kickstack/shared';
 import type { AiChatImportResult, AiChatSecret, AiChatSkill, AiChatToolUse, AiChatToolsUpdateInput, AiChatToolsView } from '@sp-kickstack/shared';
 
 export type ViewServer = AiChatToolsView['servers'][number];
@@ -27,11 +27,17 @@ export function serverProblem(server: { name: string; transport: 'stdio' | 'http
   return null;
 }
 
-export function skillProblem(name: string, taken: string[]): string | null {
+export function skillProblem(name: string, taken: string[], description = ''): string | null {
   if (!AI_CHAT_SKILL_NAME.test(name)) return 'Skill names use lowercase letters, digits and - (up to 40)';
-  if (AI_CHAT_RESERVED_SKILLS.includes(name)) return '/create is a chat command; choose another name';
+  if (AI_CHAT_RESERVED_SKILLS.includes(name)) return `/${name} is a chat command; choose another name`;
   if (taken.includes(name)) return `A skill named ${name} already exists`;
+  if (description.trim().length > AI_CHAT_SKILL_DESCRIPTION_MAX) return `When to use is at most ${AI_CHAT_SKILL_DESCRIPTION_MAX} characters`;
   return null;
+}
+
+/** A chat command such as `/create`, as a whole word (`/create-migration` is a skill, not the command). */
+export function isChatCommand(text: string, name: string): boolean {
+  return new RegExp(`^/${name}(?:\\s|$)`, 'i').test(text.trim());
 }
 
 export function secretRows(values: Record<string, AiChatSecret>): SecretRow[] {

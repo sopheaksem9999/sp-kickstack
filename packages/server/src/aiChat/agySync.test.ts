@@ -50,10 +50,11 @@ describe("AGY's MCP list", () => {
     ]));
   });
 
-  it('removes every sp- entry when AGY chats do not use MCP tools', async () => {
+  it("leaves AGY's list alone when AGY chats do not use MCP tools", async () => {
     const result = await syncAgy(FAKE, [server('jira')], false, () => 'T');
-    expect(result.message).toBe('AGY chats do not use MCP tools on this PC; removed 1 sp- entry from its list');
-    expect(state().map((s) => s.name)).toEqual(['jira']);
+    expect(result).toEqual({ ok: true, message: "AGY chats do not use MCP tools on this PC; AGY's list was not changed", at: 'T' });
+    expect(state().map((s) => s.name)).toEqual(['jira', 'sp-old']);
+    expect(fs.existsSync(path.join(dir, 'log'))).toBe(false);
   });
 
   it('reports AGY missing or failing', async () => {

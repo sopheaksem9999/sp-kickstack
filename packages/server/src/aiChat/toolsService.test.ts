@@ -93,6 +93,13 @@ describe('AI Chat tools: imports', () => {
     expect(tools.reimportSkill('api-contract')).toMatchObject({ description: 'New wording', body: 'Use OpenAPI 3.2.' });
   });
 
+  it('imports a skill whose "when to use" is long', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-skill-long-'));
+    write(dir, 'docx/SKILL.md', `---\nname: docx\ndescription: ${'w'.repeat(1500)}\n---\nUse python-docx.\n`);
+    const { tools } = make();
+    expect(tools.importSkills(dir)).toEqual({ added: ['docx'], skipped: [] });
+  });
+
   it('explains a folder without SKILL.md and a skill that was not imported', () => {
     const { tools } = make();
     const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-skill-empty-'));

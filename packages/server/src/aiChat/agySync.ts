@@ -54,17 +54,16 @@ export async function syncAgy(
   now: () => string = () => new Date().toISOString()
 ): Promise<AiChatAgySync> {
   if (!bin) return { ok: false, message: 'AGY not detected', at: now() };
+  // Nothing of ours is in AGY's list then; an sp- entry there is the person's own.
+  if (!usesMcp) return { ok: true, message: "AGY chats do not use MCP tools on this PC; AGY's list was not changed", at: now() };
   try {
     const ours = parseAgyList(await runAgy(bin, ['mcp', 'list'])).map((s) => s.name).filter((name) => name.startsWith(PREFIX));
-    const wanted = usesMcp ? servers.filter((s) => s.enabled) : [];
+    const wanted = servers.filter((s) => s.enabled);
     for (const server of wanted) await runAgy(bin, agyAddArgs(server));
     const keep = new Set(wanted.map((s) => `${PREFIX}${s.name}`));
     const stale = ours.filter((name) => !keep.has(name));
     for (const name of stale) await runAgy(bin, ['mcp', 'remove', name]);
-    const message = usesMcp
-      ? `AGY's list updated: ${wanted.length} added or updated, ${stale.length} removed`
-      : `AGY chats do not use MCP tools on this PC; removed ${stale.length} sp- ${stale.length === 1 ? 'entry' : 'entries'} from its list`;
-    return { ok: true, message, at: now() };
+    return { ok: true, message: `AGY's list updated: ${wanted.length} added or updated, ${stale.length} removed`, at: now() };
   } catch (err: any) {
     return { ok: false, message: `Could not update AGY's list: ${oneLine(err?.message || String(err), 300)}`, at: now() };
   }

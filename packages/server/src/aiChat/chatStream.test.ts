@@ -28,6 +28,11 @@ describe('stream-json: tools used and the reply', () => {
     expect(reply).toBeUndefined();
   });
 
+  it('AGY: falls back to the result response when no text arrived in steps', () => {
+    const text = JSON.stringify({ event: 'result', result: { status: 'SUCCESS', response: 'pong\n' } });
+    expect(read(agyParser(), text)).toEqual({ tools: [], reply: 'pong' });
+  });
+
   it('AGY: only the text after the last tool step is the reply', () => {
     const j = (o: object) => JSON.stringify(o);
     const text = [

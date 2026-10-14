@@ -24,15 +24,16 @@ const BADGE = {
   idle: 'bg-slate-100 text-slate-600 dark:bg-[#2c2c2c] dark:text-slate-300',
 };
 
-function Switch({ on, label, onChange }: { on: boolean; label: string; onChange: (on: boolean) => void }) {
+function Switch({ on, label, disabled, onChange }: { on: boolean; label: string; disabled?: boolean; onChange: (on: boolean) => void }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={on}
       aria-label={label}
+      disabled={disabled}
       onClick={() => onChange(!on)}
-      className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${on ? 'bg-[#7b68ee]' : 'bg-slate-300 dark:bg-[#3a3a3a]'}`}
+      className={`relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-50 ${on ? 'bg-[#7b68ee]' : 'bg-slate-300 dark:bg-[#3a3a3a]'}`}
     >
       <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} />
     </button>
@@ -68,7 +69,7 @@ function SecretRows({ label, rows, keyHint, onChange }: { label: string; rows: S
   );
 }
 
-function ServerDialog({ server, taken, onSave, onClose }: { server?: ViewServer; taken: string[]; onSave: (s: ViewServer) => void; onClose: () => void }) {
+function ServerDialog({ server, taken, saving, onSave, onClose }: { server?: ViewServer; taken: string[]; saving: boolean; onSave: (s: ViewServer) => void; onClose: () => void }) {
   const [name, setName] = useState(server?.name ?? '');
   const [transport, setTransport] = useState<'stdio' | 'http'>(server?.transport ?? 'stdio');
   const [command, setCommand] = useState(server?.command ?? '');
@@ -122,19 +123,19 @@ function ServerDialog({ server, taken, onSave, onClose }: { server?: ViewServer;
         </div>
         <DialogFooter>
           <button type="button" className={button} onClick={onClose}>Cancel</button>
-          <button type="button" className={primary} disabled={Boolean(problem)} onClick={save}>Save</button>
+          <button type="button" className={primary} disabled={Boolean(problem) || saving} onClick={save}>{saving ? 'Saving…' : 'Save'}</button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-function SkillDialog({ skill, taken, onSave, onClose }: { skill?: AiChatSkill; taken: string[]; onSave: (s: AiChatSkill) => void; onClose: () => void }) {
+function SkillDialog({ skill, taken, saving, onSave, onClose }: { skill?: AiChatSkill; taken: string[]; saving: boolean; onSave: (s: AiChatSkill) => void; onClose: () => void }) {
   const [name, setName] = useState(skill?.name ?? '');
   const [description, setDescription] = useState(skill?.description ?? '');
   const [mode, setMode] = useState<AiChatSkill['mode']>(skill?.mode ?? 'on_request');
   const [body, setBody] = useState(skill?.body ?? '');
-  const problem = skillProblem(name, taken);
+  const problem = skillProblem(name, taken, description);
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-2xl">
@@ -160,10 +161,10 @@ function SkillDialog({ skill, taken, onSave, onClose }: { skill?: AiChatSkill; t
           <button
             type="button"
             className={primary}
-            disabled={Boolean(problem)}
+            disabled={Boolean(problem) || saving}
             onClick={() => onSave({ name, description: description.trim(), body, mode, enabled: skill?.enabled ?? true, ...(skill?.sourcePath ? { sourcePath: skill.sourcePath } : {}) })}
           >
-            Save
+            {saving ? 'Saving…' : 'Save'}
           </button>
         </DialogFooter>
       </DialogContent>
@@ -226,13 +227,16 @@ export function AiChatToolsSettingsSection() {
     },
     onError: fail,
   });
-  const paste = useMutation({ mutationFn: importMcpJson, onSuccess: (r) => { refresh(); setDialog(null); toast.success(importSummary(r)); }, onError: fail });
-  const importFolder = useMutation({ mutationFn: importSkillsFolder, onSuccess: (r) => { refresh(); setDialog(null); toast.success(importSummary(r)); }, onError: fail });
-  const reimport = useMutation({ mutationFn: reimportSkill, onSuccess: () => { refresh(); setReimportAsk(null); toast.success('Skill re-imported'); }, onError: fail });
+  // Each import stays pending until the refreshed list is in, so no change starts from the old one.
+  const paste = useMutation({ mutationFn: importMcpJson, onSuccess: async (r) => { await refresh(); setDialog(null); toast.success(importSummary(r)); }, onError: fail });
+  const importFolder = useMutation({ mutationFn: importSkillsFolder, onSuccess: async (r) => { await refresh(); setDialog(null); toast.success(importSummary(r)); }, onError: fail });
+  const reimport = useMutation({ mutationFn: reimportSkill, onSuccess: async () => { await refresh(); setReimportAsk(null); toast.success('Skill re-imported'); }, onError: fail });
 
   if (error) return <p className="text-xs text-rose-600">{(error as Error).message}</p>;
   if (!data) return <p className="text-xs text-slate-500">Loading…</p>;
-  const put = (patch: Partial<AiChatToolsView>) => save.mutate({ ...data, ...patch });
+  // One change at a time: each starts from the list the server last answered with.
+  const busy = save.isPending || paste.isPending || importFolder.isPending || reimport.isPending;
+  const put = (patch: Partial<AiChatToolsView>, onDone?: () => void) => save.mutate({ ...data, ...patch }, { onSuccess: () => onDone?.() });
   const limitValue = limit ?? String(data.timeLimitSeconds);
   const limitOk = /^\d+$/.test(limitValue) && Number(limitValue) >= 5 && Number(limitValue) <= 1800;
 
@@ -253,7 +257,7 @@ export function AiChatToolsSettingsSection() {
             const badge = serverBadge(s);
             return (
               <div key={s.name} className="py-2.5 flex items-center gap-3 flex-wrap">
-                <Switch on={s.enabled} label={`Use ${s.name}`} onChange={(on) => put({ servers: data.servers.map((x) => (x.name === s.name ? { ...x, enabled: on } : x)) })} />
+                <Switch on={s.enabled} label={`Use ${s.name}`} disabled={busy} onChange={(on) => put({ servers: data.servers.map((x) => (x.name === s.name ? { ...x, enabled: on } : x)) })} />
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-bold font-mono">
                     {s.name} <span className="font-normal text-slate-400">{s.transport}</span>
@@ -267,7 +271,7 @@ export function AiChatToolsSettingsSection() {
                 <button type="button" className={button} aria-label={`Edit ${s.name}`} onClick={() => setServerEdit({ server: s })}>
                   <Pencil className="w-3 h-3" />
                 </button>
-                <button type="button" className={button} aria-label={`Delete ${s.name}`} onClick={() => put({ servers: data.servers.filter((x) => x.name !== s.name) })}>
+                <button type="button" className={button} disabled={busy} aria-label={`Delete ${s.name}`} onClick={() => put({ servers: data.servers.filter((x) => x.name !== s.name) })}>
                   <Trash2 className="w-3 h-3" />
                 </button>
               </div>
@@ -279,7 +283,7 @@ export function AiChatToolsSettingsSection() {
             <Plus className="w-3 h-3" />
             Add server
           </button>
-          <button type="button" className={button} onClick={() => setDialog('paste')}>Paste .mcp.json</button>
+          <button type="button" className={button} disabled={busy} onClick={() => setDialog('paste')}>Paste .mcp.json</button>
         </div>
       </div>
 
@@ -334,7 +338,7 @@ export function AiChatToolsSettingsSection() {
           {data.skills.length === 0 && <p className="py-3 text-xs text-slate-500">No skills yet. Write one or import a folder of SKILL.md files.</p>}
           {data.skills.map((k) => (
             <div key={k.name} className="py-2.5 flex items-center gap-3 flex-wrap">
-              <Switch on={k.enabled} label={`Use skill ${k.name}`} onChange={(on) => put({ skills: data.skills.map((x) => (x.name === k.name ? { ...x, enabled: on } : x)) })} />
+              <Switch on={k.enabled} label={`Use skill ${k.name}`} disabled={busy} onChange={(on) => put({ skills: data.skills.map((x) => (x.name === k.name ? { ...x, enabled: on } : x)) })} />
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-bold font-mono">/{k.name}</div>
                 <div className="text-[11px] text-slate-500 truncate">
@@ -349,6 +353,7 @@ export function AiChatToolsSettingsSection() {
                     type="button"
                     role="radio"
                     aria-checked={k.mode === m}
+                    disabled={busy}
                     onClick={() => put({ skills: data.skills.map((x) => (x.name === k.name ? { ...x, mode: m } : x)) })}
                     className={k.mode === m ? primary : button}
                   >
@@ -357,12 +362,12 @@ export function AiChatToolsSettingsSection() {
                 ))}
               </div>
               {k.sourcePath && (
-                <button type="button" className={button} onClick={() => setReimportAsk(k)}>Re-import</button>
+                <button type="button" className={button} disabled={busy} onClick={() => setReimportAsk(k)}>Re-import</button>
               )}
               <button type="button" className={button} aria-label={`Edit ${k.name}`} onClick={() => setSkillEdit({ skill: k })}>
                 <Pencil className="w-3 h-3" />
               </button>
-              <button type="button" className={button} aria-label={`Delete ${k.name}`} onClick={() => put({ skills: data.skills.filter((x) => x.name !== k.name) })}>
+              <button type="button" className={button} disabled={busy} aria-label={`Delete ${k.name}`} onClick={() => put({ skills: data.skills.filter((x) => x.name !== k.name) })}>
                 <Trash2 className="w-3 h-3" />
               </button>
             </div>
@@ -373,7 +378,7 @@ export function AiChatToolsSettingsSection() {
             <Plus className="w-3 h-3" />
             New skill
           </button>
-          <button type="button" className={button} onClick={() => setDialog('import')}>Import folder</button>
+          <button type="button" className={button} disabled={busy} onClick={() => setDialog('import')}>Import folder</button>
         </div>
       </div>
 
@@ -385,11 +390,8 @@ export function AiChatToolsSettingsSection() {
           <button
             type="button"
             className={primary}
-            disabled={!limitOk || limit === null}
-            onClick={() => {
-              put({ timeLimitSeconds: Number(limitValue) });
-              setLimit(null);
-            }}
+            disabled={!limitOk || limit === null || busy}
+            onClick={() => put({ timeLimitSeconds: Number(limitValue) }, () => setLimit(null))}
           >
             Save
           </button>
@@ -400,11 +402,11 @@ export function AiChatToolsSettingsSection() {
         <ServerDialog
           server={serverEdit.server}
           taken={data.servers.map((s) => s.name).filter((n) => n !== serverEdit.server?.name)}
+          saving={busy}
           onClose={() => setServerEdit(null)}
           onSave={(next) => {
             const servers = serverEdit.server ? data.servers.map((s) => (s.name === serverEdit.server!.name ? next : s)) : [...data.servers, next];
-            put({ servers });
-            setServerEdit(null);
+            put({ servers }, () => setServerEdit(null));
           }}
         />
       )}
@@ -412,11 +414,11 @@ export function AiChatToolsSettingsSection() {
         <SkillDialog
           skill={skillEdit.skill}
           taken={data.skills.map((s) => s.name).filter((n) => n !== skillEdit.skill?.name)}
+          saving={busy}
           onClose={() => setSkillEdit(null)}
           onSave={(next) => {
             const skills = skillEdit.skill ? data.skills.map((s) => (s.name === skillEdit.skill!.name ? next : s)) : [...data.skills, next];
-            put({ skills });
-            setSkillEdit(null);
+            put({ skills }, () => setSkillEdit(null));
           }}
         />
       )}

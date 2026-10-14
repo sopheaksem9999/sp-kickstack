@@ -67,7 +67,7 @@ import {
 } from '@sp-kickstack/shared';
 import { MarkdownMessage, renderInlineMarkdown } from '../components/MarkdownMessage.js';
 import { fetchAiChatTools } from '../lib/aiChatToolsApi.js';
-import { skillSlashCommands, toolsUsedText } from '../lib/aiChatTools.js';
+import { isChatCommand, skillSlashCommands, toolsUsedText } from '../lib/aiChatTools.js';
 import { RequirementDetailSheet } from '../components/RequirementDetailSheet.js';
 import { Popover, PopoverTrigger, PopoverContent } from '../components/ui/popover.js';
 import {
@@ -925,13 +925,13 @@ export function AiChatPage() {
 
     // Check for slash command /create
     if (
-      rawContent.toLowerCase().startsWith('/create') ||
+      isChatCommand(rawContent, 'create') ||
       rawContent.toLowerCase() === 'create requirement' ||
       rawContent.toLowerCase() === 'dispatch requirement'
     ) {
       setChatInput('');
-      const extraInstructions = rawContent.toLowerCase().startsWith('/create')
-        ? rawContent.slice(7).trim()
+      const extraInstructions = isChatCommand(rawContent, 'create')
+        ? rawContent.trim().slice(7).trim()
         : undefined;
       await handleSynthesizeRequirement(extraInstructions || undefined);
       return;

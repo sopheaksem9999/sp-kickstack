@@ -106,6 +106,15 @@ export function skillsPrompt(skills: AiChatSkill[], requested: string[]): string
   return `## Skills\n${parts.join('\n\n')}${left.length ? `\n\n(not included: too long) ${left.join(', ')}` : ''}`;
 }
 
+const PAGE_MARKERS = ['--- Page Grounding Context ---', '[Active Webpage Context]'];
+
+/** The browser sidebar adds the visited page's text to a message: mark that part as untrusted. */
+export function untrustedPage(content: string): string {
+  const at = Math.min(...PAGE_MARKERS.map((m) => content.indexOf(m)).filter((i) => i >= 0));
+  if (!Number.isFinite(at)) return content;
+  return `${content.slice(0, at)}${wrapUntrusted('web page', content.slice(at).trimEnd())}`;
+}
+
 /** `mcp__jira__search` → `jira.search`; `sp-jira/search` (AGY) → `jira.search`; others as they are. */
 export function toolLabel(raw: string): string {
   const name = raw.trim();

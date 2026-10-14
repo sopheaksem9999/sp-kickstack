@@ -55,7 +55,7 @@ import type {
   ChatAttachmentItem,
   AiChatToolUse,
 } from '@sp-kickstack/shared';
-import { toolsUsedText } from '../lib/aiChatTools.js';
+import { isChatCommand, toolsUsedText } from '../lib/aiChatTools.js';
 
 interface Message {
   id: string;
@@ -709,7 +709,7 @@ export function BrowserAiSidebar({
     if (isSending) return;
 
     // Check slash commands
-    if (text.toLowerCase().startsWith('/create') || text.toLowerCase().startsWith('/extract')) {
+    if (isChatCommand(text, 'create') || isChatCommand(text, 'extract')) {
       setInputText('');
       setAttachedFiles([]);
       setShowMentionMenu(false);
@@ -717,7 +717,7 @@ export function BrowserAiSidebar({
       handleExtractRequirementTool();
       return;
     }
-    if (text.toLowerCase().startsWith('/summarize')) {
+    if (isChatCommand(text, 'summarize')) {
       setInputText('');
       setAttachedFiles([]);
       setShowMentionMenu(false);
@@ -725,7 +725,7 @@ export function BrowserAiSidebar({
       handleSummarizeTool();
       return;
     }
-    if (text.toLowerCase().startsWith('/inspect')) {
+    if (isChatCommand(text, 'inspect')) {
       setInputText('');
       setAttachedFiles([]);
       setShowMentionMenu(false);
@@ -733,7 +733,7 @@ export function BrowserAiSidebar({
       handleInspectTool();
       return;
     }
-    if (text.toLowerCase().startsWith('/clear')) {
+    if (isChatCommand(text, 'clear')) {
       setMessages([]);
       setSessionId(null);
       setInputText('');

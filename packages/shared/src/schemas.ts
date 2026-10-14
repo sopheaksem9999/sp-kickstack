@@ -449,8 +449,10 @@ export type UpdateAiCliSettingsInput = z.input<typeof AiCliSettingsSchema>;
 /** AI Chat: MCP servers and skills for the chats, one list for the whole system. */
 export const AI_CHAT_SERVER_NAME = /^[A-Za-z0-9_-]{1,40}$/;
 export const AI_CHAT_SKILL_NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
-/** Chat commands a skill cannot be named after. */
-export const AI_CHAT_RESERVED_SKILLS = ['create'];
+/** Chat commands a skill cannot be named after (AI Chat page and browser sidebar). */
+export const AI_CHAT_RESERVED_SKILLS = ['create', 'extract', 'summarize', 'inspect', 'clear'];
+/** A skill's "when to use", as long as a SKILL.md description may be. */
+export const AI_CHAT_SKILL_DESCRIPTION_MAX = 1024;
 
 const AiChatSecretSchema = z.union([z.string(), z.object({ set: z.literal(true) })]);
 
@@ -494,8 +496,11 @@ export const AiChatSkillSchema = z.object({
   name: z
     .string()
     .regex(AI_CHAT_SKILL_NAME, 'Skill names use lowercase letters, digits and - (up to 40)')
-    .refine((name) => !AI_CHAT_RESERVED_SKILLS.includes(name), '/create is a chat command; choose another name'),
-  description: z.string().trim().max(300).default(''),
+    .refine(
+      (name) => !AI_CHAT_RESERVED_SKILLS.includes(name),
+      (name) => ({ message: `/${name} is a chat command; choose another name` })
+    ),
+  description: z.string().trim().max(AI_CHAT_SKILL_DESCRIPTION_MAX).default(''),
   body: z.string().max(100_000).default(''),
   mode: z.enum(['always', 'on_request']).default('on_request'),
   enabled: z.boolean().default(true),

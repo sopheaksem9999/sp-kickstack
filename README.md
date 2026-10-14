@@ -1,6 +1,8 @@
-# SP-Kickstack
-
 <div align="center">
+
+<img src="docs/images/logo.png" alt="SP-Kickstack Logo" width="140" />
+
+# SP-Kickstack
 
 **Cross-Repo AI Agent Orchestration Bridge & Human-in-the-Loop Git Workflow**
 
@@ -13,6 +15,7 @@
 [![Tests](https://img.shields.io/badge/Tests-Passing-brightgreen.svg)](packages/)
 
 [**Quick Start**](#-quick-start) •
+[**Screenshots**](#-system-screenshots) •
 [**Key Features**](#-key-features) •
 [**Architecture**](#-architecture--lifecycle) •
 [**AI CLI Engines**](#-supported-local-ai-cli-engines) •
@@ -45,6 +48,38 @@ flowchart LR
     QA -->|Passed Tests| Gate[Automated Git Merge Gate]
     Gate -->|Merged| Base[Base Branches & Done]
 ```
+
+---
+
+## 📸 System Screenshots
+
+### 1. AI Architect Chat & Spec Formulation
+Collaborative conversational workspace to draft comprehensive product requirements, stream live AI reasoning, switch models on the fly, and inspect generated task specifications.
+
+<p align="center">
+  <img src="docs/images/screenshot-ai-architect-chat.png" alt="AI Architect Chat" width="100%" />
+</p>
+
+### 2. Cross-Repository Requirement Fan-Out
+Slide-over drawer to configure target repositories across your monorepo or polyrepo landscape, configure execution models, customize base branches, and set merge gate policies.
+
+<p align="center">
+  <img src="docs/images/screenshot-requirement-fanout.png" alt="Requirement Specification Slide-over" width="100%" />
+</p>
+
+### 3. Multi-Repository Git Review & Diffs
+Visual code diff inspector displaying syntax-highlighted changes, branch status, review annotations, and one-click **"Improve with AI"** actionable change requests.
+
+<p align="center">
+  <img src="docs/images/screenshot-git-review-diff.png" alt="Multi-Repository Git Review & Diffs" width="100%" />
+</p>
+
+### 4. Live AI CLI Telemetry & Rate-Limit Backoff
+Live monitor tracking provider token limits, HTTP 429 rate limit backoff timers, and automated retry sweeps across Claude, Gemini/Antigravity, Codex, and Ollama.
+
+<p align="center">
+  <img src="docs/images/screenshot-ai-engine-telemetry.png" alt="AI Engine Telemetry & Rate Limit Backoff" width="100%" />
+</p>
 
 ---
 

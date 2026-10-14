@@ -509,6 +509,7 @@ export interface AiChatMessage {
   timestamp: string;
   suggested_spec?: DraftRequirementResult;
   attachments?: ChatAttachmentItem[];
+  tools_used?: AiChatToolUse[];
 }
 
 export interface AiChatRequest {
@@ -761,4 +762,74 @@ export interface TaskFileDiff {
   binary: boolean;
   lines: TaskDiffLine[];
   truncated: boolean;
+}
+
+export interface AiChatServerStatus {
+  ok: boolean;
+  tools: number;
+  error?: string;
+  checkedAt: string;
+}
+
+export interface AiChatMcpServer {
+  name: string;
+  enabled: boolean;
+  transport: 'stdio' | 'http';
+  command?: string;
+  args: string[];
+  /** Secret values. */
+  env: Record<string, string>;
+  url?: string;
+  /** Secret values. */
+  headers: Record<string, string>;
+  status?: AiChatServerStatus;
+}
+
+export interface AiChatSkill {
+  name: string;
+  /** When to use. */
+  description: string;
+  body: string;
+  mode: 'always' | 'on_request';
+  enabled: boolean;
+  sourcePath?: string;
+}
+
+export interface AiChatAgySync {
+  ok: boolean;
+  message: string;
+  at: string;
+}
+
+export interface AiChatToolsSettings {
+  timeLimitSeconds: number;
+  servers: AiChatMcpServer[];
+  skills: AiChatSkill[];
+  agySync?: AiChatAgySync;
+}
+
+/** A secret value as the browser sees it: never the text once stored. */
+export type AiChatSecret = string | { set: true };
+
+export interface AiChatAgyInfo {
+  detected: boolean;
+  /** AGY chats call MCP tools on this PC (see cliModes.ts). */
+  usesMcp: boolean;
+  servers: Array<{ name: string; type: string; status: string; target: string }>;
+  error?: string;
+}
+
+export interface AiChatToolsView extends Omit<AiChatToolsSettings, 'servers'> {
+  servers: Array<Omit<AiChatMcpServer, 'env' | 'headers'> & { env: Record<string, AiChatSecret>; headers: Record<string, AiChatSecret> }>;
+  agy: AiChatAgyInfo;
+}
+
+export interface AiChatToolUse {
+  tool: string;
+  count: number;
+}
+
+export interface AiChatImportResult {
+  added: string[];
+  skipped: Array<{ name: string; reason: string }>;
 }

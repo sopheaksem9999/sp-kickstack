@@ -279,6 +279,13 @@ export const MIGRATIONS: Migration[] = [
       db.exec("UPDATE bridge_tasks SET qa_stage = 'qa' WHERE role = 'qa' AND qa_stage IS NULL");
     },
   },
+  {
+    version: 14,
+    name: 'AI chat replies remember the tools they used',
+    up: (db) => {
+      addColumn(db, 'ai_chat_messages', 'tools_used', 'TEXT');
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

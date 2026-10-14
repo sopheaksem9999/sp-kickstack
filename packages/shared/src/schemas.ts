@@ -446,6 +446,94 @@ export const AiCliSettingsSchema = z.object({
 
 export type UpdateAiCliSettingsInput = z.input<typeof AiCliSettingsSchema>;
 
+/** AI Chat: MCP servers and skills for the chats, one list for the whole system. */
+export const AI_CHAT_SERVER_NAME = /^[A-Za-z0-9_-]{1,40}$/;
+export const AI_CHAT_SKILL_NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
+/** Chat commands a skill cannot be named after. */
+export const AI_CHAT_RESERVED_SKILLS = ['create'];
+
+const AiChatSecretSchema = z.union([z.string(), z.object({ set: z.literal(true) })]);
+
+const AiChatServerStatusSchema = z.object({
+  ok: z.boolean(),
+  tools: z.number().int().min(0),
+  error: z.string().optional(),
+  checkedAt: z.string(),
+});
+
+const AiChatMcpServerBase = z.object({
+  name: z.string().regex(AI_CHAT_SERVER_NAME, 'Server names use letters, digits, - and _ (up to 40)'),
+  enabled: z.boolean().default(true),
+  transport: z.enum(['stdio', 'http']),
+  command: z.string().trim().min(1).optional(),
+  args: z.array(z.string()).default([]),
+  url: z.string().trim().optional(),
+});
+
+function checkServer(server: { transport: 'stdio' | 'http'; command?: string; url?: string }, ctx: z.RefinementCtx) {
+  if (server.transport === 'stdio' && !server.command) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['command'], message: 'A stdio server needs a command' });
+  }
+  if (server.transport === 'http' && !/^https?:\/\/\S+$/.test(server.url ?? '')) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['url'], message: 'An http server needs a URL starting with http:// or https://' });
+  }
+}
+
+export const AiChatMcpServerSchema = AiChatMcpServerBase.extend({
+  env: z.record(z.string()).default({}),
+  headers: z.record(z.string()).default({}),
+  status: AiChatServerStatusSchema.optional(),
+}).superRefine(checkServer);
+
+const AiChatMcpServerUpdateSchema = AiChatMcpServerBase.extend({
+  env: z.record(AiChatSecretSchema).default({}),
+  headers: z.record(AiChatSecretSchema).default({}),
+}).superRefine(checkServer);
+
+export const AiChatSkillSchema = z.object({
+  name: z
+    .string()
+    .regex(AI_CHAT_SKILL_NAME, 'Skill names use lowercase letters, digits and - (up to 40)')
+    .refine((name) => !AI_CHAT_RESERVED_SKILLS.includes(name), '/create is a chat command; choose another name'),
+  description: z.string().trim().max(300).default(''),
+  body: z.string().max(100_000).default(''),
+  mode: z.enum(['always', 'on_request']).default('on_request'),
+  enabled: z.boolean().default(true),
+  sourcePath: z.string().optional(),
+});
+
+const AiChatAgySyncSchema = z.object({ ok: z.boolean(), message: z.string(), at: z.string() });
+
+function uniqueNames(value: { servers: Array<{ name: string }>; skills: Array<{ name: string }> }, ctx: z.RefinementCtx) {
+  const twice = (names: string[]) => names.find((name, i) => names.indexOf(name) !== i);
+  const server = twice(value.servers.map((s) => s.name));
+  if (server) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['servers'], message: `Two servers are named ${server}` });
+  const skill = twice(value.skills.map((s) => s.name));
+  if (skill) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['skills'], message: `Two skills are named ${skill}` });
+}
+
+const timeLimitSeconds = z.number().int().min(5).max(1800).default(120);
+
+export const AiChatToolsSettingsSchema = z
+  .object({
+    timeLimitSeconds,
+    servers: z.array(AiChatMcpServerSchema).default([]),
+    skills: z.array(AiChatSkillSchema).default([]),
+    agySync: AiChatAgySyncSchema.optional(),
+  })
+  .superRefine(uniqueNames);
+
+/** What the browser saves: secrets are new text, or { set: true } to keep the stored value. */
+export const AiChatToolsUpdateInputSchema = z
+  .object({
+    timeLimitSeconds,
+    servers: z.array(AiChatMcpServerUpdateSchema).default([]),
+    skills: z.array(AiChatSkillSchema).default([]),
+  })
+  .superRefine(uniqueNames);
+
+export type AiChatToolsUpdateInput = z.input<typeof AiChatToolsUpdateInputSchema>;
+
 /** AI CLIs that can edit code and run commands; the Local AI CLI engine runs one of them. */
 export const AGENT_CLI_IDS = ['claude-cli', 'agy-cli', 'codex-cli'] as const;
 

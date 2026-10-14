@@ -4,6 +4,8 @@ import {
   BranchMergeSettingsSchema,
   AiCliSettings,
   AiCliSettingsSchema,
+  AiChatToolsSettings,
+  AiChatToolsSettingsSchema,
   IdeSettings,
   IdeSettingsSchema,
   AiQaSettings,
@@ -85,6 +87,27 @@ export class SettingsService {
     `).run(JSON.stringify(updated));
 
     return updated;
+  }
+
+  /** Settings → AI Chat: MCP servers, skills and the chat time limit. */
+  public getAiChatToolsSettings(): AiChatToolsSettings {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'ai_chat_tools'").get() as { value?: string } | undefined;
+    if (row?.value) {
+      try {
+        return AiChatToolsSettingsSchema.parse(JSON.parse(row.value));
+      } catch {
+        // Fall back to the defaults below.
+      }
+    }
+    return AiChatToolsSettingsSchema.parse({});
+  }
+
+  public saveAiChatToolsSettings(value: AiChatToolsSettings): AiChatToolsSettings {
+    const parsed = AiChatToolsSettingsSchema.parse(value);
+    this.db
+      .prepare("INSERT INTO settings (key, value) VALUES ('ai_chat_tools', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+      .run(JSON.stringify(parsed));
+    return parsed;
   }
 
   public getSystemDecisionSettings(): SystemDecisionSettings {

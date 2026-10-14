@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_QA_TIERS } from '@sp-kickstack/shared';
-import { aiQaDraftProblem, findingsText, qaBadge, qaCliStatus, qaRunText, qaStatusLine, runAiQaBlocked } from './aiQa';
+import { aiQaDraftProblem, findingsText, mergeWarning, qaBadge, qaCliStatus, qaRoundTitle, qaRunText, qaRunTitle, qaStatusLine, runAiQaBlocked } from './aiQa';
 
 const run = (project: string, status: string, extra: Record<string, unknown> = {}) =>
   ({ task: { id: 1 }, project, status, passed: null, summary: null, error: null, findings: 0, ...extra }) as any;
@@ -74,11 +74,39 @@ describe('AI QA header', () => {
     expect(qaBadge({ source: 'person', severity: null })).toBeNull();
   });
 
-  it('offers Run AI QA only in QA and while nothing runs', () => {
-    expect(runAiQaBlocked('in_review', undefined)).toBe('AI QA runs while the requirement is in QA');
-    expect(runAiQaBlocked('qa', qa([run('backend', 'running')]))).toBe('AI QA is running');
-    expect(runAiQaBlocked('qa', qa([run('backend', 'done')]))).toBeNull();
-    expect(runAiQaBlocked('qa', undefined)).toBeNull();
+  it('offers Run AI QA in review and in QA, while nothing runs and no merge runs', () => {
+    expect(runAiQaBlocked({ status: 'in_progress' }, undefined)).toBe('AI QA runs while the requirement is in review or in QA');
+    expect(runAiQaBlocked({ status: 'in_review' }, undefined)).toBeNull();
+    expect(runAiQaBlocked({ status: 'qa', merge_state: 'running' }, undefined)).toBe('A merge is running');
+    expect(runAiQaBlocked({ status: 'qa' }, qa([run('backend', 'running')]))).toBe('AI QA is running');
+    expect(runAiQaBlocked({ status: 'qa' }, qa([run('backend', 'done')]))).toBeNull();
+  });
+
+  it('prefixes review rounds with "AI QA before merge" and names a repository once', () => {
+    const review = { stage: 'review' };
+    expect(qaStatusLine(qa([run('backend', 'running')], review))?.text).toBe('AI QA before merge running… (backend …)');
+    expect(qaStatusLine(qa([run('backend', 'done', { passed: true })], review))).toEqual({ text: 'AI QA before merge: passed', tone: 'passed' });
+    expect(qaStatusLine(qa([run('backend', 'done', { passed: true })], { ...review, findings: { total: 2, blocker: 0, major: 0, minor: 2 } }))?.text)
+      .toBe('AI QA before merge: passed · 2 minor findings');
+    expect(qaStatusLine(qa([run('backend', 'done', { passed: false })], { ...review, findings: { total: 1, blocker: 1, major: 0, minor: 0 } }))?.text)
+      .toBe('AI QA before merge: 1 finding (1 blocker)');
+    expect(qaStatusLine(qa([run('backend', 'failed', { error: 'backend: merging x into develop conflicts in a.ts' })], review))?.text)
+      .toBe('AI QA before merge failed: backend: merging x into develop conflicts in a.ts');
+  });
+
+  it("titles the round and shows each repository's tier", () => {
+    expect(qaRoundTitle(qa([run('backend', 'done')], { stage: 'review', previewInto: 'develop' }))).toBe('AI QA · round 1 · merge preview into develop');
+    expect(qaRoundTitle(qa([run('backend', 'done')], { stage: 'qa', round: 2 }))).toBe('AI QA · round 2');
+    expect(qaRunTitle(run('backend', 'done', { tier: 'light', tierReason: '42 lines in 3 files' }))).toBe('backend · light · 42 lines in 3 files');
+    expect(qaRunTitle(run('backend', 'done'))).toBe('backend');
+  });
+
+  it('asks before a merge while a review round runs or blockers are open', () => {
+    expect(mergeWarning(undefined)).toBeNull();
+    expect(mergeWarning(qa([run('backend', 'running')], { stage: 'review', openBlockers: 0 }))).toBe('AI QA is still checking this requirement. Merge anyway?');
+    expect(mergeWarning(qa([run('backend', 'done')], { stage: 'review', openBlockers: 2 }))).toBe('2 open AI QA blockers. Merge anyway?');
+    expect(mergeWarning(qa([run('backend', 'done')], { stage: 'review', openBlockers: 1 }))).toBe('1 open AI QA blocker. Merge anyway?');
+    expect(mergeWarning(qa([run('backend', 'done')], { stage: 'review', openBlockers: 0 }))).toBeNull();
   });
 });
 

@@ -35,24 +35,46 @@ function passedFindingsText(f: RequirementQa['findings']): string {
 /** The requirement header's AI QA line (latest round), or null before the first QA run. */
 export function qaStatusLine(qa: RequirementQa | null | undefined): { text: string; tone: QaTone } | null {
   if (!qa || qa.round === 0) return null;
+  const prefix = qa.stage === 'review' ? 'AI QA before merge' : 'AI QA';
+  const passed = qa.stage === 'review' ? 'AI QA before merge: passed' : 'AI QA passed';
   const skipped = qa.skipped.map((s) => `skipped ${s.project}: ${s.reason}`).join(' · ');
   const line = (text: string, tone: QaTone) => ({ text: skipped ? `${text} · ${skipped}` : text, tone });
-  if (qa.running) return line(`AI QA running… (${qa.runs.map((r) => `${r.project} ${RUN_MARK[r.status] ?? '…'}`).join(', ')})`, 'running');
+  if (qa.running) return line(`${prefix} running… (${qa.runs.map((r) => `${r.project} ${RUN_MARK[r.status] ?? '…'}`).join(', ')})`, 'running');
   const findings = findingsText(qa.findings);
   const broken = qa.runs.find((r) => r.status === 'failed' || r.status === 'cancelled');
   if (broken) {
     const reason = broken.status === 'cancelled' ? 'stopped' : (broken.error ?? 'unknown error').split('\n')[0];
-    return line(`AI QA failed: ${broken.project}: ${reason}${findings ? ` · ${findings}` : ''}`, 'failed');
+    // Many reasons already start with the repository ("backend: merging … conflicts"): name it once.
+    const where = reason.startsWith(`${broken.project}: `) ? reason : `${broken.project}: ${reason}`;
+    return line(`${prefix} failed: ${where}${findings ? ` · ${findings}` : ''}`, 'failed');
   }
   // Every agent said "passed" and nothing is a blocker: the findings are notes, not a failed check.
-  if (findings && qa.findings.blocker === 0 && qa.runs.every((r) => r.passed === true)) return line(`AI QA passed · ${passedFindingsText(qa.findings)}`, 'passed');
-  if (findings) return line(`AI QA: ${findings}`, 'findings');
+  if (findings && qa.findings.blocker === 0 && qa.runs.every((r) => r.passed === true)) return line(`${passed} · ${passedFindingsText(qa.findings)}`, 'passed');
+  if (findings) return line(`${prefix}: ${findings}`, 'findings');
   const notPassed = qa.runs.find((r) => r.passed === false);
-  if (notPassed) return line(`AI QA: ${notPassed.project} did not pass${notPassed.summary ? `: ${notPassed.summary}` : ''}`, 'findings');
+  if (notPassed) return line(`${prefix}: ${notPassed.project} did not pass${notPassed.summary ? `: ${notPassed.summary}` : ''}`, 'findings');
   // "Passed" only when every agent said so: one that ended without `xticket qa-result` gave no verdict.
   const noVerdict = qa.runs.find((r) => r.passed !== true);
-  if (noVerdict) return line(`AI QA: ${noVerdict.project} finished without a result`, 'findings');
-  return line('AI QA passed', 'passed');
+  if (noVerdict) return line(`${prefix}: ${noVerdict.project} finished without a result`, 'findings');
+  return line(passed, 'passed');
+}
+
+/** The popover title: the round, and for review rounds what the preview merged into. */
+export function qaRoundTitle(qa: RequirementQa): string {
+  return `AI QA · round ${qa.round}${qa.stage === 'review' && qa.previewInto ? ` · merge preview into ${qa.previewInto}` : ''}`;
+}
+
+/** A repository's line in the popover: its name, and the model tier with why. */
+export function qaRunTitle(run: QaRunView): string {
+  return run.tier ? `${run.project} · ${run.tier} · ${run.tierReason ?? ''}`.trim() : run.project;
+}
+
+/** The question before a merge, or null when there is nothing to ask. */
+export function mergeWarning(qa: RequirementQa | null | undefined): string | null {
+  if (!qa) return null;
+  if (qa.stage === 'review' && qa.running) return 'AI QA is still checking this requirement. Merge anyway?';
+  if (qa.openBlockers > 0) return `${qa.openBlockers} open AI QA blocker${qa.openBlockers === 1 ? '' : 's'}. Merge anyway?`;
+  return null;
 }
 
 /** One repository's run, for the header popover. */
@@ -75,8 +97,9 @@ export function qaBadge(c: Pick<ReviewComment, 'source' | 'severity'>): string |
 }
 
 /** Why "Run AI QA" is disabled, or null when it can run. */
-export function runAiQaBlocked(status: RequirementStatus, qa: RequirementQa | undefined): string | null {
-  if (status !== 'qa') return 'AI QA runs while the requirement is in QA';
+export function runAiQaBlocked(req: { status: RequirementStatus; merge_state?: string | null }, qa: RequirementQa | undefined): string | null {
+  if (req.status !== 'in_review' && req.status !== 'qa') return 'AI QA runs while the requirement is in review or in QA';
+  if (req.merge_state === 'running') return 'A merge is running';
   if (qa?.running) return 'AI QA is running';
   return null;
 }

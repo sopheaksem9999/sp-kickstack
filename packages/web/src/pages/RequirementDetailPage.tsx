@@ -60,6 +60,7 @@ import {
 import { LiveTaskLogsDrawer } from '../components/LiveTaskLogsDrawer.js';
 import { RequirementGitReviewButton } from '../components/RequirementGitReview.js';
 import { AiQaHeader } from '../components/AiQaHeader.js';
+import { useAskBeforeMerge } from '../components/MergeAiQaConfirm.js';
 import { MarkdownMessage } from '../components/MarkdownMessage.js';
 import { RadixSelect } from '../components/ui/select.js';
 import {
@@ -159,6 +160,8 @@ export function RequirementDetailPage() {
   });
 
   // Merge gate: merges every task branch into its base branch, then moves to QA (runs in the background).
+  // Every move to QA merges: ask first when AI QA is still checking or found open blockers.
+  const { askBeforeMerge, mergeDialog } = useAskBeforeMerge();
   const mergeGateMutation = useMutation({
     mutationFn: () => startMergeToQa(id!),
     onSuccess: () => {
@@ -321,6 +324,7 @@ export function RequirementDetailPage() {
                   onChange={(nextVal) => {
                     const next = nextVal as RequirementStatus;
                     if (statusChangeStartsFanOut(req.status, next)) setFanOutOpen(true);
+                    else if (next === 'qa') askBeforeMerge(req, () => statusMutation.mutate(next));
                     else statusMutation.mutate(next);
                   }}
                   options={stateOptions.map((st) => ({
@@ -371,7 +375,7 @@ export function RequirementDetailPage() {
           {/* Merge gate: merge every task branch, run the project tests, push, move to QA */}
           {mergeAction === 'merge' && (
             <button
-              onClick={() => mergeGateMutation.mutate()}
+              onClick={() => askBeforeMerge(req, () => mergeGateMutation.mutate())}
               disabled={mergeGateMutation.isPending}
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-xs font-bold shadow-md shadow-emerald-600/20 active:scale-[0.98] transition-all disabled:opacity-50"
               title="Merge every task branch into its base branch (after the project tests pass), push, and move to QA"
@@ -895,6 +899,8 @@ export function RequirementDetailPage() {
         </div>
       </Portal>
       )}
+
+      {mergeDialog}
 
       {/* Live CLI Task Execution & Process Logs Drawer */}
       <LiveTaskLogsDrawer

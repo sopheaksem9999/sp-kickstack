@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import { Priority, Requirement, RequirementStatus } from '@sp-kickstack/shared';
 import { RunSettingsDialog } from '../components/RunSettingsDialog.js';
+import { useAskBeforeMerge } from '../components/MergeAiQaConfirm.js';
 import { statusChangeStartsFanOut } from '../lib/runSettings.js';
 import { RadixSelect } from '../components/ui/select.js';
 
@@ -202,6 +203,8 @@ export function RequirementsPage() {
     onError: (err: any) => toast.error(err.message || 'Failed to move requirement state'),
   });
 
+  const { askBeforeMerge, mergeDialog } = useAskBeforeMerge();
+
   const handleDropOnGroup = (targetGroupId: string) => {
     if (!draggedReqId) return;
     const req = requirements.find((r) => r.id === draggedReqId);
@@ -213,7 +216,10 @@ export function RequirementsPage() {
         // Starting work is a fan-out: confirm the run settings first; the card moves once it succeeded.
         setFanOutReq(req);
       } else if (req.status !== targetStatus) {
-        updateStatusMutation.mutate({ id: req.id, status: targetStatus });
+        const move = () => updateStatusMutation.mutate({ id: req.id, status: targetStatus });
+        // Moving to QA merges: ask first when AI QA is still checking or found open blockers (Cancel leaves the card).
+        if (targetStatus === 'qa') askBeforeMerge(req, move);
+        else move();
       }
     }
     setDraggedReqId(null);
@@ -1576,6 +1582,7 @@ export function RequirementsPage() {
         isOpen={Boolean(selectedRequirementId)}
         onClose={() => setSelectedRequirementId(null)}
       />
+      {mergeDialog}
       {fanOutReq && (
         <RunSettingsDialog
           req={fanOutReq}

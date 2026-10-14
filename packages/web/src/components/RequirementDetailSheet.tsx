@@ -27,6 +27,7 @@ import { StatusBadge } from './StatusBadge.js';
 import { RequestChangesButton, TaskReviewComments } from './ReviewComments.js';
 import { RequirementGitReviewButton } from './RequirementGitReview.js';
 import { AiQaHeader } from './AiQaHeader.js';
+import { useAskBeforeMerge } from './MergeAiQaConfirm.js';
 import { BridgeTask, RequirementStatus, BranchMergePolicy, Priority, UpdateRequirementInput } from '@sp-kickstack/shared';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { toast } from 'sonner';
@@ -206,6 +207,8 @@ export function RequirementDetailSheet({
   });
 
   // Merge gate: merges every task branch into its base branch, then moves to QA (runs in the background).
+  // Every move to QA merges: ask first when AI QA is still checking or found open blockers.
+  const { askBeforeMerge, mergeDialog } = useAskBeforeMerge();
   const mergeGateMutation = useMutation({
     mutationFn: () => startMergeToQa(requirementId!),
     onSuccess: () => {
@@ -418,6 +421,7 @@ export function RequirementDetailSheet({
                     onChange={(nextVal) => {
                       const next = nextVal as RequirementStatus;
                       if (statusChangeStartsFanOut(req.status, next)) setFanOutOpen(true);
+                      else if (next === 'qa') askBeforeMerge(req, () => statusMutation.mutate(next));
                       else statusMutation.mutate(next);
                     }}
                     options={stateOptions.map((st) => ({
@@ -577,7 +581,7 @@ export function RequirementDetailSheet({
                 {/* Merge gate: merge every task branch, run the project tests, push, move to QA */}
                 {mergeAction === 'merge' && (
                   <button
-                    onClick={() => mergeGateMutation.mutate()}
+                    onClick={() => askBeforeMerge(req, () => mergeGateMutation.mutate())}
                     disabled={mergeGateMutation.isPending}
                     className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-xs font-bold shadow-md shadow-emerald-600/20 active:scale-[0.98] transition-all disabled:opacity-50"
                     title="Merge every task branch into its base branch (after the project tests pass), push, and move to QA"
@@ -1075,6 +1079,8 @@ export function RequirementDetailSheet({
           </>
         )}
       </SheetContent>
+
+      {mergeDialog}
 
       {/* Radix UI Cancel Confirmation Dialog */}
       <Dialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>

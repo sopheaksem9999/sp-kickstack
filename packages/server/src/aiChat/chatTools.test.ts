@@ -27,7 +27,7 @@ describe('chat tools', () => {
       '--allowedTools', 'mcp__jira', 'mcp__figma', '--model', 'sonnet',
     ]);
     expect(claudeChatArgs({ prompt: 'P', servers: [jira], mcpFile: '/t/mcp.json', permission: 'bypass' })).toContain('bypassPermissions');
-    expect(claudeChatArgs({ prompt: 'P', servers: [], permission: 'allowed-tools', sessionId: 'chat-1' })).toEqual(['-p', 'P', '--tools', '', '--session-id', 'chat-1']);
+    expect(claudeChatArgs({ prompt: 'P', servers: [], permission: 'allowed-tools', sessionId: 'chat-1' })).toEqual(['-p', 'P', '--tools', '']);
   });
 
   it('builds AGY arguments for each mode', () => {

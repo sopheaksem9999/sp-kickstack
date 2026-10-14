@@ -37,6 +37,7 @@ export function chatFolder(sessionId?: string): string {
   return dir;
 }
 
+/** Claude Code (like AGY) gets the whole conversation in the prompt each turn; do not pass --session-id (requires UUID and causes history duplication). */
 export function claudeChatArgs(o: {
   prompt: string;
   servers: AiChatMcpServer[];
@@ -55,7 +56,6 @@ export function claudeChatArgs(o: {
       : ['--tools', ''];
   return [
     '-p', o.prompt, ...tools,
-    ...(o.sessionId ? ['--session-id', o.sessionId] : []),
     ...(o.model ? ['--model', o.model] : []),
     ...(o.effort ? ['--effort', o.effort] : []),
   ];

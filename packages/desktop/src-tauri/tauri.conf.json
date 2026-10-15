@@ -4,9 +4,9 @@
   "version": "0.2.2",
   "identifier": "com.spkickstack.desktop",
   "build": {
-    "beforeDevCommand": "npm run --prefix ../.. dev",
+    "beforeDevCommand": "pnpm --prefix ../.. dev",
     "devUrl": "http://localhost:4101",
-    "beforeBuildCommand": "node ../../scripts/bundle-desktop-server.mjs && npm run --workspace=@sp-kickstack/web build",
+    "beforeBuildCommand": "node ../../scripts/bundle-desktop-server.mjs && pnpm --filter @sp-kickstack/web build",
     "frontendDist": "../../web/dist"
   },
   "app": {

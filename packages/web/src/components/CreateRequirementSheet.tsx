@@ -5,6 +5,7 @@ import {
   fetchProjects,
   fetchSprints,
   createRequirement,
+  updateRequirement,
   startRequirementFanOut,
   fetchAiProviders,
   draftRequirementAi,
@@ -92,6 +93,7 @@ import {
   Requirement,
   Project,
   ReasoningEffort,
+  parseRequirementMarkdown,
 } from '@sp-kickstack/shared';
 import { MarkdownMessage } from './MarkdownMessage.js';
 
@@ -169,14 +171,15 @@ const CHAT_COMMANDS = [
 
 
 export function CreateRequirementSheet() {
-  const { isOpen, closeSheet } = useCreateRequirement();
+  const { isOpen, closeSheet, editingRequirement } = useCreateRequirement();
+  const isEditMode = Boolean(editingRequirement);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { activeWorkspaceId, workspaces, wsPath } = useWorkspace();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Requirement is locked to current active workspace by default and cannot be changed
-  const workspaceId = activeWorkspaceId || 'default';
+  const workspaceId = editingRequirement?.workspace_id || activeWorkspaceId || 'default';
 
   const { data: projects = [] } = useQuery({
     queryKey: ['projects', workspaceId],
@@ -209,9 +212,42 @@ export function CreateRequirementSheet() {
   // Each new requirement starts with Settings → Git & Branch Rules → Default target branch.
   const { data: settingsData } = useQuery({ queryKey: ['settings'], queryFn: fetchSettings, enabled: isOpen });
   const defaultTargetBranch = settingsData?.branch_merge.default_target_branch ?? '';
+
   useEffect(() => {
-    if (isOpen) setTargetBranch(defaultTargetBranch);
-  }, [isOpen, defaultTargetBranch]);
+    if (!isOpen) return;
+
+    if (editingRequirement) {
+      setTitle(editingRequirement.title || '');
+      setPriority(editingRequirement.priority || 'normal');
+      setStatus(editingRequirement.status || 'draft');
+      setSprintId(editingRequirement.sprint_id ?? null);
+      setMergePolicy(editingRequirement.merge_policy || 'inherit');
+      setSelectedProjects(editingRequirement.affected_projects || []);
+      setTargetBranch(editingRequirement.target_branch || '');
+      setAttachments(editingRequirement.attachments || []);
+
+      const parsed = parseRequirementMarkdown(editingRequirement.body_md || '');
+      setGoal(parsed.goal || '');
+      setUserStory(parsed.userStory || '');
+      setCriteria(parsed.acceptanceCriteria.length > 0 ? parsed.acceptanceCriteria : ['']);
+      setActiveGoalTab('write');
+      setActiveMode('form');
+    } else {
+      setTitle('');
+      setGoal('');
+      setUserStory('');
+      setPriority('normal');
+      setStatus('draft');
+      setSprintId(null);
+      setMergePolicy('inherit');
+      setSelectedProjects([]);
+      setTargetBranch(defaultTargetBranch);
+      setCriteria(['']);
+      setAttachments([]);
+      setActiveGoalTab('write');
+      setActiveMode('form');
+    }
+  }, [isOpen, editingRequirement, defaultTargetBranch]);
   const [criteria, setCriteria] = useState<string[]>(['']);
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [activeGoalTab, setActiveGoalTab] = useState<'write' | 'preview'>('write');
@@ -1034,6 +1070,41 @@ What feature, solution, or refactoring would you like to design today? You can s
 
     setIsSubmitting(true);
     try {
+      if (isEditMode && editingRequirement) {
+        const updated = await updateRequirement(editingRequirement.id, {
+          title: trimmedTitle,
+          goal: effectiveGoal,
+          user_story: userStory || undefined,
+          priority,
+          status: andStart ? 'ready' : status,
+          sprint_id: sprintId,
+          merge_policy: mergePolicy !== 'inherit' ? mergePolicy : null,
+          target_branch: createTargetBranch(targetBranch, Boolean(settingsData)),
+          affected_projects: selectedProjects,
+          acceptance_criteria: filteredCriteria,
+          attachments,
+        });
+
+        queryClient.invalidateQueries({ queryKey: ['requirement', editingRequirement.id] });
+        queryClient.invalidateQueries({ queryKey: ['requirements'] });
+        handleClose();
+
+        toast.success(`Updated ${updated.id}: ${updated.title}`, {
+          action: {
+            label: 'View Spec',
+            onClick: () => navigate(wsPath(`/requirements/${updated.id}`)),
+          },
+        });
+
+        if (andStart) {
+          await startRequirementFanOut(updated.id);
+          queryClient.invalidateQueries({ queryKey: ['requirements'] });
+          toast.success(`Fanned out to ${selectedProjects.join(', ')}`);
+          navigate(wsPath(`/requirements/${updated.id}`));
+        }
+        return;
+      }
+
       const created = await createRequirement({
         workspace_id: workspaceId,
         title: trimmedTitle,
@@ -1082,11 +1153,18 @@ What feature, solution, or refactoring would you like to design today? You can s
                 ⚡
               </div>
               <div>
-                <h2 className="text-base font-bold text-slate-900 dark:text-white leading-tight">
-                  New Cross-Repo Requirement
-                </h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white leading-tight">
+                    {isEditMode ? 'Edit Requirement' : 'New Cross-Repo Requirement'}
+                  </h2>
+                  {isEditMode && editingRequirement && (
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 font-bold border border-purple-200 dark:border-purple-800/60">
+                      {editingRequirement.id}
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Slide-over specification sheet & attachments
+                  {isEditMode ? 'Update specification, repositories, target branch & attachments' : 'Slide-over specification sheet & attachments'}
                 </p>
               </div>
             </div>
@@ -2520,29 +2598,30 @@ What feature, solution, or refactoring would you like to design today? You can s
                   type="button"
                   onClick={() => handleSubmit(false)}
                   disabled={isSubmitting}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-purple-200 dark:border-purple-900/50 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/30 hover:bg-purple-100 dark:hover:bg-purple-900/40 text-xs font-bold transition-all disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-purple-200 dark:border-purple-900/50 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/30 hover:bg-purple-100 dark:hover:bg-purple-900/40 text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
                 >
                   <Layers className="w-3.5 h-3.5" />
-                  <span>Save State ({status === 'draft' ? 'ToDo' : status})</span>
+                  <span>{isEditMode ? 'Save Changes' : `Save State (${status === 'draft' ? 'ToDo' : status})`}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => handleSubmit(true)}
                   disabled={isSubmitting}
-                  className="flex items-center gap-2 px-5 py-2 rounded-lg bg-gradient-to-r from-[#7b68ee] to-[#ec4899] hover:from-[#6c5ce7] hover:to-[#db2777] text-white text-xs font-bold shadow-md shadow-purple-500/25 active:scale-[0.98] transition-all disabled:opacity-50"
+                  className="flex items-center gap-2 px-5 py-2 rounded-lg bg-gradient-to-r from-[#7b68ee] to-[#ec4899] hover:from-[#6c5ce7] hover:to-[#db2777] text-white text-xs font-bold shadow-md shadow-purple-500/25 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
                 >
                   {isSubmitting ? (
                     <span>Dispatching...</span>
                   ) : (
                     <>
-                      <span>Create & Fan-Out</span>
+                      <span>{isEditMode ? 'Save & Fan-Out' : 'Create & Fan-Out'}</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </>
                   )}
                 </button>
               </div>
             )}
+
           </div>
         </SheetContent>
 
@@ -2553,9 +2632,11 @@ What feature, solution, or refactoring would you like to design today? You can s
               <div className="w-10 h-10 rounded-2xl bg-amber-100 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900/40 flex items-center justify-center text-amber-600 dark:text-amber-400 mb-2">
                 <AlertTriangle className="w-5 h-5" />
               </div>
-              <DialogTitle>Discard Requirement Draft?</DialogTitle>
+              <DialogTitle>{isEditMode ? 'Discard Changes?' : 'Discard Requirement Draft?'}</DialogTitle>
               <DialogDescription>
-                You have unsaved changes in this requirement form. Are you sure you want to discard your draft and close the sheet?
+                {isEditMode
+                  ? 'You have unsaved changes to this requirement. Are you sure you want to discard your edits and close the sheet?'
+                  : 'You have unsaved changes in this requirement form. Are you sure you want to discard your draft and close the sheet?'}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="gap-2 sm:gap-2 pt-3">
@@ -2582,3 +2663,6 @@ What feature, solution, or refactoring would you like to design today? You can s
       </Sheet>
     );
 }
+
+export const RequirementFormSheet = CreateRequirementSheet;
+

@@ -209,6 +209,9 @@ describe('Shared Schemas Validation', () => {
       jev: validJev,
     };
     expect(SystemDecisionSettingsSchema.safeParse(validNoneSystem).success).toBe(true);
+
+    const defaultParsed = SystemDecisionSettingsSchema.parse({});
+    expect(defaultParsed.active_engine).toBe('none');
   });
 });
 

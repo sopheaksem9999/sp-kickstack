@@ -1077,7 +1077,7 @@ export function SettingsPage() {
   const [ollamaModel, setOllamaModel] = useState('llama3.2');
   const [ollamaUrl, setOllamaUrl] = useState('http://127.0.0.1:11434');
 
-  const [activeDecisionEngine, setActiveDecisionEngine] = useState<DecisionEngineId>('clef');
+  const [activeDecisionEngine, setActiveDecisionEngine] = useState<DecisionEngineId>('none');
   const [clefModel, setClefModel] = useState('@cf/cloudflare/clef-flash');
   const [clefAccountId, setClefAccountId] = useState('');
   const [clefApiToken, setClefApiToken] = useState('');
@@ -1122,7 +1122,7 @@ export function SettingsPage() {
     }
     if (settingsData?.decision_engine) {
       const dec = settingsData.decision_engine;
-      setActiveDecisionEngine(dec.active_engine || 'clef');
+      setActiveDecisionEngine(dec.active_engine || 'none');
       if (dec.clef) {
         setClefModel(dec.clef.clef_model || '@cf/cloudflare/clef-flash');
         setClefAccountId(dec.clef.clef_account_id || '');
@@ -2172,7 +2172,7 @@ export function SettingsPage() {
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                         <ShieldOff className="w-3.5 h-3.5 text-slate-400" />
-                        None (Disabled)
+                        None (Default)
                       </span>
                       {activeDecisionEngine === 'none' && (
                         <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
@@ -2197,7 +2197,7 @@ export function SettingsPage() {
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                         <Zap className="w-3.5 h-3.5 text-amber-500" />
-                        Cloudflare Clef (Default)
+                        Cloudflare Clef
                       </span>
                       {activeDecisionEngine === 'clef' && (
                         <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/60 px-2 py-0.5 rounded">

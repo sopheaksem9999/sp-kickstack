@@ -35777,7 +35777,7 @@ var JevSettingsSchema = external_exports.object({
   jev_args_template: external_exports.string().trim().default("-p --model {model}")
 });
 var SystemDecisionSettingsSchema = external_exports.object({
-  active_engine: DecisionEngineIdSchema.default("clef"),
+  active_engine: DecisionEngineIdSchema.default("none"),
   clef: ClefSettingsSchema.default({
     clef_enabled: true,
     clef_account_id: "",

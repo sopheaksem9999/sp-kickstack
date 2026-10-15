@@ -395,7 +395,7 @@ export const JevSettingsSchema = z.object({
 });
 
 export const SystemDecisionSettingsSchema = z.object({
-  active_engine: DecisionEngineIdSchema.default('clef'),
+  active_engine: DecisionEngineIdSchema.default('none'),
   clef: ClefSettingsSchema.default({
     clef_enabled: true,
     clef_account_id: '',

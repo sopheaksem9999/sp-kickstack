@@ -57,7 +57,22 @@ describe('Browser, Clef & Neuron API Routes', () => {
   });
 
   describe('Clef Triage Routes', () => {
-    it('returns triage classification for an error log', async () => {
+    it('returns disabled status by default when active_engine is none', async () => {
+      const res = await testRequest(app, 'POST', '/api/clef/triage', {
+        body: { error_text: 'FATAL 500 database deadlock' },
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(true);
+      expect(res.body.engine).toBe('none');
+      expect(res.body.disabled).toBe(true);
+    });
+
+    it('returns triage classification for an error log when clef is active', async () => {
+      db.prepare(`
+        INSERT INTO settings (key, value) VALUES ('system_decision_settings', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run(JSON.stringify({ active_engine: 'clef' }));
+
       const res = await testRequest(app, 'POST', '/api/clef/triage', {
         body: { error_text: 'FATAL 500 database deadlock connection timeout' },
       });
@@ -66,6 +81,12 @@ describe('Browser, Clef & Neuron API Routes', () => {
       expect(res.body.triage.severity).toBe('P0');
       expect(res.body.triage.domain).toBe('database');
       expect(res.body.triage.rationale).toBeDefined();
+
+      // Restore to none
+      db.prepare(`
+        INSERT INTO settings (key, value) VALUES ('system_decision_settings', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run(JSON.stringify({ active_engine: 'none' }));
     });
 
     it('rejects empty error_text', async () => {
@@ -74,27 +95,6 @@ describe('Browser, Clef & Neuron API Routes', () => {
       });
       expect(res.status).toBe(400);
       expect(res.body.error).toBeDefined();
-    });
-
-    it('returns disabled status when active_engine is none', async () => {
-      db.prepare(`
-        INSERT INTO settings (key, value) VALUES ('system_decision_settings', ?)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value
-      `).run(JSON.stringify({ active_engine: 'none' }));
-
-      const res = await testRequest(app, 'POST', '/api/clef/triage', {
-        body: { error_text: 'FATAL 500 database deadlock' },
-      });
-      expect(res.status).toBe(200);
-      expect(res.body.ok).toBe(true);
-      expect(res.body.engine).toBe('none');
-      expect(res.body.disabled).toBe(true);
-
-      // Restore to clef
-      db.prepare(`
-        INSERT INTO settings (key, value) VALUES ('system_decision_settings', ?)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value
-      `).run(JSON.stringify({ active_engine: 'clef' }));
     });
   });
 

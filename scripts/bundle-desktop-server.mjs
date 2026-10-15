@@ -75,6 +75,24 @@ for (const mod of modulesToCopy) {
   }
 }
 
+// Clean unneeded C/C++ source, benchmark, and intermediate build files from better-sqlite3
+const bsqDir = path.join(targetNodeModules, 'better-sqlite3');
+if (fs.existsSync(bsqDir)) {
+  const unneeded = ['deps', 'src', 'benchmark', 'test', 'docs'];
+  for (const dir of unneeded) {
+    const p = path.join(bsqDir, dir);
+    if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
+  }
+  const buildDir = path.join(bsqDir, 'build');
+  if (fs.existsSync(buildDir)) {
+    for (const e of fs.readdirSync(buildDir)) {
+      if (e !== 'Release') {
+        fs.rmSync(path.join(buildDir, e), { recursive: true, force: true });
+      }
+    }
+  }
+}
+
 // 3. Write package.json
 fs.writeFileSync(
   path.join(outDir, 'package.json'),

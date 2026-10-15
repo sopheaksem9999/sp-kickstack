@@ -97,11 +97,11 @@ jobs:
       matrix:
         include:
           - platform: 'macos-latest'
-            args: ''
+            args: '--bundles dmg'
           - platform: 'ubuntu-22.04'
-            args: ''
+            args: '--bundles deb'
           - platform: 'windows-latest'
-            args: ''
+            args: '--bundles nsis'
 
     runs-on: ${{ matrix.platform }}
 
@@ -167,8 +167,8 @@ jobs:
 
             ### Downloads & Installers
             - **macOS (Apple Silicon)**: `.dmg` installer
-            - **Windows (x64)**: `.exe` setup & `.msi` package
-            - **Linux (x64)**: `.AppImage` & `.deb` package
+            - **Windows (x64)**: `.exe` setup installer
+            - **Linux (x64)**: `.deb` package
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}

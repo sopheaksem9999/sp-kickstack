@@ -44,13 +44,13 @@ const targetVersion = getNextVersion(currentVersion, arg);
 if (!targetVersion) {
   console.log(`\n📌 Current SP-Kickstack version: ${currentVersion}\n`);
   console.log('Usage:');
-  console.log('  npm run version:bump <patch|minor|major|x.y.z>');
-  console.log('  npm run bump <patch|minor|major|x.y.z>\n');
+  console.log('  pnpm run version:bump <patch|minor|major|x.y.z>');
+  console.log('  pnpm run bump <patch|minor|major|x.y.z>\n');
   console.log('Examples:');
-  console.log('  npm run bump patch   (-> increments patch e.g. 0.2.1 -> 0.2.2)');
-  console.log('  npm run bump minor   (-> increments minor e.g. 0.2.1 -> 0.3.0)');
-  console.log('  npm run bump major   (-> increments major e.g. 0.2.1 -> 1.0.0)');
-  console.log('  npm run bump 0.2.5   (-> sets exact version 0.2.5)\n');
+  console.log('  pnpm run bump patch   (-> increments patch e.g. 0.2.1 -> 0.2.2)');
+  console.log('  pnpm run bump minor   (-> increments minor e.g. 0.2.1 -> 0.3.0)');
+  console.log('  pnpm run bump major   (-> increments major e.g. 0.2.1 -> 1.0.0)');
+  console.log('  pnpm run bump 0.2.5   (-> sets exact version 0.2.5)\n');
   process.exit(1);
 }
 

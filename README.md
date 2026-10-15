@@ -206,10 +206,10 @@ cd sp-kickstack
 nvm use 22.19.0
 
 # Install all workspace dependencies
-npm install
+pnpm install
 
 # Build all packages (shared, server, web, xticket)
-npm run build
+pnpm run build
 ```
 
 ### 2. Run the Web Development Stack
@@ -217,7 +217,7 @@ npm run build
 ```bash
 # Starts the bridge server on http://localhost:4100
 # and the Vite web dashboard on http://localhost:4101
-npm run dev
+pnpm run dev
 ```
 
 Open your browser to [http://localhost:4101](http://localhost:4101).
@@ -226,13 +226,13 @@ Open your browser to [http://localhost:4101](http://localhost:4101).
 
 ```bash
 # Bundle the server sidecar
-npm run desktop:bundle-server
+pnpm run desktop:bundle-server
 
 # Launch the desktop app in development
-npm run desktop:dev
+pnpm run desktop:dev
 
 # Build a production native installer (macOS .dmg / Windows .msi / Linux .deb)
-npm run desktop:build
+pnpm run desktop:build
 ```
 
 ---
@@ -315,13 +315,13 @@ SP-Kickstack maintains test suites across unit, integration, and API boundary le
 
 ```bash
 # Run unit and integration tests across all workspaces
-npm test
+pnpm test
 
 # Run tests in watch mode
-npm run test:watch
+pnpm run test:watch
 
 # Run TypeScript typechecks and verification
-npm run verify
+pnpm run verify
 ```
 
 ---
@@ -338,7 +338,7 @@ We welcome contributions from the open-source community! Whether you want to add
 3. **Commit Your Changes**: Follow clear commit conventions.
 4. **Ensure Verification Passes**:
    ```bash
-   npm run verify
+   pnpm run verify
    ```
 5. **Open a Pull Request** with a detailed explanation of your changes.
 

@@ -89,7 +89,7 @@ messages appear as red toasts in the app; `<REQ-ID>`, `<id>` and similar parts a
 
 | Message | Meaning | What to do |
 |---|---|---|
-| **Backend Bridge is offline** (banner) | The web app cannot reach the server on port 4100. | Start it with `npm run dev`. |
+| **Backend Bridge is offline** (banner) | The web app cannot reach the server on port 4100. | Start it with `pnpm run dev`. |
 | `Host not allowed: <host>` | A request used a host name the server does not accept. | Add it to `ALLOWED_HOSTS`. |
 | `Cross-site request blocked` | A browser page on another site called the API. | Open the app from an address listed in `WEB_ORIGINS`. |
 | `Invalid or missing agent token` | An agent call lacks the right token. | Set `XTICKET_TOKEN` to the server's `AGENT_TOKEN`. |
@@ -158,13 +158,13 @@ The **Test** button on the project card does not check the engine; do not rely o
 ## Tests or the server fail on Node 24
 
 SP Kickstack needs Node **22.19.0** (`.nvmrc`). Under other versions, for example Node 24, the
-database driver `better-sqlite3` can fail to load, and `npm run verify`, `npm test` or the
+database driver `better-sqlite3` can fail to load, and `pnpm run verify`, `pnpm test` or the
 server stop with a native-module error.
 
 ```bash
 nvm use            # picks 22.19.0 from .nvmrc
-npm install        # rebuild native modules for this Node version
-npm run verify
+pnpm install       # rebuild native modules for this Node version
+pnpm run verify
 ```
 
 ## Other surprises

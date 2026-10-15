@@ -23,20 +23,20 @@ your first requirement.
 3. Install dependencies:
 
    ```bash
-   npm install
+   pnpm install
    ```
 
 4. Build the workspaces:
 
    ```bash
-   npm run build
+   pnpm run build
    ```
 
 5. Choose your mode:
 
    **Option A: Web Development Stack (Server + Web Client)**
    ```bash
-   npm run dev
+   pnpm run dev
    ```
 
    This starts two processes:
@@ -46,12 +46,12 @@ your first requirement.
    | server | `http://127.0.0.1:4100` | The bridge API (`PORT` 4100 and `HOST` 127.0.0.1 by default) |
    | web | `http://localhost:4101` | The web app. It forwards `/api` calls to `http://127.0.0.1:4100` |
 
-   Open `http://localhost:4101` in your browser. (You can also start them separately: `npm run dev:server` and `npm run dev:web`.)
+   Open `http://localhost:4101` in your browser. (You can also start them separately: `pnpm run dev:server` and `pnpm run dev:web`.)
 
    **Option B: Native Desktop App (Tauri v2)**
    ```bash
-   npm run desktop:bundle-server
-   npm run desktop:dev
+   pnpm run desktop:bundle-server
+   pnpm run desktop:dev
    ```
 
 ### What happens next
@@ -63,19 +63,19 @@ calls, reads agent outboxes and sends notifications.
 ### If something goes wrong
 
 - A red banner says **Backend Bridge is offline** and the sidebar shows **Bridge Offline**: the
-  server is not running or not on port 4100. Start it with `npm run dev` (or
-  `npm run dev:server`) and check the terminal for errors.
+  server is not running or not on port 4100. Start it with `pnpm run dev` (or
+  `pnpm run dev:server`) and check the terminal for errors.
 - The server fails with a `better-sqlite3` error: you are on the wrong Node version. Run
-  `nvm use`, then `npm install` again.
+  `nvm use`, then `pnpm install` again.
 
 ## Try it without real engines
 
 There are two ways to look around without setting up engines.
 
-- **`npm run demo`** runs a terminal walkthrough with two fake engines: it creates a
+- **`pnpm run demo`** runs a terminal walkthrough with two fake engines: it creates a
   requirement, fans it out, files a blocking ticket, finishes the work and shows the final status.
   It writes to `workspace/demo` and does not start the web app.
-- **`DEMO_MODE=1 npm run dev`** starts the normal app with demo-only features: a simulated
+- **`DEMO_MODE=1 pnpm run dev`** starts the normal app with demo-only features: a simulated
   **Run with AI CLI** button in a task's **CLI Logs**, sample log lines, and a
   **Review & Merge to Main** button (for work without task branches) that marks a requirement
   done without any git command. Do not use demo mode for real work.
@@ -119,13 +119,13 @@ Everything is stored in one folder, the workspace directory:
 | `backups/` | A copy of `bridge.db`, made automatically before the database is upgraded |
 
 The folder is set by the `WORKSPACE_DIR` environment variable. Its default is `./workspace`
-**relative to the folder the server starts in**. With `npm run dev` or `npm run dev:server` the
+**relative to the folder the server starts in**. With `pnpm run dev` or `pnpm run dev:server` the
 server starts in `packages/server`, so the default is `packages/server/workspace`.
 
 To keep your data in one known place, set an absolute path:
 
 ```bash
-WORKSPACE_DIR=/Users/you/sp-kickstack-data npm run dev
+WORKSPACE_DIR=/Users/you/sp-kickstack-data pnpm run dev
 ```
 
 Backups are named `bridge-<time>-v<old version>.db`, for example
@@ -133,7 +133,7 @@ Backups are named `bridge-<time>-v<old version>.db`, for example
 upgrade, which happens when you start a newer version of SP Kickstack. To go back, stop the
 server and copy a backup over `bridge.db`.
 
-`npm run mcp` (the MCP server for AI tools) reads the same `WORKSPACE_DIR`. It starts in the
+`pnpm run mcp` (the MCP server for AI tools) reads the same `WORKSPACE_DIR`. It starts in the
 repository root, so without the variable it uses a different folder (`./workspace` at the root).
 Set `WORKSPACE_DIR` to the same absolute path for both.
 
@@ -145,9 +145,9 @@ take a `workspace_id` and use the `default` workspace when it is missing (see
 
 | Command | What it does |
 |---|---|
-| `npm run build` | Builds the shared types, server, web app and the `xticket` CLI |
-| `npm run verify` | Type-checks everything and runs the tests (use Node 22.19.0) |
-| `npm test` | Runs the tests only |
+| `pnpm run build` | Builds the shared types, server, web app and the `xticket` CLI |
+| `pnpm run verify` | Type-checks everything and runs the tests (use Node 22.19.0) |
+| `pnpm test` | Runs the tests only |
 
 ## Next steps
 

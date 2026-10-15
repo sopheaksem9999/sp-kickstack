@@ -28,7 +28,7 @@ engine is **Local AI CLI** (see [02](02-projects-and-engines.md#local-ai-cli)).
 | **Agent CLI** | **Use AI default** | Which CLI runs agents. **Use AI default** follows the AI default above; when that is Ollama, the heuristic or Auto, the first installed and active of Claude Code, AGY and Codex is used. |
 | **Parallel agents** | 2 | 1 to 8 agents at once, all workspaces together. |
 | **Time limit per run** | 60 minutes | 5 to 480. A longer run is stopped and the task FAILS; **Retry** continues it. |
-| **Worktree folder** | `agent-worktrees` in the server workspace, or `~/.sp-kickstack/agent-worktrees` when the workspace lies inside a git repository (`npm run dev`) | Where task copies are made: an absolute path, or empty for the default. A task that already has a worktree keeps using it. |
+| **Worktree folder** | `agent-worktrees` in the server workspace, or `~/.sp-kickstack/agent-worktrees` when the workspace lies inside a git repository (`pnpm run dev`) | Where task copies are made: an absolute path, or empty for the default. A task that already has a worktree keeps using it. |
 
 Below the settings the card shows which CLI the next run uses; how many runs are running, queued,
 waiting for a person and rate limited; and for each CLI **Installed on PC** / **Not Detected** and
@@ -102,15 +102,15 @@ A reply that used tools shows `🔧 Tools used: jira.search_issues ×2, …` und
 ## Environment variables
 
 Set them in front of the start command, for example
-`AGENT_TOKEN=s3cret WORKSPACE_DIR=/Users/you/sp-data npm run dev`.
+`AGENT_TOKEN=s3cret WORKSPACE_DIR=/Users/you/sp-data pnpm run dev`.
 
 ### Server
 
 | Variable | Default | Effect |
 |---|---|---|
-| `PORT` | `4100` | Port of the bridge server. The web dev server (`npm run dev:web`) always forwards `/api` to port 4100, so change this only if you serve the web app another way. |
+| `PORT` | `4100` | Port of the bridge server. The web dev server (`pnpm run dev:web`) always forwards `/api` to port 4100, so change this only if you serve the web app another way. |
 | `HOST` | `127.0.0.1` | Address the server listens on. The bridge has no user login: anyone who can reach this address can use it. Use `0.0.0.0` only on a trusted network, together with `ALLOWED_HOSTS`. |
-| `WORKSPACE_DIR` | `./workspace` (relative to the folder the server starts in; `packages/server/workspace` with `npm run dev`) | Where `bridge.db`, `requirements/`, `projects.yaml` and `backups/` live. Also read by `npm run mcp` (see [MCP server](#mcp-server)). |
+| `WORKSPACE_DIR` | `./workspace` (relative to the folder the server starts in; `packages/server/workspace` with `pnpm run dev`) | Where `bridge.db`, `requirements/`, `projects.yaml` and `backups/` live. Also read by `pnpm run mcp` (see [MCP server](#mcp-server)). |
 | `WATCH_INTERVAL_MS` | `5000` | How often (in milliseconds) the bridge checks engines, retries failed calls, reads agent outboxes and sends notifications. |
 | `AGENT_TOKEN` | not set (agent routes open) | When set, `POST /api/tickets`, `POST /api/agent/tickets` and `POST /api/agent/questions` need `Authorization: Bearer <token>`. Give agents the same value as `XTICKET_TOKEN`. |
 | `ENGINE_MAX_STARTS_PER_MINUTE` | `10` | New agents (goals, tickets) the bridge starts per project per minute. `0` = no limit. See [08](08-rate-limits-and-retry.md#the-start-limit). |
@@ -143,7 +143,7 @@ Agents that run in Docker on the same machine reach the host as `host.docker.int
 
 ```bash
 # Server
-HOST=0.0.0.0 ALLOWED_HOSTS=host.docker.internal AGENT_TOKEN=s3cret npm run dev
+HOST=0.0.0.0 ALLOWED_HOSTS=host.docker.internal AGENT_TOKEN=s3cret pnpm run dev
 
 # Inside each agent container
 export XTICKET_URL=http://host.docker.internal:4100
@@ -157,7 +157,7 @@ routes need the token. Use it only on a network you trust.
 
 ## MCP server
 
-`npm run mcp` starts an MCP server on standard input and output, for AI tools that call MCP tools.
+`pnpm run mcp` starts an MCP server on standard input and output, for AI tools that call MCP tools.
 It opens the same `bridge.db` as the bridge; give it the same `WORKSPACE_DIR` (see
 [01](01-getting-started.md#where-your-data-lives)).
 

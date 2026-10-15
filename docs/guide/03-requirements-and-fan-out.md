@@ -291,7 +291,7 @@ refresh the queue to see the task's current state.
 The queue refreshes by itself when the bridge reports a change, and at least every 10 seconds.
 **Refresh** reloads it at once. If the bridge cannot be reached, the page says
 `The queue could not be loaded`, or `Could not refresh the queue` above the last result it has,
-and tries again on its own; start the bridge (`npm run dev`) and press **Refresh**.
+and tries again on its own; start the bridge (`pnpm run dev`) and press **Refresh**.
 
 ## Change the requirement status by hand
 

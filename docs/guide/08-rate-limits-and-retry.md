@@ -65,7 +65,7 @@ Change the limit with the `ENGINE_MAX_STARTS_PER_MINUTE` environment variable wh
 server (`0` turns it off):
 
 ```bash
-ENGINE_MAX_STARTS_PER_MINUTE=4 npm run dev
+ENGINE_MAX_STARTS_PER_MINUTE=4 pnpm run dev
 ```
 
 ## Retry a stopped task

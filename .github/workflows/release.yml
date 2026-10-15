@@ -91,11 +91,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22.19.0
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -121,14 +127,14 @@ jobs:
             librsvg2-dev \
             libfuse2
 
-      - name: Install npm dependencies
-        run: npm ci
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Build all workspaces
-        run: npm run build
+        run: pnpm run build
 
       - name: Bundle desktop embedded server
-        run: npm run desktop:bundle-server
+        run: pnpm run desktop:bundle-server
 
       - name: Build and bundle Tauri Desktop App
         uses: tauri-apps/tauri-action@v0

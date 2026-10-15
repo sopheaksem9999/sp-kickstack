@@ -9,7 +9,7 @@ answer arrives. This page is for whoever sets up the agents.
 1. Build it (the root build includes it):
 
    ```bash
-   npm run build
+   pnpm run build
    ```
 
 2. Make `packages/xticket/dist/cli.js` available to agents as the command `xticket`. The

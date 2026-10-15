@@ -22,7 +22,7 @@ export interface MentionItem {
 export interface MentionSources {
   files?: string[];
   projects?: Array<{ name: string; kind?: string }>;
-  requirements?: Array<{ id: string; title: string }>;
+  requirements?: Array<{ id: string; title: string; status?: string }>;
   assets?: Array<{ name: string; notes?: string }>;
 }
 
@@ -64,7 +64,7 @@ export function mentionItems(trigger: MentionTrigger, query: string, sources: Me
       .slice(0, PER_GROUP)
       .map((p) => ({ key: `repo:${p.name}`, group: 'Repositories', value: p.name, ...(p.kind ? { detail: p.kind } : {}) })),
     ...(sources.requirements ?? [])
-      .filter((r) => hit(r.id, r.title))
+      .filter((r) => r.status !== 'cancelled' && hit(r.id, r.title))
       .slice(0, PER_GROUP)
       .map((r) => ({ key: `req:${r.id}`, group: 'Requirements', value: r.id, detail: r.title })),
   ];

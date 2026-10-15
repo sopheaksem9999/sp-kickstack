@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
+import { APP_VERSION } from '@sp-kickstack/shared';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
 import { useTheme } from '../lib/ThemeContext.js';
 import { useCreateRequirement } from '../lib/CreateRequirementContext.js';
@@ -156,7 +157,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 <div className="flex items-center gap-1.5 font-bold text-sm tracking-tight text-slate-900 dark:text-white">
                   <span>SP Kickstack</span>
                   <span className="text-[9px] uppercase px-1.5 py-0.2 rounded font-mono font-bold bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300">
-                    v0.2
+                    {`v${APP_VERSION}`}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">AI Studio Bridge</p>

@@ -285,9 +285,10 @@ export function AiChatPage() {
   // Filtered requirements when triggered by #
   const filteredRequirements = useMemo(() => {
     if (hashSlashTrigger !== '#') return [];
-    if (!hashSlashQuery) return allRequirements;
+    const activeReqs = allRequirements.filter((r) => r.status !== 'cancelled');
+    if (!hashSlashQuery) return activeReqs;
     const q = hashSlashQuery.toLowerCase();
-    return allRequirements.filter(
+    return activeReqs.filter(
       (r) => r.id.toLowerCase().includes(q) || r.title.toLowerCase().includes(q)
     );
   }, [allRequirements, hashSlashQuery, hashSlashTrigger]);

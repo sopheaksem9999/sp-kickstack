@@ -227,16 +227,22 @@ export function RequirementsPage() {
     setDragOverGroupId(null);
   };
 
+  // Active requirements (excluding cancelled)
+  const nonCancelledRequirements = useMemo(
+    () => requirements.filter((r) => r.status !== 'cancelled'),
+    [requirements]
+  );
+
   // Sprint metrics
   const activeSprintReqs = useMemo(
-    () => (activeSprint ? requirements.filter((r) => r.sprint_id === activeSprint.id) : []),
+    () => (activeSprint ? requirements.filter((r) => r.sprint_id === activeSprint.id && r.status !== 'cancelled') : []),
     [requirements, activeSprint]
   );
   const activeSprintDoneCount = activeSprintReqs.filter((r) => r.status === 'done').length;
   const activeSprintTotalCount = activeSprintReqs.length;
 
   const backlogRequirements = useMemo(
-    () => requirements.filter((r) => !r.sprint_id),
+    () => requirements.filter((r) => !r.sprint_id && r.status !== 'cancelled'),
     [requirements]
   );
 
@@ -281,9 +287,11 @@ export function RequirementsPage() {
       list = list.filter((r) => r.status !== 'done');
     }
 
-    // Status multi-filter
+    // Status multi-filter (defaults to excluding cancelled unless explicitly selected)
     if (selectedStatuses.length > 0) {
       list = list.filter((r) => selectedStatuses.includes(r.status));
+    } else {
+      list = list.filter((r) => r.status !== 'cancelled');
     }
 
     // Priority multi-filter
@@ -582,7 +590,7 @@ export function RequirementsPage() {
           >
             <span>All Requirements</span>
             <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono font-bold">
-              {requirements.length}
+              {nonCancelledRequirements.length}
             </span>
           </button>
         </div>
@@ -861,7 +869,7 @@ export function RequirementsPage() {
                     Status
                   </span>
                   <div className="flex flex-wrap gap-1.5">
-                    {(['draft', 'ready', 'in_progress', 'in_review', 'qa', 'done'] as RequirementStatus[]).map((st) => {
+                    {(['draft', 'ready', 'in_progress', 'in_review', 'qa', 'done', 'cancelled'] as RequirementStatus[]).map((st) => {
                       const active = selectedStatuses.includes(st);
                       return (
                         <button
@@ -1431,7 +1439,9 @@ export function RequirementsPage() {
             <div className="flex items-center gap-3">
               <span>
                 Showing <strong className="text-slate-800 dark:text-slate-200">{filteredRequirements.length}</strong> of{' '}
-                <strong className="text-slate-800 dark:text-slate-200">{requirements.length}</strong> requirements
+                <strong className="text-slate-800 dark:text-slate-200">
+                  {selectedStatuses.includes('cancelled') ? requirements.length : nonCancelledRequirements.length}
+                </strong> requirements
               </span>
               {activeFilterCount > 0 && (
                 <span className="text-[11px] text-[#7b68ee] font-medium">

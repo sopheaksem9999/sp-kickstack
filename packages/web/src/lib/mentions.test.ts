@@ -23,7 +23,10 @@ describe('# and @ in a comment box', () => {
     const sources = {
       files: ['src/api/users.ts', 'README.md'],
       projects: [{ name: 'frontend', kind: 'web' }, { name: 'backend', kind: 'backend' }],
-      requirements: [{ id: 'REQ-007', title: 'User search' }],
+      requirements: [
+        { id: 'REQ-007', title: 'User search' },
+        { id: 'REQ-008', title: 'Cancelled ticket', status: 'cancelled' },
+      ],
       assets: [{ name: 'openapi.yaml', notes: 'API contract' }],
     };
     expect(mentionItems('#', '', sources).map((i) => [i.group, i.value])).toEqual([
@@ -34,6 +37,7 @@ describe('# and @ in a comment box', () => {
       ['Requirements', 'REQ-007'],
     ]);
     expect(mentionItems('#', 'user', sources).map((i) => i.value)).toEqual(['src/api/users.ts', 'REQ-007']);
+    expect(mentionItems('#', 'cancelled', sources).map((i) => i.value)).toEqual([]);
     expect(mentionItems('@', 'open', sources)).toEqual([{ key: '@openapi.yaml', group: 'Shared assets', value: 'openapi.yaml', detail: 'API contract' }]);
   });
 });

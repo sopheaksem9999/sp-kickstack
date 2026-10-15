@@ -14,6 +14,11 @@ on:
         description: 'Tag name (leave blank to auto-detect from package.json)'
         required: false
         default: ''
+      force:
+        description: 'Force build even if tag already exists on remote'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -51,9 +56,11 @@ jobs:
           
           # Check if tag exists on remote
           EXISTS=$(git ls-remote --tags origin "refs/tags/${TAG}" | wc -l)
+          IS_MANUAL="${{ github.event_name == 'workflow_dispatch' }}"
+          FORCE="${{ inputs.force }}"
           
-          if [ "$EXISTS" -gt 0 ] && [ "${{ github.ref_type }}" != "tag" ] && [ -z "${{ inputs.tag_name }}" ]; then
-            echo "Tag ${TAG} already exists on remote. Skipping release build."
+          if [ "$EXISTS" -gt 0 ] && [ "${{ github.ref_type }}" != "tag" ] && [ -z "${{ inputs.tag_name }}" ] && [ "$IS_MANUAL" != "true" ] && [ "$FORCE" != "true" ]; then
+            echo "Tag ${TAG} already exists on remote and this is an automatic push. Skipping release build."
             echo "should_release=false" >> $GITHUB_OUTPUT
           else
             echo "should_release=true" >> $GITHUB_OUTPUT
@@ -65,6 +72,12 @@ jobs:
               git config user.email "github-actions[bot]@users.noreply.github.com"
               git tag -a "${TAG}" -m "Release ${TAG}"
               git push origin "${TAG}"
+            elif [ "$FORCE" = "true" ] || [ "$IS_MANUAL" = "true" ]; then
+              echo "Manual or forced release for existing tag ${TAG}. Re-pointing tag to current commit..."
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git tag -fa "${TAG}" -m "Release ${TAG}"
+              git push origin "${TAG}" --force
             fi
           fi
 

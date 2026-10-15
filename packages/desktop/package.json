@@ -1,6 +1,6 @@
 {
   "name": "@sp-kickstack/desktop",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "description": "SP Kickstack Desktop App powered by Tauri v2",
   "scripts": {

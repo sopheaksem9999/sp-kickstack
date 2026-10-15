@@ -6,6 +6,9 @@ on:
       - main
     paths:
       - 'package.json'
+      - '.github/workflows/release.yml'
+      - 'packages/desktop/**'
+      - 'scripts/bundle-desktop-server.mjs'
     tags:
       - 'v*'
   workflow_dispatch:

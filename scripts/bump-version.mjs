@@ -104,4 +104,12 @@ fs.writeFileSync(
 );
 console.log('  ✓ Updated packages/shared/src/version.ts');
 
+try {
+  const { execSync } = await import('node:child_process');
+  execSync('pnpm --filter @sp-kickstack/shared build', { cwd: rootDir, stdio: 'inherit' });
+  console.log('  ✓ Built @sp-kickstack/shared');
+} catch (e) {
+  console.warn('  ⚠️ Note: Could not automatically run pnpm build for shared package. Please run `pnpm --filter @sp-kickstack/shared build`.');
+}
+
 console.log(`\n🎉 Successfully bumped all project files to version ${targetVersion}!\n`);

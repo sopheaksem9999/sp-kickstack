@@ -143,7 +143,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build all workspaces
-        run: pnpm run build
+        run: pnpm -w -r --filter '!packages/desktop' run build
 
       - name: Bundle desktop embedded server
         run: pnpm run desktop:bundle-server

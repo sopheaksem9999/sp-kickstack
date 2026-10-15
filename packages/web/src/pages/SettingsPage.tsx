@@ -56,6 +56,8 @@ import { branchPatternExamples, optionalBranchProblem } from '../lib/runSettings
 import { LocalEngineSettingsSection } from '../components/LocalEngineSettingsSection.js';
 import { AiQaSettingsSection } from '../components/AiQaSettingsSection.js';
 import { AiChatToolsSettingsSection } from '../components/AiChatToolsSettingsSection.js';
+import { AboutSettingsSection } from '../components/AboutSettingsSection.js';
+import { useAppUpdate } from '../lib/appUpdate.js';
 import { BranchMergePolicy, ReasoningEffort, EngineId, DecisionEngineId } from '@sp-kickstack/shared';
 import { RadixSelect } from '../components/ui/select.js';
 
@@ -922,13 +924,14 @@ export function AgyModeCard({
   );
 }
 
-export type SettingsTab = 'ai' | 'ai-chat' | 'workspaces' | 'git' | 'ide' | 'appearance' | 'safety' | 'notifications';
-export const VALID_TABS: SettingsTab[] = ['ai', 'ai-chat', 'workspaces', 'git', 'ide', 'appearance', 'safety', 'notifications'];
+export type SettingsTab = 'ai' | 'ai-chat' | 'workspaces' | 'git' | 'ide' | 'appearance' | 'safety' | 'notifications' | 'about';
+export const VALID_TABS: SettingsTab[] = ['ai', 'ai-chat', 'workspaces', 'git', 'ide', 'appearance', 'safety', 'notifications', 'about'];
 
 export function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const { isTabBarEnabled, setIsTabBarEnabled } = useAppTabs();
   const { workspaces } = useWorkspace();
+  const { hasUpdate } = useAppUpdate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -1294,6 +1297,13 @@ export function SettingsPage() {
       sublabel: 'Depth caps & poll frequencies',
       icon: Shield,
     },
+    {
+      id: 'about',
+      label: 'About & Updates',
+      sublabel: 'App version, releases & info',
+      icon: Info,
+      badge: hasUpdate ? 'Update' : undefined,
+    },
   ];
 
   return (
@@ -1347,7 +1357,13 @@ export function SettingsPage() {
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold truncate">{tab.label}</span>
                       {tab.badge && (
-                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 shrink-0 ml-1 hidden sm:inline-block">
+                        <span
+                          className={`text-[9px] font-mono px-1.5 py-0.2 rounded font-bold shrink-0 ml-1 hidden sm:inline-block ${
+                            tab.badge === 'Update'
+                              ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700/60 animate-pulse'
+                              : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                          }`}
+                        >
                           {tab.badge}
                         </span>
                       )}
@@ -3034,6 +3050,11 @@ export function SettingsPage() {
               </div>
             </div>
           )}
+
+          {/* ========================================================= */}
+          {/* 5. About & Updates */}
+          {/* ========================================================= */}
+          {activeTab === 'about' && <AboutSettingsSection />}
         </div>
       </div>
     </div>

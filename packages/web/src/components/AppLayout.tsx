@@ -39,6 +39,8 @@ import { QueueQuickViewPopover } from './QueueQuickViewPopover.js';
 import { WorkspaceSelect } from './WorkspaceSelect.js';
 import { CommandPaletteModal } from './CommandPaletteModal.js';
 import { TabBar } from './TabBar.js';
+import { useAppUpdate } from '../lib/appUpdate.js';
+import { UpdateNotificationModal } from './UpdateNotificationModal.js';
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
@@ -51,6 +53,16 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const [isDeleteWsOpen, setIsDeleteWsOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+
+  const {
+    hasUpdate,
+    isDismissed,
+    release,
+    platformAsset,
+    latestTag,
+    dismissUpdate,
+  } = useAppUpdate();
 
   // Global Cmd+K / Ctrl+K listener for Quick Search
   useEffect(() => {
@@ -74,7 +86,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     { label: 'Attachments Hub', path: '/attachments', icon: Paperclip, badge: 'Files' },
     { label: 'Repositories', path: '/projects', icon: FolderGit2, badge: 'Git' },
     { label: 'Telemetry & Sprints', path: '/metrics', icon: BarChart3, badge: 'Stats' },
-    { label: 'Settings', path: '/settings', icon: Settings },
+    { label: 'Settings', path: '/settings', icon: Settings, badge: hasUpdate ? 'Update' : undefined },
   ];
 
   const currentSubpath = location.pathname.replace(/^\/w\/[^/]+/, '') || '/requirements';
@@ -450,6 +462,18 @@ export function AppLayout({ children }: { children: ReactNode }) {
               )}
             </button>
 
+            {hasUpdate && !isDismissed && (
+              <button
+                type="button"
+                onClick={() => setIsUpdateModalOpen(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-purple-500/15 via-indigo-500/15 to-purple-500/15 hover:from-purple-500/25 hover:to-indigo-500/25 border border-purple-300 dark:border-purple-700/60 text-purple-700 dark:text-purple-300 text-xs font-bold transition shadow-2xs cursor-pointer animate-pulse"
+                title={`New version ${latestTag} is available! Click to view.`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span className="hidden sm:inline">Update {latestTag}</span>
+              </button>
+            )}
+
             <NotificationBell />
 
             {/* ClickUp Avatar */}
@@ -474,6 +498,15 @@ export function AppLayout({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
+
+      <UpdateNotificationModal
+        open={isUpdateModalOpen}
+        onOpenChange={setIsUpdateModalOpen}
+        release={release}
+        currentVersion={APP_VERSION}
+        platformAsset={platformAsset}
+        onDismiss={() => release && dismissUpdate(release.tag_name)}
+      />
     </div>
   );
 }

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-// packages/xticket/src/cli.ts
+// ../xticket/src/cli.ts
 import fs4 from "node:fs";
 import { parseArgs as parseArgs3 } from "node:util";
 
-// packages/xticket/src/submit.ts
+// ../xticket/src/submit.ts
 import fs from "node:fs";
 import path from "node:path";
 function outboxKind(payload) {
@@ -64,7 +64,7 @@ async function submitTicket(payload, opts) {
   return { exitCode: 1, stderr: `Bridge rejected the ${noun} (${res.status}): ${reason}` };
 }
 
-// packages/xticket/src/ask.ts
+// ../xticket/src/ask.ts
 import fs2 from "node:fs";
 import { parseArgs } from "node:util";
 function parseAskArgs(argv, env) {
@@ -99,7 +99,7 @@ function parseAskArgs(argv, env) {
   };
 }
 
-// packages/xticket/src/qa.ts
+// ../xticket/src/qa.ts
 import fs3 from "node:fs";
 import { parseArgs as parseArgs2 } from "node:util";
 var SEVERITIES = ["blocker", "major", "minor"];
@@ -171,7 +171,7 @@ function parseQaResultArgs(argv, env) {
   return { payload: { kind: "qa-result", passed: Boolean(values.passed), summary, ...identity(env) } };
 }
 
-// packages/xticket/src/cli.ts
+// ../xticket/src/cli.ts
 async function main() {
   const args = process.argv.slice(2);
   const command = args[0];

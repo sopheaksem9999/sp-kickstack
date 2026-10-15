@@ -15,6 +15,7 @@ import {
   updateRequirementProjects,
   mergeRequirementToMain,
   startMergeToQa,
+  fetchSettings,
 } from '../lib/api.js';
 import { mergeCopy, mergeGateAction } from '../lib/mergeReady.js';
 import { canRetry, canSendNote, pausedLabel, retryOutcome } from '../lib/taskActions.js';
@@ -26,7 +27,7 @@ import { RequestChangesButton, TaskReviewComments } from '../components/ReviewCo
 import { TaskNoteDialog } from '../components/TaskNoteDialog.js';
 import { RunSettingsCard } from '../components/RunSettingsCard.js';
 import { RunSettingsDialog } from '../components/RunSettingsDialog.js';
-import { statusChangeStartsFanOut } from '../lib/runSettings.js';
+import { statusChangeStartsFanOut, baseBranchLabel } from '../lib/runSettings.js';
 import { RetryWithProfile } from '../components/RetryWithProfile.js';
 import { describeProfile, hasPin, profileApplies } from '../lib/agentProfile.js';
 import { BridgeTask, RequirementStatus } from '@sp-kickstack/shared';
@@ -212,6 +213,13 @@ export function RequirementDetailPage() {
     queryFn: () => fetchProjects(req?.workspace_id || 'default'),
     enabled: Boolean(req),
   });
+
+  const { data: settingsData } = useQuery({
+    queryKey: ['settings'],
+    queryFn: fetchSettings,
+    enabled: Boolean(req),
+  });
+  const baseLabel = baseBranchLabel(allProjects, req?.affected_projects || [], settingsData?.branch_merge.default_base_branch || 'develop');
 
   // The manual engine takes no model or effort, so a pin on its tasks does nothing: show neither the pin nor "Retry with".
   const engineByProject = new Map(allProjects.map((p) => [p.name, p.engine_type]));
@@ -456,7 +464,8 @@ export function RequirementDetailPage() {
           </div>
           <div className="flex items-center gap-2 normal-case">
             <span className="font-mono text-slate-400 text-[11px] font-normal mr-1">
-              Branch: <strong className="text-purple-600 dark:text-purple-400">{req.target_branch || 'develop'}</strong>
+              Branch: <strong className="text-purple-600 dark:text-purple-400">{req.target_branch || baseLabel}</strong>
+              {!req.target_branch && <span className="text-[10px] text-slate-400 font-sans ml-1">(base)</span>}
             </span>
 
             {/* View Toggle */}

@@ -81,6 +81,27 @@ describe('run settings dialog, picker and status changes', () => {
     expect(pickerRows(entries, 'release/2', ['backend']).some((r) => r.name === '')).toBe(false);
   });
 
+  it('branch picker: preserves custom currentValue not yet in git entries without duplicating existing branches', () => {
+    const entries = [
+      { name: 'develop', projects: ['backend'] },
+      { name: 'main', projects: ['backend'] },
+    ];
+    // Custom branch 'pos' should appear in rows when query is empty
+    const rows = pickerRows(entries, '', ['backend'], 'pos');
+    expect(rows[0].name).toBe('');
+    expect(rows[1]).toMatchObject({ name: 'pos', create: false });
+    expect(rows.some((r) => r.name === 'develop')).toBe(true);
+
+    // Filter by 'po' includes 'pos'
+    const filtered = pickerRows(entries, 'po', ['backend'], 'pos');
+    expect(filtered.some((r) => r.name === 'pos')).toBe(true);
+
+    // Existing branch 'develop' as currentValue is not duplicated
+    const existingRows = pickerRows(entries, '', ['backend'], 'develop');
+    const developCount = existingRows.filter((r) => r.name === 'develop').length;
+    expect(developCount).toBe(1);
+  });
+
   it('fan-out result: an error when no goal reached its engine, a warning when some failed', () => {
     const goal = (project: string, status: string, last_error: string | null = null) => ({ project, status, last_error }) as BridgeTask;
     expect(fanOutResult('REQ-008', [goal('backend', 'queued')])).toEqual({ level: 'success', message: 'Fan-out started for REQ-008' });

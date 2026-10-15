@@ -116,13 +116,40 @@ export const BASE_BRANCH_OPTION: BranchOption = { name: '', detail: "each reposi
 /**
  * Picker rows; the first is what Enter picks. Without search text the base branch comes first; with
  * text the exact branch or the new name does, and the base row is hidden.
+ * When currentValue is set and not already present in Git branches, it is preserved in the list so
+ * custom/new target branches (like 'pos') stay selectable and visible with a checkmark.
  */
-export function pickerRows(entries: BranchEntry[], query: string, chosen: string[]): BranchOption[] {
+export function pickerRows(entries: BranchEntry[], query: string, chosen: string[], currentValue?: string): BranchOption[] {
   const q = query.trim();
-  if (!q) return [BASE_BRANCH_OPTION, ...branchOptions(entries, '', chosen)];
+  const cur = currentValue?.trim() || '';
+  if (!q) {
+    const rows = [BASE_BRANCH_OPTION, ...branchOptions(entries, '', chosen)];
+    if (cur && !entries.some((e) => e.name === cur)) {
+      rows.splice(1, 0, {
+        name: cur,
+        detail: "current target branch (created from each repository's base branch at fan-out)",
+        create: false,
+      });
+    }
+    return rows;
+  }
   const rows = branchOptions(entries, q, chosen);
   const exact = rows.findIndex((r) => r.name === q);
-  return exact > 0 ? [rows[exact], ...rows.slice(0, exact), ...rows.slice(exact + 1)] : rows;
+  if (exact > 0) {
+    return [rows[exact], ...rows.slice(0, exact), ...rows.slice(exact + 1)];
+  }
+  if (
+    cur &&
+    cur.toLowerCase().includes(q.toLowerCase()) &&
+    !rows.some((r) => r.name === cur)
+  ) {
+    rows.push({
+      name: cur,
+      detail: "current target branch (created from each repository's base branch at fan-out)",
+      create: false,
+    });
+  }
+  return rows;
 }
 
 /** What the fan-out dialog says about the goals it started: an error keeps the dialog open. */

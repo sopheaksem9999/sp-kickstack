@@ -20,8 +20,11 @@ interface BranchPickerProps {
 export function BranchPicker({ value, onChange, entries, chosenProjects, baseLabel, disabled }: BranchPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [active, setActive] = useState(0);
-  const rows = useMemo(() => pickerRows(entries, query, chosenProjects), [entries, query, chosenProjects]);
+  const rows = useMemo(() => pickerRows(entries, query, chosenProjects, value), [entries, query, chosenProjects, value]);
+  const [active, setActive] = useState(() => {
+    const idx = rows.findIndex((r) => r.name === value);
+    return idx >= 0 ? idx : 0;
+  });
 
   const choose = (name: string) => {
     onChange(name);
@@ -30,6 +33,8 @@ export function BranchPicker({ value, onChange, entries, chosenProjects, baseLab
   };
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
       setQuery('');
       setOpen(false);
     } else if (e.key === 'ArrowDown') {
@@ -57,7 +62,10 @@ export function BranchPicker({ value, onChange, entries, chosenProjects, baseLab
           setQuery('');
         }
         setOpen(next);
-        setActive(0);
+        if (next) {
+          const idx = rows.findIndex((r) => r.name === value);
+          setActive(idx >= 0 ? idx : 0);
+        }
       }}
     >
       <PopoverTrigger asChild>
@@ -71,7 +79,16 @@ export function BranchPicker({ value, onChange, entries, chosenProjects, baseLab
           {!value && baseLabel && <span className="text-slate-400">(base branch)</span>}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-80 p-2 space-y-2">
+      <PopoverContent
+        align="start"
+        className="w-80 p-2 space-y-2"
+        onEscapeKeyDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setQuery('');
+          setOpen(false);
+        }}
+      >
         <input
           autoFocus
           value={query}

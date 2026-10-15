@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { RunSettingsDialog } from './RunSettingsDialog.js';
-import { statusChangeStartsFanOut } from '../lib/runSettings.js';
+import { statusChangeStartsFanOut, baseBranchLabel } from '../lib/runSettings.js';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -8,6 +8,7 @@ import {
   fetchRequirementGraph,
   fetchProjects,
   fetchSprints,
+  fetchSettings,
   assignRequirementSprint,
   cancelRequirement,
   markTaskDone,
@@ -135,6 +136,13 @@ export function RequirementDetailSheet({
     queryFn: () => fetchSprints(req?.workspace_id || 'default'),
     enabled: Boolean(req && isOpen),
   });
+
+  const { data: settingsData } = useQuery({
+    queryKey: ['settings'],
+    queryFn: fetchSettings,
+    enabled: Boolean(isOpen),
+  });
+  const baseLabel = baseBranchLabel(allProjects, req?.affected_projects || [], settingsData?.branch_merge.default_base_branch || 'develop');
 
   const isEditable = req?.status === 'draft' || req?.status === 'ready';
 
@@ -500,10 +508,11 @@ export function RequirementDetailSheet({
                 {/* Implementation Branch Tag */}
                 <span
                   className="inline-flex items-center gap-1 text-[11px] font-mono text-slate-600 dark:text-slate-300 bg-white dark:bg-[#2a2a2a] px-2 py-1 rounded-md border border-slate-200 dark:border-[#333333]"
-                  title={req.target_branch ? `Target Branch: ${req.target_branch}` : 'Target Branch: Base branch of each repository (develop)'}
+                  title={req.target_branch ? `Target Branch: ${req.target_branch}` : `Target Branch: Base branch of each repository (${baseLabel})`}
                 >
                   <GitBranch className="w-3 h-3 text-[#7b68ee]" />
-                  <span>{req.target_branch || 'develop'}</span>
+                  <span>{req.target_branch || baseLabel}</span>
+                  {!req.target_branch && <span className="text-[10px] text-slate-400 font-sans">(base)</span>}
                 </span>
               </div>
 

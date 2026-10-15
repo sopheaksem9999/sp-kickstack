@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@sp-kickstack/shared": "*"
+    "@sp-kickstack/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.8.7",

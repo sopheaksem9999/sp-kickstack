@@ -1,5 +1,11 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(__dirname, '..');
 
 const colors = {
   reset: '\x1b[0m',
@@ -50,17 +56,26 @@ console.log(`${colors.yellow}===================================================
 console.log(`${colors.yellow}  🚀 Starting SP Kickstack DevFlow (Server + Web)    ${colors.reset}`);
 console.log(`${colors.yellow}====================================================${colors.reset}`);
 
+const isPnpm = fs.existsSync(path.join(rootDir, 'pnpm-lock.yaml')) || fs.existsSync(path.join(rootDir, 'pnpm-workspace.yaml'));
+const pm = isPnpm ? 'pnpm' : 'npm';
+const serverArgs = isPnpm
+  ? ['--filter', '@sp-kickstack/server', 'dev']
+  : ['run', '--workspace=@sp-kickstack/server', 'dev'];
+const webArgs = isPnpm
+  ? ['--filter', '@sp-kickstack/web', 'dev']
+  : ['run', '--workspace=@sp-kickstack/web', 'dev'];
+
 const serverProc = startProcess(
   'server',
-  'npm',
-  ['run', '--workspace=@sp-kickstack/server', 'dev'],
+  pm,
+  serverArgs,
   colors.magenta
 );
 
 const webProc = startProcess(
   'web',
-  'npm',
-  ['run', '--workspace=@sp-kickstack/web', 'dev'],
+  pm,
+  webArgs,
   colors.cyan
 );
 

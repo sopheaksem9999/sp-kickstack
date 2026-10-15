@@ -36311,7 +36311,7 @@ function formatRequirementTitle(rawTitle, contextText) {
 }
 
 // packages/shared/dist/version.js
-var APP_VERSION = "0.3.2";
+var APP_VERSION = "0.3.3";
 
 // packages/shared/dist/requirementMarkdown.js
 function parseRequirementMarkdown(bodyMd) {

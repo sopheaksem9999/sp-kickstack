@@ -2983,8 +2983,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "sp-kickstack-desktop"
-version = "0.3.0"
+name = "sp-kickstack"
+version = "0.3.4"
 dependencies = [
  "serde",
  "serde_json",

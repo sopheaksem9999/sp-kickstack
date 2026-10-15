@@ -85,12 +85,25 @@ if (fs.existsSync(bsqDir)) {
   }
   const buildDir = path.join(bsqDir, 'build');
   if (fs.existsSync(buildDir)) {
+    const releaseDir = path.join(buildDir, 'Release');
+    if (fs.existsSync(releaseDir)) {
+      for (const e of fs.readdirSync(releaseDir)) {
+        if (e !== 'better_sqlite3.node') {
+          fs.rmSync(path.join(releaseDir, e), { recursive: true, force: true });
+        }
+      }
+    }
     for (const e of fs.readdirSync(buildDir)) {
       if (e !== 'Release') {
         fs.rmSync(path.join(buildDir, e), { recursive: true, force: true });
       }
     }
   }
+}
+const futpDir = path.join(targetNodeModules, 'file-uri-to-path');
+if (fs.existsSync(futpDir)) {
+  const testDir = path.join(futpDir, 'test');
+  if (fs.existsSync(testDir)) fs.rmSync(testDir, { recursive: true, force: true });
 }
 
 // 3. Write package.json

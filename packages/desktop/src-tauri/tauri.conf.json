@@ -1,7 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "SP Kickstack",
-  "version": "0.3.3",
+  "mainBinaryName": "sp-kickstack",
+  "version": "0.3.4",
   "identifier": "com.spkickstack.desktop",
   "build": {
     "beforeDevCommand": "pnpm --prefix ../.. dev",
@@ -27,11 +28,6 @@
   },
   "bundle": {
     "active": true,
-    "targets": [
-      "deb",
-      "nsis",
-      "dmg"
-    ],
     "resources": [
       "resources/**/*"
     ],

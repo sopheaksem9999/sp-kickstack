@@ -1,6 +1,6 @@
 [package]
-name = "sp-kickstack-desktop"
-version = "0.3.3"
+name = "sp-kickstack"
+version = "0.3.4"
 description = "SP Kickstack AI Studio Bridge Desktop"
 authors = ["Sopheak Sem"]
 edition = "2021"

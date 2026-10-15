@@ -1,6 +1,6 @@
 {
   "name": "@sp-kickstack/xticket",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "type": "module",
   "bin": {
     "xticket": "./dist/cli.js"

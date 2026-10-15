@@ -23,7 +23,7 @@
     "dev:web": "pnpm --filter @sp-kickstack/web dev",
     "desktop:dev": "pnpm --filter @sp-kickstack/desktop dev",
     "desktop:bundle-server": "node scripts/bundle-desktop-server.mjs",
-    "desktop:build": "pnpm --filter @sp-kickstack/desktop build:desktop",
+    "desktop:build": "node scripts/bundle-desktop-server.mjs && pnpm --filter @sp-kickstack/web build && pnpm --filter @sp-kickstack/desktop build:desktop",
     "version:bump": "node scripts/bump-version.mjs",
     "bump": "node scripts/bump-version.mjs"
   },

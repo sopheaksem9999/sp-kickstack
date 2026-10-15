@@ -55,30 +55,35 @@ jobs:
           echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
           
           # Check if tag exists on remote
-          EXISTS=$(git ls-remote --tags origin "refs/tags/${TAG}" | wc -l)
+          REMOTE_TAG_SHA=$(git ls-remote --tags origin "refs/tags/${TAG}" | head -n 1 | awk '{print $1}')
+          HEAD_SHA=$(git rev-parse HEAD)
           IS_MANUAL="${{ github.event_name == 'workflow_dispatch' }}"
           FORCE="${{ inputs.force }}"
           
-          if [ "$EXISTS" -gt 0 ] && [ "${{ github.ref_type }}" != "tag" ] && [ -z "${{ inputs.tag_name }}" ] && [ "$IS_MANUAL" != "true" ] && [ "$FORCE" != "true" ]; then
-            echo "Tag ${TAG} already exists on remote and this is an automatic push. Skipping release build."
-            echo "should_release=false" >> $GITHUB_OUTPUT
-          else
+          if [ -n "$REMOTE_TAG_SHA" ] && [ "$REMOTE_TAG_SHA" != "$HEAD_SHA" ]; then
+            echo "Tag ${TAG} exists on remote at ${REMOTE_TAG_SHA}, but HEAD is at ${HEAD_SHA}. Re-pointing tag..."
             echo "should_release=true" >> $GITHUB_OUTPUT
-            
-            # If tag does not exist yet, create and push it automatically
-            if [ "$EXISTS" -eq 0 ]; then
-              echo "Creating and pushing tag ${TAG}..."
-              git config user.name "github-actions[bot]"
-              git config user.email "github-actions[bot]@users.noreply.github.com"
-              git tag -a "${TAG}" -m "Release ${TAG}"
-              git push origin "${TAG}"
-            elif [ "$FORCE" = "true" ] || [ "$IS_MANUAL" = "true" ]; then
-              echo "Manual or forced release for existing tag ${TAG}. Re-pointing tag to current commit..."
-              git config user.name "github-actions[bot]"
-              git config user.email "github-actions[bot]@users.noreply.github.com"
-              git tag -fa "${TAG}" -m "Release ${TAG}"
-              git push origin "${TAG}" --force
-            fi
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -fa "${TAG}" -m "Release ${TAG}"
+            git push origin "${TAG}" --force
+          elif [ -z "$REMOTE_TAG_SHA" ]; then
+            echo "Tag ${TAG} does not exist yet. Creating and pushing tag ${TAG}..."
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "${TAG}" -m "Release ${TAG}"
+            git push origin "${TAG}"
+          elif [ "$FORCE" = "true" ] || [ "$IS_MANUAL" = "true" ]; then
+            echo "Manual or forced release requested for ${TAG}. Re-pointing tag..."
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -fa "${TAG}" -m "Release ${TAG}"
+            git push origin "${TAG}" --force
+          else
+            echo "Tag ${TAG} already exists at current commit ${HEAD_SHA}. Skipping duplicate release build."
+            echo "should_release=false" >> $GITHUB_OUTPUT
           fi
 
   release:
@@ -137,7 +142,8 @@ jobs:
             libssl-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
-            libfuse2
+            libfuse2 \
+            patchelf
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

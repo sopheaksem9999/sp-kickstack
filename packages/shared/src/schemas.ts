@@ -198,11 +198,18 @@ export const UpdateRequirementMergePolicyInputSchema = z.object({
 export const UpdateRequirementInputSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   goal: z.string().optional(),
-  body_md: z.string().optional(),
+  user_story: z.string().optional(),
+  acceptance_criteria: z.array(z.string()).optional(),
   priority: PrioritySchema.optional(),
+  status: RequirementStatusSchema.optional(),
   affected_projects: z.array(z.string().min(1)).optional(),
+  target_branch: TargetBranchSchema.nullable().optional(),
   sprint_id: z.string().nullable().optional(),
   merge_policy: BranchMergePolicySchema.nullable().optional(),
+  attachments: z.array(AttachmentItemSchema).optional(),
+  api_hints: z.string().optional(),
+  notes: z.string().optional(),
+  body_md: z.string().optional(),
 });
 
 export type UpdateRequirementInput = z.input<typeof UpdateRequirementInputSchema>;

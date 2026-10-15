@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   CreateRequirementInputSchema,
+  UpdateRequirementInputSchema,
   CreateTicketInputSchema,
   CreateWorkspaceInputSchema,
   ProjectSchema,
@@ -107,6 +108,33 @@ describe('Shared Schemas Validation', () => {
     expect(parsed.success).toBe(true);
     if (parsed.success) {
       expect(parsed.data.acceptance_criteria).toEqual([]);
+    }
+  });
+
+  it('validates structured UpdateRequirementInput with all fields', () => {
+    const updatePayload = {
+      title: 'Updated Title',
+      goal: 'Updated Goal',
+      user_story: 'As an admin, I want reports',
+      acceptance_criteria: ['Filter by date', 'Export CSV'],
+      priority: 'urgent',
+      status: 'in_progress',
+      affected_projects: ['backend', 'frontend'],
+      target_branch: 'release/2.0',
+      sprint_id: 'sprint-1',
+      merge_policy: 'auto_merge',
+      attachments: [{ name: 'spec.pdf', size: 1024, type: 'application/pdf', data_url: 'data:...' }],
+      api_hints: 'GET /reports',
+      notes: 'Architectural note',
+    };
+
+    const parsed = UpdateRequirementInputSchema.safeParse(updatePayload);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.user_story).toBe('As an admin, I want reports');
+      expect(parsed.data.acceptance_criteria).toEqual(['Filter by date', 'Export CSV']);
+      expect(parsed.data.target_branch).toBe('release/2.0');
+      expect(parsed.data.attachments).toHaveLength(1);
     }
   });
 

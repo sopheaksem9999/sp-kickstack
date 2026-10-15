@@ -10,6 +10,7 @@ import {
   AgentProfileInputSchema,
   UpdateRunSettingsInput,
   UpdateRunSettingsInputSchema,
+  parseRequirementMarkdown,
 } from '@sp-kickstack/shared';
 import { HttpError, badRequest, conflict } from '../lib/httpError.js';
 import { targetBranchProblem } from './branchService.js';
@@ -216,7 +217,7 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
     const existing = this.getRequirement(id);
     if (!existing) throw new Error(`Requirement ${id} not found`);
 
-    if (existing.status !== 'draft' && existing.status !== 'ready') {
+    if (existing.status !== 'draft' && existing.status !== 'ready' && input.status === undefined) {
       throw new HttpError(
         400,
         `Cannot edit requirement in status "${existing.status}". Only ToDo and Ready for Dispatch stages can be edited.`
@@ -229,20 +230,15 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
           .prepare("UPDATE requirements SET title = ?, updated_at = datetime('now') WHERE id = ?")
           .run(input.title, id);
       }
-      if (input.body_md !== undefined) {
-        this.db
-          .prepare("UPDATE requirements SET body_md = ?, updated_at = datetime('now') WHERE id = ?")
-          .run(input.body_md, id);
-        const reqDir = path.join(this.workspaceDir, '.bridge', 'requirements');
-        const filePath = path.join(reqDir, `${id}.md`);
-        try {
-          fs.writeFileSync(filePath, input.body_md, 'utf-8');
-        } catch {}
-      }
       if (input.priority !== undefined) {
         this.db
           .prepare("UPDATE requirements SET priority = ?, updated_at = datetime('now') WHERE id = ?")
           .run(input.priority, id);
+      }
+      if (input.status !== undefined) {
+        this.db
+          .prepare("UPDATE requirements SET status = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(input.status, id);
       }
       if (input.sprint_id !== undefined) {
         this.db
@@ -254,23 +250,97 @@ ${input.notes ? `## Specification & Architectural Details\n${input.notes}\n` : '
           .prepare("UPDATE requirements SET merge_policy = ?, updated_at = datetime('now') WHERE id = ?")
           .run(input.merge_policy, id);
       }
+      if (input.target_branch !== undefined) {
+        const targetBranch = input.target_branch ? input.target_branch.trim() : null;
+        if (targetBranch) {
+          const projs = input.affected_projects ?? existing.affected_projects;
+          this.assertTargetBranch(targetBranch, projs, '');
+        }
+        this.db
+          .prepare("UPDATE requirements SET target_branch = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(targetBranch, id);
+      }
+      if (input.attachments !== undefined) {
+        this.db
+          .prepare("UPDATE requirements SET attachments = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(JSON.stringify(input.attachments), id);
+      }
       if (input.affected_projects && input.affected_projects.length > 0) {
+        const scopedProjects = this.ownWorkspaceProjects(
+          existing.workspace_id || 'default',
+          input.affected_projects
+        );
         this.db.prepare('DELETE FROM requirement_projects WHERE req_id = ?').run(id);
         const insertProj = this.db.prepare(
           'INSERT INTO requirement_projects (req_id, project) VALUES (?, ?)'
         );
-        for (const proj of input.affected_projects) {
+        for (const proj of scopedProjects) {
           insertProj.run(id, proj);
         }
         this.db
           .prepare("UPDATE requirements SET updated_at = datetime('now') WHERE id = ?")
           .run(id);
       }
+
+      // Handle body_md update: either direct body_md OR re-rendering from structured fields
+      let newBodyMd = input.body_md;
+      if (
+        newBodyMd === undefined &&
+        (input.goal !== undefined ||
+          input.user_story !== undefined ||
+          input.acceptance_criteria !== undefined ||
+          input.api_hints !== undefined ||
+          input.notes !== undefined)
+      ) {
+        const currentParsed = parseRequirementMarkdown(existing.body_md);
+        const renderInput: CreateRequirementInput = {
+          workspace_id: existing.workspace_id || 'default',
+          title: input.title ?? existing.title,
+          goal: input.goal ?? currentParsed.goal ?? existing.title,
+          user_story: input.user_story ?? currentParsed.userStory,
+          acceptance_criteria: input.acceptance_criteria ?? currentParsed.acceptanceCriteria,
+          affected_projects: input.affected_projects ?? existing.affected_projects,
+          priority: input.priority ?? existing.priority,
+          status: input.status ?? existing.status,
+          sprint_id: input.sprint_id !== undefined ? input.sprint_id : existing.sprint_id,
+          merge_policy: input.merge_policy !== undefined ? (input.merge_policy ?? undefined) : (existing.merge_policy ?? undefined),
+          target_branch: input.target_branch !== undefined ? input.target_branch : existing.target_branch,
+          attachments: input.attachments ?? existing.attachments ?? [],
+          api_hints: input.api_hints ?? currentParsed.apiHints,
+          notes: input.notes ?? currentParsed.notes,
+        };
+        newBodyMd = this.renderMarkdown(
+          id,
+          renderInput,
+          renderInput.status,
+          existing.revision + 1
+        );
+        this.db
+          .prepare("UPDATE requirements SET revision = revision + 1 WHERE id = ?")
+          .run(id);
+      }
+
+      if (newBodyMd !== undefined) {
+        this.db
+          .prepare("UPDATE requirements SET body_md = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(newBodyMd, id);
+
+        const writeDiskCopy = (dirPath: string) => {
+          try {
+            if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
+            const filePath = path.join(dirPath, `${id}.md`);
+            fs.writeFileSync(filePath, newBodyMd!, 'utf-8');
+          } catch {}
+        };
+        writeDiskCopy(path.join(this.workspaceDir, 'requirements'));
+        writeDiskCopy(path.join(this.workspaceDir, '.bridge', 'requirements'));
+      }
     });
     updateTx();
 
     return this.getRequirement(id)!;
   }
+
 
   public updateRequirementSprint(id: string, sprintId: string | null): Requirement {
     this.db

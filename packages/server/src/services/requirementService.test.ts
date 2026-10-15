@@ -53,4 +53,36 @@ describe('RequirementService.createRequirement durability', () => {
     expect(files).toEqual([]);
     expect((db.prepare('SELECT COUNT(*) c FROM requirements').get() as any).c).toBe(0);
   });
+
+  it('updates structured fields, target_branch, attachments, and re-renders body_md', () => {
+    const created = service.createRequirement({
+      title: 'Initial Title',
+      goal: 'Initial Goal',
+      affected_projects: ['backend'],
+      priority: 'normal',
+    });
+
+    const updated = service.updateRequirement(created.id, {
+      title: 'Updated Title',
+      goal: 'New Goal Text',
+      user_story: 'As a user I want parity',
+      acceptance_criteria: ['Check 1', 'Check 2'],
+      priority: 'urgent',
+      target_branch: 'release/v1',
+      attachments: [{ name: 'doc.txt', size: 100, type: 'text/plain', data_url: 'data:text/plain;base64,abc' }],
+    });
+
+    expect(updated.title).toBe('Updated Title');
+    expect(updated.priority).toBe('urgent');
+    expect(updated.target_branch).toBe('release/v1');
+    expect(updated.attachments).toHaveLength(1);
+    expect(updated.body_md).toContain('New Goal Text');
+    expect(updated.body_md).toContain('As a user I want parity');
+    expect(updated.body_md).toContain('- [ ] Check 1');
+    expect(updated.body_md).toContain('- [ ] Check 2');
+
+    // Check disk files
+    expect(fs.readFileSync(updated.file_path, 'utf-8')).toContain('New Goal Text');
+  });
 });
+

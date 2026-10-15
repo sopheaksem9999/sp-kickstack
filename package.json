@@ -1,6 +1,6 @@
 {
   "name": "sp-kickstack",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "private": true,
   "description": "Cross-repo agent orchestration bridge",
   "engines": {

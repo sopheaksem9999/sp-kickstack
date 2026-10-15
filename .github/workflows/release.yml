@@ -138,6 +138,7 @@ jobs:
         with:
           projectPath: packages/desktop
           tagName: ${{ needs.prepare.outputs.tag_name }}
+          releaseName: 'SP Kickstack ${{ needs.prepare.outputs.tag_name }}'
           releaseBody: |
             ## SP Kickstack Desktop App ${{ needs.prepare.outputs.tag_name }}
 

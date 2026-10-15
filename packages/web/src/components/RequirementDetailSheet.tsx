@@ -498,9 +498,12 @@ export function RequirementDetailSheet({
                 </div>
 
                 {/* Implementation Branch Tag */}
-                <span className="inline-flex items-center gap-1 text-[11px] font-mono text-slate-600 dark:text-slate-300 bg-white dark:bg-[#2a2a2a] px-2 py-1 rounded-md border border-slate-200 dark:border-[#333333]">
+                <span
+                  className="inline-flex items-center gap-1 text-[11px] font-mono text-slate-600 dark:text-slate-300 bg-white dark:bg-[#2a2a2a] px-2 py-1 rounded-md border border-slate-200 dark:border-[#333333]"
+                  title={req.target_branch ? `Target Branch: ${req.target_branch}` : 'Target Branch: Base branch of each repository (develop)'}
+                >
                   <GitBranch className="w-3 h-3 text-[#7b68ee]" />
-                  <span>develop</span>
+                  <span>{req.target_branch || 'develop'}</span>
                 </span>
               </div>
 

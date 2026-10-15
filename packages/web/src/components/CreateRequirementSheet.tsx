@@ -203,7 +203,12 @@ export function CreateRequirementSheet() {
   const [mergePolicy, setMergePolicy] = useState<'inherit' | BranchMergePolicy>('inherit');
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   /** '' = each repository's base branch. */
-  const [targetBranch, setTargetBranch] = useState('');
+  const [targetBranch, setTargetBranchState] = useState('');
+  const targetBranchRef = useRef('');
+  const setTargetBranch = (val: string) => {
+    targetBranchRef.current = val;
+    setTargetBranchState(val);
+  };
   const { data: branches = [] } = useQuery({
     queryKey: ['branches', [...selectedProjects].sort().join(',')],
     queryFn: () => fetchBranches(selectedProjects),
@@ -213,8 +218,23 @@ export function CreateRequirementSheet() {
   const { data: settingsData } = useQuery({ queryKey: ['settings'], queryFn: fetchSettings, enabled: isOpen });
   const defaultTargetBranch = settingsData?.branch_merge.default_target_branch ?? '';
 
+  const lastInitializedIdRef = useRef<string | null>(null);
+  const wasOpenRef = useRef<boolean>(false);
+
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      wasOpenRef.current = false;
+      lastInitializedIdRef.current = null;
+      return;
+    }
+
+    const currentReqId = editingRequirement ? editingRequirement.id : 'NEW';
+    if (wasOpenRef.current && lastInitializedIdRef.current === currentReqId) {
+      return;
+    }
+
+    wasOpenRef.current = true;
+    lastInitializedIdRef.current = currentReqId;
 
     if (editingRequirement) {
       setTitle(editingRequirement.title || '');
@@ -247,7 +267,7 @@ export function CreateRequirementSheet() {
       setActiveGoalTab('write');
       setActiveMode('form');
     }
-  }, [isOpen, editingRequirement, defaultTargetBranch]);
+  }, [isOpen, editingRequirement]);
   const [criteria, setCriteria] = useState<string[]>(['']);
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [activeGoalTab, setActiveGoalTab] = useState<'write' | 'preview'>('write');
@@ -1079,7 +1099,7 @@ What feature, solution, or refactoring would you like to design today? You can s
           status: andStart ? 'ready' : status,
           sprint_id: sprintId,
           merge_policy: mergePolicy !== 'inherit' ? mergePolicy : null,
-          target_branch: createTargetBranch(targetBranch, Boolean(settingsData)),
+          target_branch: createTargetBranch(targetBranchRef.current || targetBranch, Boolean(settingsData)),
           affected_projects: selectedProjects,
           acceptance_criteria: filteredCriteria,
           attachments,
@@ -1114,7 +1134,7 @@ What feature, solution, or refactoring would you like to design today? You can s
         status: andStart ? 'ready' : status,
         sprint_id: sprintId || undefined,
         merge_policy: mergePolicy !== 'inherit' ? mergePolicy : undefined,
-        target_branch: createTargetBranch(targetBranch, Boolean(settingsData)),
+        target_branch: createTargetBranch(targetBranchRef.current || targetBranch, Boolean(settingsData)),
         affected_projects: selectedProjects,
         acceptance_criteria: filteredCriteria,
         attachments,

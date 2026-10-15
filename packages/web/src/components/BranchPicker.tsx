@@ -3,6 +3,7 @@ import { Check, GitBranch, Plus } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.js';
 import { cn } from './ui/sheet.js';
 import { pickerRows } from '../lib/runSettings.js';
+import { branchNameProblem } from '@sp-kickstack/shared';
 import type { BranchEntry } from '../lib/runSettingsApi.js';
 
 interface BranchPickerProps {
@@ -28,7 +29,10 @@ export function BranchPicker({ value, onChange, entries, chosenProjects, baseLab
     setQuery('');
   };
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'ArrowDown') {
+    if (e.key === 'Escape') {
+      setQuery('');
+      setOpen(false);
+    } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       setActive((i) => Math.min(i + 1, rows.length - 1));
     } else if (e.key === 'ArrowUp') {
@@ -45,6 +49,13 @@ export function BranchPicker({ value, onChange, entries, chosenProjects, baseLab
     <Popover
       open={open}
       onOpenChange={(next) => {
+        if (!next && query.trim()) {
+          const q = query.trim();
+          if (!branchNameProblem(q)) {
+            onChange(q);
+          }
+          setQuery('');
+        }
         setOpen(next);
         setActive(0);
       }}

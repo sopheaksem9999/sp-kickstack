@@ -456,7 +456,7 @@ export function RequirementDetailPage() {
           </div>
           <div className="flex items-center gap-2 normal-case">
             <span className="font-mono text-slate-400 text-[11px] font-normal mr-1">
-              Base: <strong className="text-purple-600 dark:text-purple-400">develop</strong>
+              Branch: <strong className="text-purple-600 dark:text-purple-400">{req.target_branch || 'develop'}</strong>
             </span>
 
             {/* View Toggle */}

@@ -36,6 +36,7 @@ import {
   Calendar,
   Play,
   ExternalLink,
+  Edit3,
 } from 'lucide-react';
 import { Priority, Requirement, RequirementStatus } from '@sp-kickstack/shared';
 import { RunSettingsDialog } from '../components/RunSettingsDialog.js';
@@ -59,7 +60,7 @@ export const VALID_SCRUM_TABS: ScrumTab[] = ['sprint', 'backlog', 'all'];
 export function RequirementsPage() {
   const queryClient = useQueryClient();
   const { activeWorkspaceId } = useWorkspace();
-  const { openSheet } = useCreateRequirement();
+  const { openSheet, openEdit } = useCreateRequirement();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get('tab') as ScrumTab | null;
@@ -1223,14 +1224,27 @@ export function RequirementsPage() {
                           {new Date(req.created_at).toLocaleDateString()}
                         </td>
                         <td className="px-4 py-3 text-center whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedRequirementId(req.id)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-[#7b68ee] hover:bg-purple-50 dark:hover:bg-[#282828] inline-flex items-center justify-center transition-colors cursor-pointer"
-                            title="View Details in Sheet"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEdit(req);
+                              }}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-[#7b68ee] hover:bg-purple-50 dark:hover:bg-[#282828] inline-flex items-center justify-center transition-colors cursor-pointer"
+                              title={`Edit ${req.id}`}
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedRequirementId(req.id)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-[#7b68ee] hover:bg-purple-50 dark:hover:bg-[#282828] inline-flex items-center justify-center transition-colors cursor-pointer"
+                              title="View Details in Sheet"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1379,14 +1393,27 @@ export function RequirementsPage() {
                                     {new Date(req.created_at).toLocaleDateString()}
                                   </td>
                                   <td className="px-4 py-3 text-center whitespace-nowrap">
-                                    <button
-                                      type="button"
-                                      onClick={() => setSelectedRequirementId(req.id)}
-                                      className="p-1.5 rounded-lg text-slate-400 hover:text-[#7b68ee] hover:bg-purple-50 dark:hover:bg-[#282828] inline-flex items-center justify-center transition-colors cursor-pointer"
-                                      title="View Details in Sheet"
-                                    >
-                                      <ExternalLink className="w-3.5 h-3.5" />
-                                    </button>
+                                    <div className="flex items-center justify-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          openEdit(req);
+                                        }}
+                                        className="p-1.5 rounded-lg text-slate-400 hover:text-[#7b68ee] hover:bg-purple-50 dark:hover:bg-[#282828] inline-flex items-center justify-center transition-colors cursor-pointer"
+                                        title={`Edit ${req.id}`}
+                                      >
+                                        <Edit3 className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedRequirementId(req.id)}
+                                        className="p-1.5 rounded-lg text-slate-400 hover:text-[#7b68ee] hover:bg-purple-50 dark:hover:bg-[#282828] inline-flex items-center justify-center transition-colors cursor-pointer"
+                                        title="View Details in Sheet"
+                                      >
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
                                   </td>
                                 </tr>
                               );
@@ -1514,10 +1541,23 @@ export function RequirementsPage() {
                       >
                         <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 mb-1">
                           <span className="text-[#7b68ee] font-bold group-hover:underline">{req.id}</span>
-                          <span className="flex items-center gap-1 text-[10px]">
-                            <Flag className={`w-3 h-3 ${prio.color}`} />
-                            <span className="capitalize text-slate-600 dark:text-slate-300 font-medium">{prio.label}</span>
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEdit(req);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-slate-400 hover:text-[#7b68ee] hover:bg-purple-50 dark:hover:bg-[#282828] transition-all cursor-pointer"
+                              title={`Edit ${req.id}`}
+                            >
+                              <Edit3 className="w-3 h-3" />
+                            </button>
+                            <span className="flex items-center gap-1 text-[10px]">
+                              <Flag className={`w-3 h-3 ${prio.color}`} />
+                              <span className="capitalize text-slate-600 dark:text-slate-300 font-medium">{prio.label}</span>
+                            </span>
+                          </div>
                         </div>
 
                         <div className="font-semibold text-xs text-slate-900 dark:text-slate-100 group-hover:text-[#7b68ee] transition-colors mb-1.5 line-clamp-2 leading-snug">

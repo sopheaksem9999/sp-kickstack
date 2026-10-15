@@ -31,6 +31,7 @@ import { RetryWithProfile } from '../components/RetryWithProfile.js';
 import { describeProfile, hasPin, profileApplies } from '../lib/agentProfile.js';
 import { BridgeTask, RequirementStatus } from '@sp-kickstack/shared';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
+import { useCreateRequirement } from '../lib/CreateRequirementContext.js';
 import { toast } from 'sonner';
 import { Portal } from '../components/ui/portal.js';
 import {
@@ -87,6 +88,7 @@ export function RequirementDetailPage() {
   const queryClient = useQueryClient();
   const demoMode = useDemoMode();
   const { wsPath } = useWorkspace();
+  const { openEdit } = useCreateRequirement();
   const mergeText = mergeCopy(demoMode);
 
   // Embedded VS Code Review Modal state
@@ -345,6 +347,19 @@ export function RequirementDetailPage() {
         </div>
 
         <div className="flex items-center gap-2.5">
+          {/* Edit Requirement */}
+          {(req.status === 'draft' || req.status === 'ready') && (
+            <button
+              type="button"
+              onClick={() => openEdit(req)}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-lg border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 dark:hover:bg-purple-900/40 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-[0.98]"
+              title="Edit requirement form"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>Edit Requirement</span>
+            </button>
+          )}
+
           {/* Fan-Out Dispatch */}
           {(req.status === 'draft' || req.status === 'ready') && (
             <button

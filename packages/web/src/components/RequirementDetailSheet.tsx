@@ -30,6 +30,7 @@ import { AiQaHeader } from './AiQaHeader.js';
 import { useAskBeforeMerge } from './MergeAiQaConfirm.js';
 import { BridgeTask, RequirementStatus, BranchMergePolicy, Priority, UpdateRequirementInput } from '@sp-kickstack/shared';
 import { useWorkspace } from '../lib/WorkspaceContext.js';
+import { useCreateRequirement } from '../lib/CreateRequirementContext.js';
 import { toast } from 'sonner';
 import {
   X,
@@ -97,6 +98,7 @@ export function RequirementDetailSheet({
   const queryClient = useQueryClient();
   const demoMode = useDemoMode();
   const { wsPath } = useWorkspace();
+  const { openEdit } = useCreateRequirement();
   const mergeText = mergeCopy(demoMode);
   const [isEditingProjects, setIsEditingProjects] = useState(false);
   const [editingProjectsList, setEditingProjectsList] = useState<string[]>([]);
@@ -538,15 +540,12 @@ export function RequirementDetailSheet({
                   ) : (
                     <button
                       type="button"
-                      onClick={() => {
-                        setIsEditingTitle(true);
-                        setSpecViewMode('edit');
-                      }}
-                      className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-[#242424] hover:bg-purple-50 dark:hover:bg-[#2e263d] text-purple-600 dark:text-purple-400 rounded-lg text-xs font-bold border border-purple-200 dark:border-purple-900/60 transition-colors cursor-pointer shadow-2xs"
-                      title="Edit requirement title & specification"
+                      onClick={() => openEdit(req)}
+                      className="flex items-center gap-1.5 px-3 py-1 bg-white dark:bg-[#242424] hover:bg-purple-50 dark:hover:bg-[#2e263d] text-purple-600 dark:text-purple-400 rounded-lg text-xs font-bold border border-purple-200 dark:border-purple-900/60 transition-colors cursor-pointer shadow-2xs"
+                      title="Edit requirement form"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
-                      <span>Edit Spec</span>
+                      <span>Edit Requirement</span>
                     </button>
                   )
                 ) : (

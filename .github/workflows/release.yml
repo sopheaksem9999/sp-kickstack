@@ -133,23 +133,28 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           NO_STRIP: "true"
           RUST_BACKTRACE: "1"
         with:
           projectPath: packages/desktop
           tagName: ${{ needs.prepare.outputs.tag_name }}
-          releaseName: 'SP Kickstack ${{ needs.prepare.outputs.tag_name }}'
           releaseBody: |
             ## SP Kickstack Desktop App ${{ needs.prepare.outputs.tag_name }}
 
-            ### Downloads & Installers
-            - **macOS**: `.dmg` installer
+            ### 🚀 Quick Install (macOS)
+            Run this one-line command in Terminal to download, install, and open with zero warnings:
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/sopheaksem9999/sp-kickstack/main/scripts/install-mac.sh | bash
+            ```
+
+            ### 📦 Manual Download
+            - **macOS**: `.dmg` installer asset below.
+
+            > **First-time DMG Users**: If macOS shows *"is damaged and can't be opened"*, clear the quarantine flag in Terminal:
+            > ```bash
+            > xattr -cr /Applications/"SP Kickstack.app"
+            > ```
+            > Or click **Open Anyway** in **System Settings > Privacy & Security**.
 
             *(Windows and Linux installers will be available in an upcoming update)*
           releaseDraft: true
